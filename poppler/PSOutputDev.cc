@@ -973,18 +973,6 @@ struct PSOutImgClipRect
 };
 
 //------------------------------------------------------------------------
-
-struct PSOutPaperSize
-{
-    PSOutPaperSize(std::unique_ptr<GooString> &&nameA, int wA, int hA) : name(std::move(nameA)), w(wA), h(hA) { }
-    ~PSOutPaperSize() = default;
-    PSOutPaperSize(const PSOutPaperSize &) = delete;
-    PSOutPaperSize &operator=(const PSOutPaperSize &) = delete;
-    std::unique_ptr<GooString> name;
-    int w, h;
-};
-
-//------------------------------------------------------------------------
 // DeviceNRecoder
 //------------------------------------------------------------------------
 
@@ -1097,7 +1085,6 @@ PSOutputDev::PSOutputDev(const char *fileName, PDFDoc *docA, char *psTitleA, con
     font16Enc = nullptr;
     imgIDs = nullptr;
     formIDs = nullptr;
-    paperSizes = nullptr;
     embFontList = nullptr;
     customColors = nullptr;
     haveTextClip = false;
@@ -1155,7 +1142,6 @@ PSOutputDev::PSOutputDev(int fdA, PDFDoc *docA, char *psTitleA, const std::vecto
     font16Enc = nullptr;
     imgIDs = nullptr;
     formIDs = nullptr;
-    paperSizes = nullptr;
     embFontList = nullptr;
     customColors = nullptr;
     haveTextClip = false;
@@ -1194,7 +1180,6 @@ PSOutputDev::PSOutputDev(FoFiOutputFunc outputFuncA, void *outputStreamA, char *
     font16Enc = nullptr;
     imgIDs = nullptr;
     formIDs = nullptr;
-    paperSizes = nullptr;
     embFontList = nullptr;
     customColors = nullptr;
     haveTextClip = false;
@@ -1310,7 +1295,6 @@ void PSOutputDev::postInit()
 {
     Catalog *catalog;
     PDFRectangle *box;
-    PSOutPaperSize *size;
     int w, h, i;
 
     if (postInitDone || !ok) {
@@ -1328,7 +1312,7 @@ void PSOutputDev::postInit()
         paperMatch = false;
     }
 
-    paperSizes = new std::vector<PSOutPaperSize *>();
+    paperSizes.clear();
     for (const int pg : pages) {
         Page *page = catalog->getPage(pg);
         if (page == nullptr) {
@@ -1363,28 +1347,28 @@ void PSOutputDev::postInit()
         if (h > paperHeight) {
             paperHeight = h;
         }
-        for (i = 0; i < (int)paperSizes->size(); ++i) {
-            size = (*paperSizes)[i];
-            if (pageDimensionEqual(w, size->w) && pageDimensionEqual(h, size->h)) {
+        for (i = 0; i < (int)paperSizes.size(); ++i) {
+            const PSOutPaperSize &size = paperSizes[i];
+            if (pageDimensionEqual(w, size.w) && pageDimensionEqual(h, size.h)) {
                 break;
             }
         }
-        if (i == (int)paperSizes->size()) {
+        if (i == (int)paperSizes.size()) {
             const StandardMedia *media = standardMedia;
-            std::unique_ptr<GooString> name;
+            std::string name;
             while (media->name) {
                 if (pageDimensionEqual(w, media->width) && pageDimensionEqual(h, media->height)) {
-                    name = std::make_unique<GooString>(media->name);
+                    name = std::string(media->name);
                     w = media->width;
                     h = media->height;
                     break;
                 }
                 media++;
             }
-            if (!name) {
-                name = GooString::format("{0:d}x{1:d}mm", int(w * 25.4 / 72), int(h * 25.4 / 72));
+            if (name.empty()) {
+                name = GooString::format("{0:d}x{1:d}mm", int(w * 25.4 / 72), int(h * 25.4 / 72))->toStr();
             }
-            paperSizes->push_back(new PSOutPaperSize(std::move(name), w, h));
+            paperSizes.emplace_back(std::move(name), w, h);
         }
         pagePaperSize.insert(std::pair<int, int>(pg, i));
         if (!paperMatch) {
@@ -1537,12 +1521,6 @@ PSOutputDev::~PSOutputDev()
         }
 #endif
     }
-    if (paperSizes) {
-        for (auto entry : *paperSizes) {
-            delete entry;
-        }
-        delete paperSizes;
-    }
     if (embFontList) {
         delete embFontList;
     }
@@ -1579,7 +1557,6 @@ PSOutputDev::~PSOutputDev()
 
 void PSOutputDev::writeHeader(int nPages, const PDFRectangle *mediaBox, const PDFRectangle *cropBox, int pageRotate, const char *title)
 {
-    PSOutPaperSize *size;
     double x1, y1, x2, y2;
 
     switch (mode) {
@@ -1624,17 +1601,16 @@ void PSOutputDev::writeHeader(int nPages, const PDFRectangle *mediaBox, const PD
 
     switch (mode) {
     case psModePS:
-        for (std::size_t i = 0; i < paperSizes->size(); ++i) {
-            size = (*paperSizes)[i];
-            writePSFmt("%%{0:s} {1:t} {2:d} {3:d} 0 () ()\n", i == 0 ? "DocumentMedia:" : "+", size->name.get(), size->w, size->h);
+        for (std::size_t i = 0; i < paperSizes.size(); ++i) {
+            const PSOutPaperSize &size = paperSizes[i];
+            writePSFmt("%%{0:s} {1:s} {2:d} {3:d} 0 () ()\n", i == 0 ? "DocumentMedia:" : "+", size.name.c_str(), size.w, size.h);
         }
         writePSFmt("%%BoundingBox: 0 0 {0:d} {1:d}\n", paperWidth, paperHeight);
         writePSFmt("%%Pages: {0:d}\n", nPages);
         writePS("%%EndComments\n");
         if (!paperMatch) {
-            size = (*paperSizes)[0];
             writePS("%%BeginDefaults\n");
-            writePSFmt("%%PageMedia: {0:t}\n", size->name.get());
+            writePSFmt("%%PageMedia: {0:s}\n", paperSizes[0].name.c_str());
             writePS("%%EndDefaults\n");
         }
         break;
@@ -3614,7 +3590,6 @@ void PSOutputDev::startPage(int pageNum, GfxState *state, XRef *xrefA)
     int imgWidth, imgHeight, imgWidth2, imgHeight2;
     bool landscape;
     GooString *s;
-    PSOutPaperSize *paperSize;
 
     if (!postInitDone) {
         postInit();
@@ -3766,8 +3741,8 @@ void PSOutputDev::startPage(int pageNum, GfxState *state, XRef *xrefA)
         ty += (rotate == 0 || rotate == 180) ? imgLLY : -imgLLX;
 
         if (paperMatch) {
-            paperSize = (*paperSizes)[pagePaperSize[pageNum]];
-            writePSFmt("%%PageMedia: {0:t}\n", paperSize->name.get());
+            const PSOutPaperSize &paperSize = paperSizes[pagePaperSize[pageNum]];
+            writePSFmt("%%PageMedia: {0:s}\n", paperSize.name.c_str());
         }
 
         // Create a matrix with the same transform that will be output to PS
