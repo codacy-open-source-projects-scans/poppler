@@ -30,6 +30,7 @@
 // Copyright (C) 2019, 2023 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2021 Hubert Figuiere <hub@figuiere.net>
 // Copyright (C) 2021 Christian Persch <chpe@src.gnome.org>
+// Copyright (C) 2023 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -329,16 +330,7 @@ public:
     bool getOptimizeColorSpace() const { return optimizeColorSpace; }
     bool getPassLevel1CustomColor() const { return passLevel1CustomColor; }
     bool getEnableLZW() const { return enableLZW; };
-    bool getEnableFlate() const
-#ifdef ENABLE_ZLIB
-    {
-        return enableFlate;
-    }
-#else
-    {
-        return false;
-    }
-#endif
+    bool getEnableFlate() const { return enableFlate; }
     void setEmbedType1(bool b) { embedType1 = b; }
     void setEmbedTrueType(bool b) { embedTrueType = b; }
     void setEmbedCIDPostScript(bool b) { embedCIDPostScript = b; }

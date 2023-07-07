@@ -474,6 +474,13 @@ static HashAlgorithm ConvertHashTypeFromNss(HASH_HashType type)
         return HashAlgorithm::Sha512;
     case HASH_AlgSHA224:
         return HashAlgorithm::Sha224;
+#if NSS_VMAJOR >= 3 && NSS_VMINOR >= 91
+    // TODO Expose this in HashAlgorithm if PDF supports them
+    case HASH_AlgSHA3_224:
+    case HASH_AlgSHA3_256:
+    case HASH_AlgSHA3_384:
+    case HASH_AlgSHA3_512:
+#endif
     case HASH_AlgNULL:
     case HASH_AlgTOTAL:
         return HashAlgorithm::Unknown;
@@ -616,32 +623,36 @@ static std::unique_ptr<X509CertificateInfo> getCertificateInfoFromCERT(CERTCerti
     // public key info
     X509CertificateInfo::PublicKeyInfo pkInfo;
     SECKEYPublicKey *pk = CERT_ExtractPublicKey(cert);
-    switch (pk->keyType) {
-    case rsaKey:
-        pkInfo.publicKey = SECItemToGooString(pk->u.rsa.modulus);
-        pkInfo.publicKeyType = RSAKEY;
-        break;
-    case dsaKey:
-        pkInfo.publicKey = SECItemToGooString(pk->u.dsa.publicValue);
-        pkInfo.publicKeyType = DSAKEY;
-        break;
-    case ecKey:
-        pkInfo.publicKey = SECItemToGooString(pk->u.ec.publicValue);
-        pkInfo.publicKeyType = ECKEY;
-        break;
-    default:
+    if (pk) {
+        switch (pk->keyType) {
+        case rsaKey:
+            pkInfo.publicKey = SECItemToGooString(pk->u.rsa.modulus);
+            pkInfo.publicKeyType = RSAKEY;
+            break;
+        case dsaKey:
+            pkInfo.publicKey = SECItemToGooString(pk->u.dsa.publicValue);
+            pkInfo.publicKeyType = DSAKEY;
+            break;
+        case ecKey:
+            pkInfo.publicKey = SECItemToGooString(pk->u.ec.publicValue);
+            pkInfo.publicKeyType = ECKEY;
+            break;
+        default:
+            pkInfo.publicKey = SECItemToGooString(cert->subjectPublicKeyInfo.subjectPublicKey);
+            pkInfo.publicKeyType = OTHERKEY;
+            break;
+        }
+        pkInfo.publicKeyStrength = SECKEY_PublicKeyStrengthInBits(pk);
+        SECKEY_DestroyPublicKey(pk);
+    } else {
         pkInfo.publicKey = SECItemToGooString(cert->subjectPublicKeyInfo.subjectPublicKey);
         pkInfo.publicKeyType = OTHERKEY;
-        break;
     }
-    pkInfo.publicKeyStrength = SECKEY_PublicKeyStrengthInBits(pk);
     certInfo->setPublicKeyInfo(std::move(pkInfo));
 
     certInfo->setKeyUsageExtensions(cert->keyUsage);
     certInfo->setCertificateDER(SECItemToGooString(cert->derCert));
     certInfo->setIsSelfSigned(CERT_CompareName(&cert->subject, &cert->issuer) == SECEqual);
-
-    SECKEY_DestroyPublicKey(pk);
 
     return certInfo;
 }
