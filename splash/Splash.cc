@@ -11,7 +11,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2005-2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005-2023 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2005 Marco Pesenti Gritti <mpg@redhat.com>
 // Copyright (C) 2010-2016 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2010 Christian Feuersänger <cfeuersaenger@googlemail.com>
@@ -1889,7 +1889,7 @@ SplashError Splash::stroke(SplashPath *path)
     SplashCoord d1, d2, t1, t2, w;
 
     if (debugMode) {
-        printf("stroke [dash:%ld] [width:%.2f]:\n", state->lineDash.size(), (double)state->lineWidth);
+        printf("stroke [dash:%zu] [width:%.2f]:\n", state->lineDash.size(), (double)state->lineWidth);
         dumpPath(path);
     }
     opClipRes = splashClipAllOutside;

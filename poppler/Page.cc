@@ -27,7 +27,7 @@
 // Copyright (C) 2012, 2013 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2013, 2014 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2013 Jason Crain <jason@aquaticape.us>
-// Copyright (C) 2013, 2017 Adrian Johnson <ajohnson@redneon.com>
+// Copyright (C) 2013, 2017, 2023 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2015 Philipp Reinkemeier <philipp.reinkemeier@offis.de>
 // Copyright (C) 2018, 2019 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2020 Oliver Sander <oliver.sander@tu-dresden.de>
@@ -259,6 +259,7 @@ Page::Page(PDFDoc *docA, int numA, Object &&pageDict, Ref pageRefA, PageAttrs *a
     num = numA;
     duration = -1;
     annots = nullptr;
+    structParents = -1;
 
     pageObj = std::move(pageDict);
 
@@ -279,6 +280,14 @@ Page::Page(PDFDoc *docA, int numA, Object &&pageDict, Ref pageRefA, PageAttrs *a
         error(errSyntaxError, -1, "Page duration object (page {0:d}) is wrong type ({1:s})", num, tmp.getTypeName());
     } else if (tmp.isNum()) {
         duration = tmp.getNum();
+    }
+
+    // structParents
+    const Object &tmp2 = pageObj.dictLookup("StructParents");
+    if (!(tmp2.isInt() || tmp2.isNull())) {
+        error(errSyntaxError, -1, "Page StructParents object (page {0:d}) is wrong type ({1:s})", num, tmp2.getTypeName());
+    } else if (tmp2.isInt()) {
+        structParents = tmp2.getInt();
     }
 
     // annotations

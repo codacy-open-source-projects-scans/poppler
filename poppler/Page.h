@@ -22,7 +22,7 @@
 // Copyright (C) 2012 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2012, 2017, 2018, 2020, 2021, 2023 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
-// Copyright (C) 2013, 2017 Adrian Johnson <ajohnson@redneon.com>
+// Copyright (C) 2013, 2017, 2023 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2020 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2020, 2021 Nelson Benítez León <nbenitezl@gmail.com>
@@ -242,6 +242,10 @@ public:
 
     bool hasStandaloneFields() const { return !standaloneFields.empty(); }
 
+    // Get the integer key of the page's entry in the structural parent tree.
+    // Returns -1 if the page dict does not contain a StructParents key.
+    int getStructParents() const { return structParents; }
+
 private:
     // replace xref
     void replaceXRef(XRef *xrefA);
@@ -259,6 +263,7 @@ private:
     Object trans; // page transition
     Object actions; // page additional actions
     double duration; // page duration
+    int structParents; // integer key of page in structure parent tree
     bool ok; // true if page is valid
     mutable std::recursive_mutex mutex;
     // standalone widgets are special FormWidget's inside a Page that *are not*

@@ -4,7 +4,7 @@
 //
 // This file is licensed under the GPLv2 or later
 //
-// Copyright (C) 2012, 2017, 2021 Adrian Johnson <ajohnson@redneon.com>
+// Copyright (C) 2012, 2017, 2021, 2023 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2016 Jason Crain <jason@aquaticape.us>
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Nelson Benítez León <nbenitezl@gmail.com>
@@ -124,5 +124,10 @@ char POPPLER_PRIVATE_EXPORT *utf16ToUtf8(const uint16_t *utf16, int *len = nullp
 //              of the corresponding character in the text of the line (thanks to this info
 //              being passed in @in_idx parameter).
 void POPPLER_PRIVATE_EXPORT unicodeToAscii7(const Unicode *in, int len, Unicode **ucs4_out, int *out_len, const int *in_idx, int **indices);
+
+// Convert a PDF Text String to UTF-8
+//   textStr    - PDF text string
+//   returns UTF-8 string.
+std::string POPPLER_PRIVATE_EXPORT TextStringToUtf8(const std::string &textStr);
 
 #endif
