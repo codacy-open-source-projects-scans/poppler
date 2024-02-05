@@ -7,6 +7,7 @@
  * Copyright (C) 2019, 2021 Oliver Sander <oliver.sander@tu-dresden.de>
  * Copyright (C) 2020, 2022 Albert Astals Cid <aacid@kde.org>
  * Copyright (C) 2021 André Guerreiro <aguerreiro1985@gmail.com>
+ * Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -2773,7 +2774,8 @@ PopplerAction *poppler_index_iter_get_action(PopplerIndexIter *iter)
     item = (*iter->items)[iter->index];
     link_action = item->getAction();
 
-    title = unicode_to_char(item->getTitle(), item->getTitleLength());
+    const std::vector<Unicode> &itemTitle = item->getTitle();
+    title = unicode_to_char(itemTitle.data(), itemTitle.size());
 
     action = _poppler_action_new(iter->document, link_action, title);
     g_free(title);

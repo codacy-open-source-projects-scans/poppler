@@ -18,7 +18,7 @@
 // Copyright 2021 Theofilos Intzoglou <int.teo@gmail.com>
 // Copyright 2022 Felix Jung <fxjung@posteo.de>
 // Copyright 2022 Erich E. Hoover <erich.e.hoover@gmail.com>
-// Copyright 2023 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2023, 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -275,16 +275,14 @@ static std::string TextStringToUTF8(const std::string &str)
 {
     const UnicodeMap *utf8Map = globalParams->getUtf8Map();
 
-    Unicode *u;
-    const int len = TextStringToUCS4(str, &u);
+    std::vector<Unicode> u = TextStringToUCS4(str);
 
     std::string convertedStr;
-    for (int i = 0; i < len; ++i) {
+    for (auto &c : u) {
         char buf[8];
-        const int n = utf8Map->mapUnicode(u[i], buf, sizeof(buf));
+        const int n = utf8Map->mapUnicode(c, buf, sizeof(buf));
         convertedStr.append(buf, n);
     }
-    gfree(u);
 
     return convertedStr;
 }

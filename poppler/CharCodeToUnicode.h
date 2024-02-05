@@ -22,6 +22,7 @@
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019 <corentinf@free.fr>
+// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -33,11 +34,11 @@
 
 #include <atomic>
 #include <optional>
+#include <vector>
 
 #include "poppler-config.h"
 #include "CharTypes.h"
 
-struct CharCodeToUnicodeString;
 class GooString;
 
 //------------------------------------------------------------------------
@@ -100,18 +101,22 @@ public:
     CharCode getLength() const { return mapLen; }
 
 private:
+    struct CharCodeToUnicodeString
+    {
+        CharCode c;
+        std::vector<Unicode> u;
+    };
     bool parseCMap1(int (*getCharFunc)(void *), void *data, int nBits);
     void addMapping(CharCode code, char *uStr, int n, int offset);
     void addMappingInt(CharCode code, Unicode u);
     CharCodeToUnicode();
     explicit CharCodeToUnicode(const std::optional<std::string> &tagA);
-    CharCodeToUnicode(const std::optional<std::string> &tagA, Unicode *mapA, CharCode mapLenA, bool copyMap, CharCodeToUnicodeString *sMapA, int sMapLenA, int sMapSizeA);
+    CharCodeToUnicode(const std::optional<std::string> &tagA, Unicode *mapA, CharCode mapLenA, bool copyMap, std::vector<CharCodeToUnicodeString> &&sMapA);
 
     const std::optional<std::string> tag;
     Unicode *map;
     CharCode mapLen;
-    CharCodeToUnicodeString *sMap;
-    int sMapLen, sMapSize;
+    std::vector<CharCodeToUnicodeString> sMap;
     std::atomic_int refCnt;
     bool isIdentity;
 };
