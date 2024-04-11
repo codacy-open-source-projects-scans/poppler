@@ -24,12 +24,12 @@
 // Copyright 2018 Chinmoy Ranjan Pradhan <chinmoyrp65@protonmail.com>
 // Copyright 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright 2018-2022 Nelson Benítez León <nbenitezl@gmail.com>
-// Copyright 2019, 2020 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright 2019, 2020 2024, Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright 2019 Tomoyuki Kubota <himajin100000@gmail.com>
 // Copyright 2019 João Netto <joaonetto901@gmail.com>
 // Copyright 2020-2022 Marek Kasik <mkasik@redhat.com>
 // Copyright 2020 Thorsten Behrens <Thorsten.Behrens@CIB.de>
-// Copyright 2020, 2023 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
+// Copyright 2020, 2023, 2024 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
 // Copyright 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
 // Copyright 2021 Theofilos Intzoglou <int.teo@gmail.com>
 // Copyright 2021 Even Rouault <even.rouault@spatialys.com>
@@ -742,11 +742,12 @@ bool FormWidgetSignature::signDocumentWithAppearance(const std::string &saveFile
     const double dx = std::get<0>(dxdy);
     const double dy = std::get<1>(dxdy);
     const double wMax = dx - 2 * borderWidth - 4;
+    const double hMax = dy - 2 * borderWidth;
     if (fontSize == 0) {
-        fontSize = Annot::calculateFontSize(form, font.get(), &signatureText, wMax / 2.0, dy);
+        fontSize = Annot::calculateFontSize(form, font.get(), &signatureText, wMax / 2.0, hMax);
     }
     if (leftFontSize == 0) {
-        leftFontSize = Annot::calculateFontSize(form, font.get(), &signatureTextLeft, wMax / 2.0, dy);
+        leftFontSize = Annot::calculateFontSize(form, font.get(), &signatureTextLeft, wMax / 2.0, hMax);
     }
     const DefaultAppearance da { { objName, pdfFontName.c_str() }, fontSize, std::move(fontColor) };
     getField()->setDefaultAppearance(da.toAppearanceString());
@@ -2768,7 +2769,7 @@ std::string Form::findFontInDefaultResources(const std::string &fontFamily, cons
     const Dict *fontDict = fontDictObj.getDict();
     for (int i = 0; i < fontDict->getLength(); ++i) {
         const char *key = fontDict->getKey(i);
-        if (GooString::startsWith(key, kOurDictFontNamePrefix)) {
+        if (std::string_view(key).starts_with(kOurDictFontNamePrefix)) {
             const Object fontObj = fontDict->getVal(i);
             if (fontObj.isDict() && fontObj.dictIs("Font")) {
                 const Object fontBaseFontObj = fontObj.dictLookup("BaseFont");
@@ -2799,7 +2800,7 @@ Form::AddFontResult Form::addFontToDefaultResources(const std::string &fontFamil
 
 Form::AddFontResult Form::addFontToDefaultResources(const std::string &filepath, int faceIndex, const std::string &fontFamily, const std::string &fontStyle, bool forceName)
 {
-    if (!GooString::endsWith(filepath, ".ttf") && !GooString::endsWith(filepath, ".ttc") && !GooString::endsWith(filepath, ".otf")) {
+    if (!filepath.ends_with(".ttf") && !filepath.ends_with(".ttc") && !filepath.ends_with(".otf")) {
         error(errIO, -1, "We only support embedding ttf/ttc/otf fonts for now. The font file for {0:s} {1:s} was {2:s}", fontFamily.c_str(), fontStyle.c_str(), filepath.c_str());
         return {};
     }
