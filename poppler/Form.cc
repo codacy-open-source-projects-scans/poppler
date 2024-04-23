@@ -35,7 +35,7 @@
 // Copyright 2021 Even Rouault <even.rouault@spatialys.com>
 // Copyright 2022 Alexander Sulfrian <asulfrian@zedat.fu-berlin.de>
 // Copyright 2022, 2024 Erich E. Hoover <erich.e.hoover@gmail.com>
-// Copyright 2023 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2023, 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -74,6 +74,7 @@
 #include "Lexer.h"
 #include "Parser.h"
 #include "CIDFontsWidthsBuilder.h"
+#include "UTF.h"
 
 #include "fofi/FoFiTrueType.h"
 #include "fofi/FoFiIdentifier.h"
@@ -574,9 +575,14 @@ const GooString *FormWidgetSignature::getSignature() const
     return static_cast<FormFieldSignature *>(field)->getSignature();
 }
 
-SignatureInfo *FormWidgetSignature::validateSignature(bool doVerifyCert, bool forceRevalidation, time_t validationTime, bool ocspRevocationCheck, bool enableAIA)
+SignatureInfo *FormWidgetSignature::validateSignatureAsync(bool doVerifyCert, bool forceRevalidation, time_t validationTime, bool ocspRevocationCheck, bool enableAIA, const std::function<void()> &doneCallback)
 {
-    return static_cast<FormFieldSignature *>(field)->validateSignature(doVerifyCert, forceRevalidation, validationTime, ocspRevocationCheck, enableAIA);
+    return static_cast<FormFieldSignature *>(field)->validateSignatureAsync(doVerifyCert, forceRevalidation, validationTime, ocspRevocationCheck, enableAIA, doneCallback);
+}
+
+CertificateValidationStatus FormWidgetSignature::validateSignatureResult()
+{
+    return static_cast<FormFieldSignature *>(field)->validateSignatureResult();
 }
 
 // update hash with the specified range of data from the file
@@ -1247,7 +1253,7 @@ GooString *FormField::getFullyQualifiedName()
 
             if (unicode_encoded) {
                 fullyQualifiedName->insert(0, "\0.", 2); // 2-byte unicode period
-                if (parent_name->hasUnicodeMarker()) {
+                if (hasUnicodeByteOrderMark(parent_name->toStr())) {
                     fullyQualifiedName->insert(0, parent_name->c_str() + 2, parent_name->getLength() - 2); // Remove the unicode BOM
                 } else {
                     int tmp_length;
@@ -1257,7 +1263,7 @@ GooString *FormField::getFullyQualifiedName()
                 }
             } else {
                 fullyQualifiedName->insert(0, '.'); // 1-byte ascii period
-                if (parent_name->hasUnicodeMarker()) {
+                if (hasUnicodeByteOrderMark(parent_name->toStr())) {
                     unicode_encoded = true;
                     fullyQualifiedName = convertToUtf16(fullyQualifiedName);
                     fullyQualifiedName->insert(0, parent_name->c_str() + 2, parent_name->getLength() - 2); // Remove the unicode BOM
@@ -1275,7 +1281,7 @@ GooString *FormField::getFullyQualifiedName()
 
     if (partialName) {
         if (unicode_encoded) {
-            if (partialName->hasUnicodeMarker()) {
+            if (hasUnicodeByteOrderMark(partialName->toStr())) {
                 fullyQualifiedName->append(partialName->c_str() + 2, partialName->getLength() - 2); // Remove the unicode BOM
             } else {
                 int tmp_length;
@@ -1284,7 +1290,7 @@ GooString *FormField::getFullyQualifiedName()
                 delete[] tmp_str;
             }
         } else {
-            if (partialName->hasUnicodeMarker()) {
+            if (hasUnicodeByteOrderMark(partialName->toStr())) {
                 unicode_encoded = true;
                 fullyQualifiedName = convertToUtf16(fullyQualifiedName);
                 fullyQualifiedName->append(partialName->c_str() + 2, partialName->getLength() - 2); // Remove the unicode BOM
@@ -1307,7 +1313,7 @@ GooString *FormField::getFullyQualifiedName()
     }
 
     if (unicode_encoded) {
-        fullyQualifiedName->prependUnicodeMarker();
+        prependUnicodeByteOrderMark(fullyQualifiedName->toNonConstStr());
     }
 
     return fullyQualifiedName;
@@ -1678,7 +1684,7 @@ void FormFieldText::fillContent(FillValueType fillType)
 
     obj1 = Form::fieldLookup(dict, fillType == fillDefaultValue ? "DV" : "V");
     if (obj1.isString()) {
-        if (obj1.getString()->hasUnicodeMarker()) {
+        if (hasUnicodeByteOrderMark(obj1.getString()->toStr())) {
             if (obj1.getString()->getLength() > 2) {
                 if (fillType == fillDefaultValue) {
                     defaultContent = obj1.getString()->copy();
@@ -1716,8 +1722,8 @@ void FormFieldText::setContentCopy(const GooString *new_content)
         content = new_content->copy();
 
         // append the unicode marker <FE FF> if needed
-        if (!content->hasUnicodeMarker()) {
-            content->prependUnicodeMarker();
+        if (!hasUnicodeByteOrderMark(content->toStr())) {
+            prependUnicodeByteOrderMark(content->toNonConstStr());
         }
         Form *form = doc->getCatalog()->getForm();
         if (form) {
@@ -2165,8 +2171,8 @@ void FormFieldChoice::setEditChoice(const GooString *new_content)
         editedChoice = new_content->copy();
 
         // append the unicode marker <FE FF> if needed
-        if (!editedChoice->hasUnicodeMarker()) {
-            editedChoice->prependUnicodeMarker();
+        if (!hasUnicodeByteOrderMark(editedChoice->toStr())) {
+            prependUnicodeByteOrderMark(editedChoice->toNonConstStr());
         }
     }
     updateSelection();
@@ -2387,37 +2393,52 @@ void FormWidgetSignature::setSignatureType(FormSignatureType fst)
     static_cast<FormFieldSignature *>(field)->setSignatureType(fst);
 }
 
-SignatureInfo *FormFieldSignature::validateSignature(bool doVerifyCert, bool forceRevalidation, time_t validationTime, bool ocspRevocationCheck, bool enableAIA)
+SignatureInfo *FormFieldSignature::validateSignatureAsync(bool doVerifyCert, bool forceRevalidation, time_t validationTime, bool ocspRevocationCheck, bool enableAIA, const std::function<void()> &doneCallback)
 {
     auto backend = CryptoSign::Factory::createActive();
     if (!backend) {
+        if (doneCallback) {
+            doneCallback();
+        }
         return signature_info;
     }
 
     if (signature_info->getSignatureValStatus() != SIGNATURE_NOT_VERIFIED && !forceRevalidation) {
+        if (doneCallback) {
+            doneCallback();
+        }
         return signature_info;
     }
 
     if (signature == nullptr) {
         error(errSyntaxError, 0, "Invalid or missing Signature string");
+        if (doneCallback) {
+            doneCallback();
+        }
         return signature_info;
     }
 
     if (!byte_range.isArray()) {
         error(errSyntaxError, 0, "Invalid or missing ByteRange array");
+        if (doneCallback) {
+            doneCallback();
+        }
         return signature_info;
     }
 
     int arrayLen = byte_range.arrayGetLength();
     if (arrayLen < 2) {
         error(errSyntaxError, 0, "Too few elements in ByteRange array");
+        if (doneCallback) {
+            doneCallback();
+        }
         return signature_info;
     }
 
     const int signature_len = signature->getLength();
     std::vector<unsigned char> signatureData(signature_len);
     memcpy(signatureData.data(), signature->c_str(), signature_len);
-    auto signature_handler = backend->createVerificationHandler(std::move(signatureData));
+    signature_handler = backend->createVerificationHandler(std::move(signatureData));
 
     Goffset fileLength = doc->getBaseStream()->getLength();
     for (int i = 0; i < arrayLen / 2; i++) {
@@ -2426,6 +2447,9 @@ SignatureInfo *FormFieldSignature::validateSignature(bool doVerifyCert, bool for
 
         if (!offsetObj.isIntOrInt64() || !lenObj.isIntOrInt64()) {
             error(errSyntaxError, 0, "Illegal values in ByteRange array");
+            if (doneCallback) {
+                doneCallback();
+            }
             return signature_info;
         }
 
@@ -2434,6 +2458,9 @@ SignatureInfo *FormFieldSignature::validateSignature(bool doVerifyCert, bool for
 
         if (offset < 0 || offset >= fileLength || len < 0 || len > fileLength || offset + len > fileLength) {
             error(errSyntaxError, 0, "Illegal values in ByteRange array");
+            if (doneCallback) {
+                doneCallback();
+            }
             return signature_info;
         }
 
@@ -2443,6 +2470,9 @@ SignatureInfo *FormFieldSignature::validateSignature(bool doVerifyCert, bool for
 
     if (!signature_info->isSubfilterSupported()) {
         error(errUnimplemented, 0, "Unable to validate this type of signature");
+        if (doneCallback) {
+            doneCallback();
+        }
         return signature_info;
     }
     const SignatureValidationStatus sig_val_state = signature_handler->validateSignature();
@@ -2459,13 +2489,23 @@ SignatureInfo *FormFieldSignature::validateSignature(bool doVerifyCert, bool for
     signature_info->setCertificateInfo(signature_handler->getCertificateInfo());
 
     if (sig_val_state != SIGNATURE_VALID || !doVerifyCert) {
+        if (doneCallback) {
+            doneCallback();
+        }
         return signature_info;
     }
 
-    const CertificateValidationStatus cert_val_state = signature_handler->validateCertificate(std::chrono::system_clock::from_time_t(validationTime), ocspRevocationCheck, enableAIA);
-    signature_info->setCertificateValStatus(cert_val_state);
+    signature_handler->validateCertificateAsync(std::chrono::system_clock::from_time_t(validationTime), ocspRevocationCheck, enableAIA, doneCallback);
 
     return signature_info;
+}
+
+CertificateValidationStatus FormFieldSignature::validateSignatureResult()
+{
+    if (!signature_handler) {
+        return CERTIFICATE_GENERIC_ERROR;
+    }
+    return signature_handler->validateCertificateResult();
 }
 
 std::vector<Goffset> FormFieldSignature::getSignedRangeBounds() const
