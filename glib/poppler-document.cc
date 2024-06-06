@@ -3148,7 +3148,10 @@ PopplerFontInfo *poppler_font_info_new(PopplerDocument *document)
  *
  * <informalexample><programlisting>
  * font_info = poppler_font_info_new (document);
- * while (poppler_font_info_scan (font_info, 20, &fonts_iter)) {
+ * scanned_pages = 0;
+ * while (scanned_pages <= poppler_document_get_n_pages(document)) {
+ *         poppler_font_info_scan (font_info, 20, &fonts_iter);
+ *         scanned_pages += 20;
  *         if (!fonts_iter)
  *                 continue; /<!-- -->* No fonts found in these 20 pages *<!-- -->/
  *         do {
@@ -3159,7 +3162,7 @@ PopplerFontInfo *poppler_font_info_new(PopplerDocument *document)
  * }
  * </programlisting></informalexample>
  *
- * Returns: %TRUE, if there are more fonts left to scan
+ * Returns: %TRUE, if fonts were found
  */
 gboolean poppler_font_info_scan(PopplerFontInfo *font_info, int n_pages, PopplerFontsIter **iter)
 {
@@ -3801,7 +3804,7 @@ GooString *_poppler_convert_date_time_to_pdf_date(GDateTime *datetime)
 {
     int offset_min;
     gchar *date_str;
-    std::unique_ptr<GooString> out_str;
+    std::string out_str;
 
     offset_min = g_date_time_get_utc_offset(datetime) / 1000000 / 60;
     date_str = g_date_time_format(datetime, "D:%Y%m%d%H%M%S");
@@ -3815,7 +3818,7 @@ GooString *_poppler_convert_date_time_to_pdf_date(GDateTime *datetime)
     }
 
     g_free(date_str);
-    return out_str.release();
+    return new GooString(std::move(out_str));
 }
 
 static void _poppler_sign_document_thread(GTask *task, PopplerDocument *document, const PopplerSigningData *signing_data, GCancellable *cancellable)

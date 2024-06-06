@@ -12,7 +12,7 @@
 // Copyright 2017, 2019 Adrian Johnson <ajohnson@redneon.com>
 // Copyright 2018 Chinmoy Ranjan Pradhan <chinmoyrp65@protonmail.com>
 // Copyright 2019 Alexey Pavlov <alexpux@gmail.com>
-// Copyright 2019. 2023 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright 2019. 2023, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright 2019 Nelson Efrain A. Cruz <neac03@gmail.com>
 // Copyright 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
 // Copyright 2021 Theofilos Intzoglou <int.teo@gmail.com>
@@ -129,10 +129,10 @@ static bool dumpSignature(int sig_num, int sigCount, FormFieldSignature *s, cons
     // We want format to be {0:s}.sig{1:Xd} where X is sigCountLength
     // since { is the magic character to replace things we need to put it twice where
     // we don't want it to be replaced
-    const std::unique_ptr<GooString> format = GooString::format("{{0:s}}.sig{{1:{0:d}d}}", sigCountLength);
-    const std::unique_ptr<GooString> path = GooString::format(format->c_str(), gbasename(filename).c_str(), sig_num);
-    printf("Signature #%d (%u bytes) => %s\n", sig_num, signature->getLength(), path->c_str());
-    std::ofstream outfile(path->c_str(), std::ofstream::binary);
+    const std::string format = GooString::format("{{0:s}}.sig{{1:{0:d}d}}", sigCountLength);
+    const std::string path = GooString::format(format.c_str(), gbasename(filename).c_str(), sig_num);
+    printf("Signature #%d (%u bytes) => %s\n", sig_num, signature->getLength(), path.c_str());
+    std::ofstream outfile(path.c_str(), std::ofstream::binary);
     outfile.write(signature->c_str(), signature->getLength());
     outfile.close();
 
@@ -541,7 +541,7 @@ int main(int argc, char *argv[])
         const std::string signerName = certInfo->getSubjectInfo().commonName;
         const std::string timestamp = timeToStringWithFormat(nullptr, "%Y.%m.%d %H:%M:%S %z");
         const AnnotColor blackColor(0, 0, 0);
-        const std::string signatureText(GooString::format(_("Digitally signed by {0:s}"), signerName.c_str())->toStr() + "\n" + GooString::format(_("Date: {0:s}"), timestamp.c_str())->toStr());
+        const std::string signatureText(GooString::format(_("Digitally signed by {0:s}"), signerName.c_str()) + "\n" + GooString::format(_("Date: {0:s}"), timestamp.c_str()));
         const auto gSignatureText = std::make_unique<GooString>((signatureText.empty() || noAppearance) ? "" : utf8ToUtf16WithBom(signatureText));
         const auto gSignatureLeftText = std::make_unique<GooString>((signerName.empty() || noAppearance) ? "" : utf8ToUtf16WithBom(signerName));
         const bool success = fws->signDocumentWithAppearance(argv[2], std::string { certNickname }, std::string { password }, rs.get(), nullptr, {}, {}, *gSignatureText, *gSignatureLeftText, 0, 0, std::make_unique<AnnotColor>(blackColor));
