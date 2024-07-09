@@ -7,6 +7,7 @@
  * Copyright (C) 2018 Intevation GmbH <intevation@intevation.de>
  * Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
  * Copyright (C) 2020, 2021 Oliver Sander <oliver.sander@tu-dresden.de>
+ * Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
  * Adapting code from
  *   Copyright (C) 2004 by Enrico Ros <eros.kde@email.it>
  *
@@ -74,6 +75,8 @@ LinkPrivate::~LinkPrivate() = default;
 LinkOCGStatePrivate::~LinkOCGStatePrivate() = default;
 
 LinkHidePrivate::~LinkHidePrivate() = default;
+
+LinkResetFormPrivate::~LinkResetFormPrivate() = default;
 
 class LinkGotoPrivate : public LinkPrivate
 {
@@ -696,5 +699,15 @@ bool LinkHide::isShowAction() const
 {
     Q_D(const LinkHide);
     return d->isShow;
+}
+
+// LinkResetForm
+LinkResetForm::LinkResetForm(LinkResetFormPrivate *lrfp) : Link(*lrfp) { }
+
+LinkResetForm::~LinkResetForm() { }
+
+Link::LinkType LinkResetForm::linkType() const
+{
+    return ResetForm;
 }
 }

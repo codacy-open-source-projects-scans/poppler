@@ -6,6 +6,7 @@
  * Copyright (C) 2013, Anthony Granger <grangeranthony@gmail.com>
  * Copyright (C) 2018 Intevation GmbH <intevation@intevation.de>
  * Copyright (C) 2020, 2021 Oliver Sander <oliver.sander@tu-dresden.de>
+ * Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
  * Adapting code from
  *   Copyright (C) 2004 by Enrico Ros <eros.kde@email.it>
  *
@@ -53,6 +54,7 @@ class LinkDestinationPrivate;
 class LinkRenditionPrivate;
 class LinkOCGStatePrivate;
 class LinkHidePrivate;
+class LinkResetFormPrivate;
 class MediaRendition;
 class MovieAnnotation;
 class ScreenAnnotation;
@@ -201,6 +203,7 @@ public:
         JavaScript, ///< A JavaScript code to be interpreted
         OCGState, ///< An Optional Content Group state change
         Hide, ///< An action to hide a field
+        ResetForm, ///< An action to reset the form \since 24.07
     };
 
     /**
@@ -666,6 +669,32 @@ public:
 private:
     Q_DECLARE_PRIVATE(LinkHide)
     Q_DISABLE_COPY(LinkHide)
+};
+
+/**
+ * ResetForm: an action to reset form fields.
+ *
+ * \since 24.07
+ */
+class POPPLER_QT6_EXPORT LinkResetForm : public Link
+{
+    friend class Document;
+
+public:
+    /**
+     * Creates a new ResetForm link. This is only used by Poppler::Page
+     */
+    explicit LinkResetForm(LinkResetFormPrivate *lrfp);
+    /*
+     * Destructor
+     */
+    ~LinkResetForm() override;
+
+    LinkType linkType() const override;
+
+private:
+    Q_DECLARE_PRIVATE(LinkResetForm)
+    Q_DISABLE_COPY(LinkResetForm)
 };
 
 }

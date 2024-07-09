@@ -30,6 +30,7 @@
  * Copyright (C) 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
  * Copyright (C) 2022 Martin <martinbts@gmx.net>
  * Copyright (C) 2023 Kevin Ottens <kevin.ottens@enioka.com>. Work sponsored by De Bortoli Wines
+ * Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1671,6 +1672,13 @@ QString subject = m_doc->info("Subject");
        The model is owned by the document.
     */
     OptContentModel *optionalContentModel();
+
+    /**
+       Resets the form with the details contained in the \p link.
+
+       \since 24.07
+    */
+    void applyResetFormsLink(const LinkResetForm &link);
 
     /**
        Document-level JavaScript scripts.

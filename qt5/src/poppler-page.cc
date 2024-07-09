@@ -29,6 +29,7 @@
  * Copyright (C) 2021 Thomas Huxhorn <thomas.huxhorn@web.de>
  * Copyright (C) 2023 Kevin Ottens <kevin.ottens@enioka.com>. Work sponsored by De Bortoli Wines
  * Copyright (C) 2024 Stefan Brüns <stefan.bruens@rwth-aachen.de>
+ * Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -335,9 +336,16 @@ Link *PageData::convertLinkActionToLink(::LinkAction *a, DocumentData *parentDoc
         popplerLink = new LinkHide(lhp);
     } break;
 
-    case actionResetForm:
-        // Not handled in Qt5 front-end yet
-        break;
+    case actionResetForm: {
+        ::LinkResetForm *lrf = (::LinkResetForm *)a;
+        std::vector<std::string> stdStringFields = lrf->getFields();
+        QStringList qStringFields;
+        for (const std::string &str : stdStringFields) {
+            qStringFields << QString::fromStdString(str);
+        }
+        LinkResetFormPrivate *lrfp = new LinkResetFormPrivate(linkArea, qStringFields, lrf->getExclude());
+        popplerLink = new LinkResetForm(lrfp);
+    } break;
 
     case actionUnknown:
         break;
