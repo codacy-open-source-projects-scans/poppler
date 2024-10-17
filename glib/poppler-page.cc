@@ -294,19 +294,15 @@ static bool poppler_print_annot_cb(Annot *annot, void *user_data)
 {
     PopplerPrintFlags user_print_flags = (PopplerPrintFlags)GPOINTER_TO_INT(user_data);
 
-    if (annot->getFlags() & Annot::flagHidden) {
-        return false;
+    if (user_print_flags & POPPLER_PRINT_STAMP_ANNOTS_ONLY && (annot->getType() == Annot::typeStamp)) {
+        return true;
     }
 
-    if (user_print_flags & POPPLER_PRINT_STAMP_ANNOTS_ONLY) {
-        return (annot->getType() == Annot::typeStamp) ? (annot->getFlags() & Annot::flagPrint) : (annot->getType() == Annot::typeWidget);
+    if (user_print_flags & POPPLER_PRINT_MARKUP_ANNOTS && annot_is_markup(annot)) {
+        return true;
     }
 
-    if (user_print_flags & POPPLER_PRINT_MARKUP_ANNOTS) {
-        return annot_is_markup(annot) ? (annot->getFlags() & Annot::flagPrint) : (annot->getType() == Annot::typeWidget);
-    }
-
-    /* Print document only, form fields are always printed */
+    /* Form fields are always printed */
     return (annot->getType() == Annot::typeWidget);
 }
 
