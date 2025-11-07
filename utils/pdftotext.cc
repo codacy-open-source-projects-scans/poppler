@@ -16,7 +16,7 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2006 Dominic Lachowicz <cinamod@hotmail.com>
-// Copyright (C) 2007-2008, 2010, 2011, 2017-2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2007-2008, 2010, 2011, 2017-2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2009 Jan Jockusch <jan@jockusch.de>
 // Copyright (C) 2010, 2013 Hib Eris <hib@hiberis.nl>
 // Copyright (C) 2010 Kenneth Berland <ken@hero.com>
@@ -33,6 +33,7 @@
 // Copyright (C) 2019, 2021 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2021 William Bader <williambader@hotmail.com>
 // Copyright (C) 2022 kVdNi <kVdNi@waqa.eu>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -270,11 +271,11 @@ int main(int argc, char *argv[])
         error(errCommandLine, -1, "You have to provide an output filename when reading from stdin.");
         return 99;
     } else {
-        const char *p = fileName.c_str() + fileName.getLength() - 4;
+        const char *p = fileName.c_str() + fileName.size() - 4;
         if (!strcmp(p, ".pdf") || !strcmp(p, ".PDF")) {
-            textFileName = std::make_unique<GooString>(fileName.c_str(), fileName.getLength() - 4);
+            textFileName = std::make_unique<GooString>(fileName.c_str(), fileName.size() - 4);
         } else {
-            textFileName.reset(fileName.copy());
+            textFileName = fileName.copy();
         }
         textFileName->append(htmlMeta ? ".html" : ".txt");
     }
@@ -301,7 +302,7 @@ int main(int argc, char *argv[])
                 return 2;
             }
         }
-        fputs("<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">", f);
+        fputs(R"(<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">)", f);
         fputs("<html xmlns=\"http://www.w3.org/1999/xhtml\">\n", f);
         fputs("<head>\n", f);
         info = doc->getDocInfo();
@@ -312,13 +313,13 @@ int main(int argc, char *argv[])
             } else {
                 fputs("<title></title>\n", f);
             }
-            printInfoString(f, info.getDict(), "Subject", "<meta name=\"Subject\" content=\"", "\"/>\n", uMap);
-            printInfoString(f, info.getDict(), "Keywords", "<meta name=\"Keywords\" content=\"", "\"/>\n", uMap);
-            printInfoString(f, info.getDict(), "Author", "<meta name=\"Author\" content=\"", "\"/>\n", uMap);
-            printInfoString(f, info.getDict(), "Creator", "<meta name=\"Creator\" content=\"", "\"/>\n", uMap);
-            printInfoString(f, info.getDict(), "Producer", "<meta name=\"Producer\" content=\"", "\"/>\n", uMap);
-            printInfoDate(f, info.getDict(), "CreationDate", "<meta name=\"CreationDate\" content=\"", "\"/>\n");
-            printInfoDate(f, info.getDict(), "ModDate", "<meta name=\"ModDate\" content=\"", "\"/>\n");
+            printInfoString(f, info.getDict(), "Subject", R"(<meta name="Subject" content=")", "\"/>\n", uMap);
+            printInfoString(f, info.getDict(), "Keywords", R"(<meta name="Keywords" content=")", "\"/>\n", uMap);
+            printInfoString(f, info.getDict(), "Author", R"(<meta name="Author" content=")", "\"/>\n", uMap);
+            printInfoString(f, info.getDict(), "Creator", R"(<meta name="Creator" content=")", "\"/>\n", uMap);
+            printInfoString(f, info.getDict(), "Producer", R"(<meta name="Producer" content=")", "\"/>\n", uMap);
+            printInfoDate(f, info.getDict(), "CreationDate", R"(<meta name="CreationDate" content=")", "\"/>\n");
+            printInfoDate(f, info.getDict(), "ModDate", R"(<meta name="ModDate" content=")", "\"/>\n");
         }
         fputs("</head>\n", f);
         fputs("<body>\n", f);
@@ -418,7 +419,7 @@ static void printInfoString(FILE *f, Dict *infoDict, const char *key, const char
     bool isUnicode;
     Unicode u;
     char buf[9];
-    int i, n;
+    size_t i, n;
 
     Object obj = infoDict->lookup(key);
     if (obj.isString()) {
@@ -431,7 +432,7 @@ static void printInfoString(FILE *f, Dict *infoDict, const char *key, const char
             isUnicode = false;
             i = 0;
         }
-        while (i < obj.getString()->getLength()) {
+        while (i < obj.getString()->size()) {
             if (isUnicode) {
                 u = ((s1->getChar(i) & 0xff) << 8) | (s1->getChar(i + 1) & 0xff);
                 i += 2;

@@ -12,6 +12,7 @@
 // Copyright 2016 Jeffrey Morlan <jmmorlan@sonic.net>
 // Copyright 2019 LE GARREC Vincent <legarrec.vincent@gmail.com>
 // Copyright 2019 Adam Reichold <adam.reichold@t-online.de>
+// Copyright 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -161,7 +162,7 @@ Hints::~Hints()
             gfree(sharedObjectId[i]);
         }
     }
-    gfree(sharedObjectId);
+    gfree(static_cast<void *>(sharedObjectId));
     gfree(numSharedObject);
 
     gfree(groupLength);
@@ -189,8 +190,11 @@ void Hints::readTables(BaseStream *str, Linearization *linearization, XRef *xref
     char *p = &buf[0];
 
     if (hintsOffset && hintsLength) {
-        std::unique_ptr<Stream> s(str->makeSubStream(hintsOffset, false, hintsLength, Object(objNull)));
-        s->reset();
+        std::unique_ptr<Stream> s(str->makeSubStream(hintsOffset, false, hintsLength, Object::null()));
+        if (!s->reset()) {
+            ok = false;
+            return;
+        }
         for (unsigned int i = 0; i < hintsLength; i++) {
             const int c = s->getChar();
             if (unlikely(c == EOF)) {
@@ -203,8 +207,11 @@ void Hints::readTables(BaseStream *str, Linearization *linearization, XRef *xref
     }
 
     if (hintsOffset2 && hintsLength2) {
-        std::unique_ptr<Stream> s(str->makeSubStream(hintsOffset2, false, hintsLength2, Object(objNull)));
-        s->reset();
+        std::unique_ptr<Stream> s(str->makeSubStream(hintsOffset2, false, hintsLength2, Object::null()));
+        if (!s->reset()) {
+            ok = false;
+            return;
+        }
         for (unsigned int i = 0; i < hintsLength2; i++) {
             const int c = s->getChar();
             if (unlikely(c == EOF)) {
@@ -216,9 +223,9 @@ void Hints::readTables(BaseStream *str, Linearization *linearization, XRef *xref
         }
     }
 
-    MemStream *memStream = new MemStream(&buf[0], 0, bufLength, Object(objNull));
+    auto memStream = std::make_unique<MemStream>(&buf[0], 0, bufLength, Object::null());
 
-    Parser *parser = new Parser(xref, memStream, true);
+    Parser *parser = new Parser(xref, std::move(memStream), true);
 
     int num, gen;
     Object obj;
@@ -230,15 +237,20 @@ void Hints::readTables(BaseStream *str, Linearization *linearization, XRef *xref
         int sharedStreamOffset = 0;
         if (hintsDict->lookupInt("S", nullptr, &sharedStreamOffset) && sharedStreamOffset > 0) {
 
-            hintsStream->reset();
-            ok = readPageOffsetTable(hintsStream);
-
-            if (ok) {
-                hintsStream->reset();
-                for (int i = 0; i < sharedStreamOffset; i++) {
-                    hintsStream->getChar();
+            if (!hintsStream->reset()) {
+                ok = false;
+            } else {
+                ok = readPageOffsetTable(hintsStream);
+                if (ok) {
+                    if (hintsStream->reset()) {
+                        for (int i = 0; i < sharedStreamOffset; i++) {
+                            hintsStream->getChar();
+                        }
+                        ok = readSharedObjectsTable(hintsStream);
+                    } else {
+                        ok = false;
+                    }
                 }
-                ok = readSharedObjectsTable(hintsStream);
             }
         } else {
             error(errSyntaxWarning, -1, "Invalid shared object hint table offset");

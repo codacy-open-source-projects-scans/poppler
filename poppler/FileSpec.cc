@@ -7,12 +7,12 @@
 //
 // Copyright (C) 2008-2009 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2009 Kovid Goyal <kovid@kovidgoyal.net>
-// Copyright (C) 2012, 2017-2021 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2012, 2017-2021, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2012 Hib Eris <hib@hiberis.nl>
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019 Christian Persch <chpe@src.gnome.org>
-// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -50,7 +50,7 @@ EmbFile::EmbFile(Object &&efStream)
         // subtype is normally the mimetype
         Object subtypeName = dataDict->lookup("Subtype");
         if (subtypeName.isName()) {
-            m_mimetype = new GooString(subtypeName.getName());
+            m_mimetype = std::make_unique<GooString>(subtypeName.getNameString());
         }
 
         // paramDict corresponds to Table 3.42 in the PDF1.6 spec
@@ -58,12 +58,12 @@ EmbFile::EmbFile(Object &&efStream)
         if (paramDict.isDict()) {
             Object paramObj = paramDict.dictLookup("ModDate");
             if (paramObj.isString()) {
-                m_modDate = new GooString(paramObj.getString());
+                m_modDate = paramObj.takeString();
             }
 
             paramObj = paramDict.dictLookup("CreationDate");
             if (paramObj.isString()) {
-                m_createDate = new GooString(paramObj.getString());
+                m_createDate = paramObj.takeString();
             }
 
             paramObj = paramDict.dictLookup("Size");
@@ -73,19 +73,13 @@ EmbFile::EmbFile(Object &&efStream)
 
             paramObj = paramDict.dictLookup("CheckSum");
             if (paramObj.isString()) {
-                m_checksum = new GooString(paramObj.getString());
+                m_checksum = paramObj.takeString();
             }
         }
     }
 }
 
-EmbFile::~EmbFile()
-{
-    delete m_createDate;
-    delete m_modDate;
-    delete m_checksum;
-    delete m_mimetype;
-}
+EmbFile::~EmbFile() = default;
 
 bool EmbFile::save(const std::string &path)
 {
@@ -108,7 +102,9 @@ bool EmbFile::save2(FILE *f)
         return false;
     }
 
-    m_objStr.streamReset();
+    if (!m_objStr.streamReset()) {
+        return false;
+    }
     while ((c = m_objStr.streamGetChar()) != EOF) {
         fputc(c, f);
     }
@@ -118,10 +114,7 @@ bool EmbFile::save2(FILE *f)
 FileSpec::FileSpec(const Object *fileSpecA)
 {
     ok = true;
-    fileName = nullptr;
-    platformFileName = nullptr;
     embFile = nullptr;
-    desc = nullptr;
     fileSpec = fileSpecA->copy();
 
     Object obj1 = getFileSpecName(fileSpecA);
@@ -131,7 +124,7 @@ FileSpec::FileSpec(const Object *fileSpecA)
         return;
     }
 
-    fileName = obj1.getString()->copy();
+    fileName = obj1.takeString();
 
     if (fileSpec.isDict()) {
         obj1 = fileSpec.dictLookup("EF");
@@ -147,18 +140,12 @@ FileSpec::FileSpec(const Object *fileSpecA)
 
         obj1 = fileSpec.dictLookup("Desc");
         if (obj1.isString()) {
-            desc = obj1.getString()->copy();
+            desc = obj1.takeString();
         }
     }
 }
 
-FileSpec::~FileSpec()
-{
-    delete fileName;
-    delete platformFileName;
-    delete embFile;
-    delete desc;
-}
+FileSpec::~FileSpec() = default;
 
 EmbFile *FileSpec::getEmbeddedFile()
 {
@@ -167,13 +154,13 @@ EmbFile *FileSpec::getEmbeddedFile()
     }
 
     if (embFile) {
-        return embFile;
+        return embFile.get();
     }
 
     XRef *xref = fileSpec.getDict()->getXRef();
-    embFile = new EmbFile(fileStream.fetch(xref));
+    embFile = std::make_unique<EmbFile>(fileStream.fetch(xref));
 
-    return embFile;
+    return embFile.get();
 }
 
 Object FileSpec::newFileSpecObject(XRef *xref, GooFile *file, const std::string &fileName)
@@ -186,17 +173,16 @@ Object FileSpec::newFileSpecObject(XRef *xref, GooFile *file, const std::string 
     streamDict.dictSet("Length", Object(file->size()));
     streamDict.dictSet("Params", std::move(paramsDict));
 
-    FileStream *fStream = new FileStream(file, 0, false, file->size(), std::move(streamDict));
+    auto fStream = std::make_unique<FileStream>(file, 0, false, file->size(), std::move(streamDict));
     fStream->setNeedsEncryptionOnSave(true);
-    Stream *stream = fStream;
-    const Ref streamRef = xref->addIndirectObject(Object(stream));
+    const Ref streamRef = xref->addIndirectObject(Object(std::move(fStream)));
 
     Dict *efDict = new Dict(xref);
     efDict->set("F", Object(streamRef));
 
     Dict *fsDict = new Dict(xref);
     fsDict->set("Type", Object(objName, "Filespec"));
-    fsDict->set("UF", Object(new GooString(fileName)));
+    fsDict->set("UF", Object(std::make_unique<GooString>(fileName)));
     fsDict->set("EF", Object(efDict));
 
     return Object(fsDict);
@@ -205,15 +191,15 @@ Object FileSpec::newFileSpecObject(XRef *xref, GooFile *file, const std::string 
 GooString *FileSpec::getFileNameForPlatform()
 {
     if (platformFileName) {
-        return platformFileName;
+        return platformFileName.get();
     }
 
     Object obj1 = getFileSpecNameForPlatform(&fileSpec);
     if (obj1.isString()) {
-        platformFileName = obj1.getString()->copy();
+        platformFileName = obj1.takeString();
     }
 
-    return platformFileName;
+    return platformFileName.get();
 }
 
 Object getFileSpecName(const Object *fileSpec)
@@ -278,42 +264,42 @@ Object getFileSpecNameForPlatform(const Object *fileSpec)
 
     // system-dependent path manipulation
 #ifdef _WIN32
-    int i, j;
-    GooString *name = fileName.getString()->copy();
+    size_t i, j;
+    std::unique_ptr<GooString> name = fileName.getString()->copy();
     // "//...."             --> "\...."
     // "/x/...."            --> "x:\...."
     // "/server/share/...." --> "\\server\share\...."
     // convert escaped slashes to slashes and unescaped slashes to backslashes
     i = 0;
     if (name->getChar(0) == '/') {
-        if (name->getLength() >= 2 && name->getChar(1) == '/') {
-            name->del(0);
+        if (name->size() >= 2 && name->getChar(1) == '/') {
+            name->erase(0, 1);
             i = 0;
-        } else if (name->getLength() >= 2 && ((name->getChar(1) >= 'a' && name->getChar(1) <= 'z') || (name->getChar(1) >= 'A' && name->getChar(1) <= 'Z')) && (name->getLength() == 2 || name->getChar(2) == '/')) {
+        } else if (name->size() >= 2 && ((name->getChar(1) >= 'a' && name->getChar(1) <= 'z') || (name->getChar(1) >= 'A' && name->getChar(1) <= 'Z')) && (name->size() == 2 || name->getChar(2) == '/')) {
             name->setChar(0, name->getChar(1));
             name->setChar(1, ':');
             i = 2;
         } else {
-            for (j = 2; j < name->getLength(); ++j) {
+            for (j = 2; j < name->size(); ++j) {
                 if (name->getChar(j - 1) != '\\' && name->getChar(j) == '/') {
                     break;
                 }
             }
-            if (j < name->getLength()) {
+            if (j < name->size()) {
                 name->setChar(0, '\\');
-                name->insert(0, '\\');
+                name->insert(0, 1, '\\');
                 i = 2;
             }
         }
     }
-    for (; i < name->getLength(); ++i) {
+    for (; i < name->size(); ++i) {
         if (name->getChar(i) == '/') {
             name->setChar(i, '\\');
-        } else if (name->getChar(i) == '\\' && i + 1 < name->getLength() && name->getChar(i + 1) == '/') {
-            name->del(i);
+        } else if (name->getChar(i) == '\\' && i + 1 < name->size() && name->getChar(i + 1) == '/') {
+            name->erase(i, 1);
         }
     }
-    fileName = Object(name);
+    fileName = Object(std::move(name));
 #endif /* _WIN32 */
 
     return fileName;

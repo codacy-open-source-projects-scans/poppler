@@ -61,7 +61,7 @@ static Poppler::Page *loadRandomPage(Poppler::Document *document)
     return loadPage(document, qrand() % document->numPages());
 }
 
-SillyThread::SillyThread(Poppler::Document *document, QObject *parent) : QThread(parent), m_document(document), m_pages()
+SillyThread::SillyThread(Poppler::Document *document, QObject *parent) : QThread(parent), m_document(document)
 {
     m_pages.reserve(m_document->numPages());
 
@@ -72,8 +72,8 @@ SillyThread::SillyThread(Poppler::Document *document, QObject *parent) : QThread
 
 void SillyThread::run()
 {
-    forever {
-        foreach (Poppler::Page *page, m_pages) {
+    Q_FOREVER {
+        Q_FOREACH (Poppler::Page *page, m_pages) {
             QImage image = page->renderToImage();
 
             if (image.isNull()) {
@@ -93,7 +93,7 @@ void CrazyThread::run()
 
     qsrand(m_seed);
 
-    forever {
+    Q_FOREVER {
         if (qrand() % 2 == 0) {
             qDebug() << "search...";
 

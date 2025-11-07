@@ -26,11 +26,11 @@ int main(int argc, char **argv)
     excludeSubDirs << QStringLiteral("000048") << QStringLiteral("000607");
 
     const QStringList dirs = dbDir.entryList(QStringList() << QStringLiteral("0000*"), QDir::Dirs);
-    foreach (const QString &subdir, dirs) {
+    Q_FOREACH (const QString &subdir, dirs) {
         if (excludeSubDirs.contains(subdir)) {
             // then skip it
         } else {
-            QString path = "./pdfdb/" + subdir + "/data.pdf";
+            QString path = QStringLiteral("./pdfdb/") + subdir + QStringLiteral("/data.pdf");
             std::cout << "Doing " << path.toLatin1().data() << " :";
             Poppler::Document *doc = Poppler::Document::load(path);
             if (!doc) {

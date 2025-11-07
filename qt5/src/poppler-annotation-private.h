@@ -5,6 +5,7 @@
  * Copyright (C) 2012, 2014, 2018, 2019, Albert Astals Cid <aacid@kde.org>
  * Copyright (C) 2020, Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
  * Copyright (C) 2021, Mahmoud Ahmed Khalil <mahmoudkhalil11@gmail.com>
+ * Copyright (C) 2024, 2025, g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -57,7 +58,7 @@ public:
 
     /* Returns an Annotation of the right subclass whose d_ptr points to
      * this AnnotationPrivate */
-    virtual Annotation *makeAlias() = 0;
+    virtual std::unique_ptr<Annotation> makeAlias() = 0;
 
     /* properties: contents related */
     QString author;
@@ -77,18 +78,18 @@ public:
     /* revisions */
     Annotation::RevScope revisionScope;
     Annotation::RevType revisionType;
-    QList<Annotation *> revisions;
+    std::vector<std::unique_ptr<Annotation>> revisions;
 
     /* After this call, the Annotation object will behave like a wrapper for
      * the specified Annot object. All cached values are discarded */
-    void tieToNativeAnnot(Annot *ann, ::Page *page, DocumentData *doc);
+    void tieToNativeAnnot(std::shared_ptr<Annot> ann, ::Page *page, DocumentData *doc);
 
     /* Creates a new Annot object on the specified page, flushes current
      * values to that object and ties this Annotation to that object */
-    virtual Annot *createNativeAnnot(::Page *destPage, DocumentData *doc) = 0;
+    virtual std::shared_ptr<Annot> createNativeAnnot(::Page *destPage, DocumentData *doc) = 0;
 
     /* Inited to 0 (i.e. untied annotation) */
-    Annot *pdfAnnot;
+    std::shared_ptr<Annot> pdfAnnot;
     ::Page *pdfPage;
     DocumentData *parentDoc;
 
@@ -97,7 +98,7 @@ public:
     void fillTransformationMTX(double MTX[6]) const;
     QRectF fromPdfRectangle(const PDFRectangle &r) const;
     PDFRectangle boundaryToPdfRectangle(const QRectF &r, int flags) const;
-    AnnotPath *toAnnotPath(const QLinkedList<QPointF> &l) const;
+    std::unique_ptr<AnnotPath> toAnnotPath(const QLinkedList<QPointF> &l) const;
 
     /* Scan page for annotations, parentId=0 searches for root annotations, subtypes empty means all subtypes */
     static QList<Annotation *> findAnnotations(::Page *pdfPage, DocumentData *doc, const QSet<Annotation::SubType> &subtypes, int parentId = -1);

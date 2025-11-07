@@ -1,3 +1,217 @@
+Release 25.11.0:
+        core:
+         * NSS Signatures: Tweak the logic that decides which firefox profile to use
+         * NSS Signatures: call PORT_GetError() only if the preceding CERT_PKIXVerifyCert() fails
+         * Splash: Performance improvements
+         * Fix crashes in malformed documents
+
+        glib:
+         * Fix ocsp check for signatures validation
+         * Fix warning when running glib-mkenums
+
+Release 25.10.0:
+        core:
+         * Fix image signature getting lost
+         * Don't embed substitutions for base14 fonts
+         * Form font improvements
+         * Handle signatures padded with random data
+         * Add feature to Ink annotation to render with multiply blend mode
+         * Internal code improvements
+         * Fix crashes in malformed documents
+
+        glib:
+         * Fix signature text
+         * Add feature to Ink annotation to render with multiply blend mode
+
+        cpp:
+         * Added embedded_file::unicodeName function
+
+Release 25.09.1:
+        core:
+         * Internal code improvements
+
+        build system:
+         * Fix generated .pc files when using old gpgme
+
+Release 25.09.0:
+        core:
+         * Speed improvements when reusing the same document with different output devices
+         * Speed improvements when reading from network file systems
+         * Internal code improvements
+         * Fix crashes in malformed documents
+
+        glib:
+         * fix ODR issue with enum
+
+        utils:
+         * pdftohtml: Fix text positioning. (Regressed in 25.07.0)
+
+        build system:
+         * Better pkgconfig support for static builds
+
+Release 25.08.0:
+        core:
+         * FormWidgetSignature::signDocumentWithAppearance: add imagePath parameter
+         * Fix parsing Distinguished Names that end with a hex string
+         * Fix crashes in malformed documents
+
+        glib:
+         * Add poppler_page_render_transparent_selection()
+         * Add missing since to the documentation
+
+Release 25.07.0:
+        core:
+         * Changed rendering of malformed documents to mimic what Adobe Reader does. Issue #1602
+         * Improvemenst in signature validation in the NSS backend
+         * Add more detailed output when signing fails
+         * Internal code improvements
+         * Fix crashes in malformed documents
+
+        utils:
+         * pdfsig: command line option for allowing PGP signatures in GnuPG backend
+
+Release 25.06.0:
+        core:
+         * Fix writing dates back to file
+         * Internal code improvements
+         * Fix crashes in malformed documents
+
+        glib:
+         * Add the ink annotation type
+         * Add missing autopointers definitions
+
+        utils:
+         * pdfsig: Add assert-signer feature
+         * pdfsig: Return error code on error
+
+Release 25.05.0:
+        core:
+         * Fix re-fetching after xref reconstruction. Issue #1584
+         * Fix compilation with ENABLE_ZLIB_UNCOMPRESS=ON
+         * Various annotation improvements. Issues #642, #1558, #1055
+         * CairoFontEngine: invalidate broken embedded fonts. Issue #1453
+         * Splash: Performance improvements
+         * Internal code improvements
+
+        glib:
+         * Small signature improvements
+
+Release 25.04.0:
+        core:
+         * Properly verify adbe.pkcs7.sha1 signatures
+         * Improve errors on signing failure
+         * Allow empty outline titles
+         * Fix error in Distinguished Name parsing
+         * Fix build with Android API < 29
+         * Fix parsing Level PG document string
+         * Internal code improvements
+         * Fix crashes in malformed documents
+
+        utils:
+         * pdfcairo: Fix document unit for SVG output
+
+        cpp:
+         * Add document::form_type
+         * Add document::has_javascript
+
+        build system:
+         * cmake: Use modern Python3 cmake module
+
+Release 25.03.0:
+        core:
+         * Fix opening some slightly malformed files
+         * Signing: Support custom PGP signing
+         * Signing: Do not embed fonts in the case of signatures without appearance
+         * Signing: Improve error handling on bad passphrase
+         * Signing-GPGME: more correct validation handling
+         * Internal code improvements
+
+        glib:
+         * Fix default signature colors
+         * Check file attachment annotation for this class before casting
+
+Release 25.02.0:
+        core:
+         * cairo: fix issue for images reaching MAX_CAIRO_IMAGE_SIZE
+         * Improve rendering in some malformed documents
+         * Internal code improvements
+
+        glib:
+         * add new api to allow selecting annotations to render
+         * fix a crash when getting a font description for a free text annotation if it was not set
+
+Release 25.01.0:
+        core:
+         * TextOutputDev: Better detect fakebold words
+         * TextOutputDev: Faster sorting algorithm
+         * Internal code improvements
+         * Fix crashes in malformed documents
+
+        cpp:
+         * Remove rect parameter from image::copy, it was never implemented
+
+        qt6:
+         * Fix crash in Submit Forms if document links to non existing field
+
+        qt5:
+         * Fix crash in Submit Forms if document links to non existing field
+
+        glib:
+         * mark transfer of poppler_page_get_selected_region
+
+        utils:
+         * pdfdetach: Make -savefile work with Unicode strings. Issue #1540
+
+        build system:
+         * Don't update pdfsig.pot when POT-Creation-date is the only change
+
+Release 24.12.0:
+        core:
+         * cairo: Fix rendering of JPX images with transparency
+         * cairo: Fix JPX transparency regression
+         * Override encoding for Zapf Dingbats
+         * Improve Signature appearance generation code
+         * Improve Stamp appearance generation code
+         * Mark certificates that can do qualified signing
+         * Internal code improvements
+
+        qt6:
+         * Mark certificates that can do qualified signing
+
+        glib:
+         * Add free text annotations support
+
+        utils:
+         * pdfsig: Improve man page
+
+        build system:
+         * Install some more internal headers
+         * Fix build with in-tree build
+
+Release 24.11.0:
+        core:
+         * Fix rendering of some buttons
+         * Fix selecting fonts in TTC font collections
+         * CairoOutputDev: prevent infinite loop in functionShadedFill()
+         * Fix some unstable headers not being usable on their own
+         * Fix some headers not being usable on their own
+
+        glib:
+         * Fix some headers not being usable on their own
+         * add INSTALL_GLIB_DEMO option to install poppler-glib-demo
+         * Fix Launch action with unicode encoded filenames
+
+        qt6:
+         * Fix memory handling issue on signature creation
+         * Fix Launch action with unicode encoded filenames
+
+        qt5:
+         * Fix Launch action with unicode encoded filenames
+
+        build system:
+         * Remove duplicate definitions
+         * cmake: Set CMAKE_C_STANDARD to 17
+
 Release 24.10.0:
         core:
          * Add support for SubmitForms Links

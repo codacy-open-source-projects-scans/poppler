@@ -30,6 +30,7 @@
  * Copyright (C) 2023 Kevin Ottens <kevin.ottens@enioka.com>. Work sponsored by De Bortoli Wines
  * Copyright (C) 2024 Stefan Brüns <stefan.bruens@rwth-aachen.de>
  * Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
+ * Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -229,7 +230,7 @@ Link *PageData::convertLinkActionToLink(::LinkAction *a, DocumentData *parentDoc
     case actionLaunch: {
         LinkLaunch *e = (LinkLaunch *)a;
         const GooString *p = e->getParams();
-        popplerLink = new LinkExecute(linkArea, e->getFileName()->c_str(), p ? p->c_str() : nullptr);
+        popplerLink = new LinkExecute(linkArea, UnicodeParsedString(e->getFileName()), p ? QString::fromStdString(p->toStr()) : QString {});
     } break;
 
     case actionNamed: {
@@ -269,7 +270,7 @@ Link *PageData::convertLinkActionToLink(::LinkAction *a, DocumentData *parentDoc
     } break;
 
     case actionURI: {
-        popplerLink = new LinkBrowse(linkArea, ((LinkURI *)a)->getURI().c_str());
+        popplerLink = new LinkBrowse(linkArea, QString::fromStdString(((LinkURI *)a)->getURI()));
     } break;
 
     case actionSound: {
@@ -354,7 +355,7 @@ Link *PageData::convertLinkActionToLink(::LinkAction *a, DocumentData *parentDoc
         Form *form = parentDoc->doc->getCatalog()->getForm();
         for (const std::string &fieldStr : stdStringFields) {
             ::FormField *field = form->findFieldByFullyQualifiedNameOrRef(fieldStr);
-            if (!field->getNoExport()) {
+            if (field && !field->getNoExport()) {
                 int numWidgets = field->getNumWidgets();
                 for (int i = 0; i < numWidgets; i++) {
                     ::FormWidget *widget = field->getWidget(i);
@@ -678,7 +679,7 @@ QImage Page::thumbnail() const
 QString Page::text(const QRectF &r, TextLayout textLayout) const
 {
     TextOutputDev *output_dev;
-    GooString *s;
+    GooString s;
     QString result;
 
     const bool rawOrder = textLayout == RawOrderLayout;
@@ -695,10 +696,9 @@ QString Page::text(const QRectF &r, TextLayout textLayout) const
         s = output_dev->getText(r.left(), r.top(), r.right(), r.bottom());
     }
 
-    result = QString::fromUtf8(s->c_str());
+    result = QString::fromStdString(s.toStr());
 
     delete output_dev;
-    delete s;
     return result;
 }
 

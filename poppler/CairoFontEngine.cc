@@ -17,7 +17,7 @@
 // Copyright (C) 2005-2007 Jeff Muizelaar <jeff@infidigm.net>
 // Copyright (C) 2005, 2006 Kristian Høgsberg <krh@redhat.com>
 // Copyright (C) 2005 Martin Kretzschmar <martink@gnome.org>
-// Copyright (C) 2005, 2009, 2012, 2013, 2015, 2017-2019, 2021, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005, 2009, 2012, 2013, 2015, 2017-2019, 2021, 2022, 2024, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2006, 2007, 2010, 2011 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2007 Koji Otani <sho@bbr.jp>
 // Copyright (C) 2008, 2009 Chris Wilson <chris@chris-wilson.co.uk>
@@ -38,6 +38,8 @@
 // Copyright (C) 2023 Ilia Kats <ilia-kats@gmx.net>
 // Copyright (C) 2024 Vincent Lefevre <vincent@vinc17.net>
 // Copyright (C) 2024 Dmitry Shubin <dshubin@accusoft.com>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2025 Nelson Benítez León <nbenitezl@gmail.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -59,6 +61,8 @@
 #include "XRef.h"
 #include "Gfx.h"
 #include "Page.h"
+
+#define EMPTY_ARRAY (-1)
 
 //------------------------------------------------------------------------
 // CairoFont
@@ -84,16 +88,19 @@ cairo_font_face_t *CairoFont::getFontFace()
     return cairo_font_face;
 }
 
-unsigned long CairoFont::getGlyph(CharCode code, const Unicode *u, int uLen)
+std::optional<unsigned long> CairoFont::getGlyph(CharCode code, const Unicode *u, int uLen)
 {
     FT_UInt gid;
 
     if (code < codeToGID.size()) {
+        if (codeToGID[code] == EMPTY_ARRAY) {
+            return std::nullopt;
+        }
         gid = (FT_UInt)codeToGID[code];
     } else {
         gid = (FT_UInt)code;
     }
-    return gid;
+    return { gid };
 }
 
 double CairoFont::getSubstitutionCorrection(const std::shared_ptr<GfxFont> &gfxFont)
@@ -165,7 +172,7 @@ static void _ft_done_face(void *closure)
 
 CairoFreeTypeFont::CairoFreeTypeFont(Ref refA, cairo_font_face_t *cairo_font_faceA, std::vector<int> &&codeToGIDA, bool substituteA) : CairoFont(refA, cairo_font_faceA, std::move(codeToGIDA), substituteA, true) { }
 
-CairoFreeTypeFont::~CairoFreeTypeFont() { }
+CairoFreeTypeFont::~CairoFreeTypeFont() = default;
 
 // Create a cairo_font_face_t for the given font filename OR font data.
 std::optional<FreeTypeFontFace> CairoFreeTypeFont::createFreeTypeFontFace(FT_Library lib, const std::string &filename, std::vector<unsigned char> &&font_data)
@@ -204,22 +211,20 @@ CairoFreeTypeFont *CairoFreeTypeFont::create(const std::shared_ptr<GfxFont> &gfx
     std::string fileName;
     int faceIndex = 0;
     std::vector<unsigned char> font_data;
-    int i, n;
+    int i;
     std::optional<GfxFontLoc> fontLoc;
     char **enc;
     const char *name;
-    FoFiType1C *ff1c;
     std::optional<FreeTypeFontFace> font_face;
     std::vector<int> codeToGID;
     bool substitute = false;
 
     Ref ref = *gfxFont->getID();
-    Ref embFontID = Ref::INVALID();
-    gfxFont->getEmbeddedFontID(&embFontID);
     GfxFontType fontType = gfxFont->getType();
 
     if (!(fontLoc = gfxFont->locateFont(xref, nullptr))) {
-        error(errSyntaxError, -1, "Couldn't find a font for '{0:s}'", gfxFont->getName() ? gfxFont->getName()->c_str() : "(unnamed)");
+        const std::optional<std::string> &fontName = gfxFont->getName();
+        error(errSyntaxError, -1, "Couldn't find a font for '{0:s}'", fontName ? fontName->c_str() : "(unnamed)");
         goto err2;
     }
 
@@ -272,34 +277,28 @@ CairoFreeTypeFont *CairoFreeTypeFont::create(const std::shared_ptr<GfxFont> &gfx
         break;
     case fontCIDType2:
     case fontCIDType2OT:
-        if (std::static_pointer_cast<GfxCIDFont>(gfxFont)->getCIDToGID()) {
-            n = std::static_pointer_cast<GfxCIDFont>(gfxFont)->getCIDToGIDLen();
-            if (n) {
-                const int *src = std::static_pointer_cast<GfxCIDFont>(gfxFont)->getCIDToGID();
-                codeToGID.reserve(n);
-                codeToGID.insert(codeToGID.begin(), src, src + n);
-            }
+        if (std::static_pointer_cast<GfxCIDFont>(gfxFont)->getCIDToGIDLen() > 0) {
+            std::vector<int> src = std::static_pointer_cast<GfxCIDFont>(gfxFont)->getCIDToGID();
+            codeToGID = std::move(src);
         } else {
             std::unique_ptr<FoFiTrueType> ff;
             if (!font_data.empty()) {
-                ff = FoFiTrueType::make(font_data.data(), font_data.size());
+                ff = FoFiTrueType::make(std::span(font_data), faceIndex);
             } else {
                 ff = FoFiTrueType::load(fileName.c_str(), faceIndex);
             }
             if (!ff) {
                 goto err2;
             }
-            int *src = std::static_pointer_cast<GfxCIDFont>(gfxFont)->getCodeToGIDMap(ff.get(), &n);
-            codeToGID.reserve(n);
-            codeToGID.insert(codeToGID.begin(), src, src + n);
-            gfree(src);
+            std::vector<int> src = std::static_pointer_cast<GfxCIDFont>(gfxFont)->getCodeToGIDMap(ff.get());
+            codeToGID = std::move(src);
         }
         /* Fall through */
     case fontTrueType:
     case fontTrueTypeOT: {
         std::unique_ptr<FoFiTrueType> ff;
         if (!font_data.empty()) {
-            ff = FoFiTrueType::make(font_data.data(), font_data.size());
+            ff = FoFiTrueType::make(std::span(font_data), faceIndex);
         } else {
             ff = FoFiTrueType::load(fileName.c_str(), faceIndex);
         }
@@ -309,10 +308,8 @@ CairoFreeTypeFont *CairoFreeTypeFont::create(const std::shared_ptr<GfxFont> &gfx
         }
         /* This might be set already for the CIDType2 case */
         if (fontType == fontTrueType || fontType == fontTrueTypeOT) {
-            int *src = std::static_pointer_cast<Gfx8BitFont>(gfxFont)->getCodeToGIDMap(ff.get());
-            codeToGID.reserve(256);
-            codeToGID.insert(codeToGID.begin(), src, src + 256);
-            gfree(src);
+            std::vector<int> src = std::static_pointer_cast<Gfx8BitFont>(gfxFont)->getCodeToGIDMap(ff.get());
+            codeToGID = std::move(src);
         }
         font_face = createFreeTypeFontFace(lib, fileName, std::move(font_data));
         if (!font_face) {
@@ -324,17 +321,15 @@ CairoFreeTypeFont *CairoFreeTypeFont::create(const std::shared_ptr<GfxFont> &gfx
     case fontCIDType0:
     case fontCIDType0C:
         if (!useCIDs) {
+            std::unique_ptr<FoFiType1C> ff1c;
             if (!font_data.empty()) {
-                ff1c = FoFiType1C::make(font_data.data(), font_data.size());
+                ff1c = FoFiType1C::make(std::span(font_data));
             } else {
                 ff1c = FoFiType1C::load(fileName.c_str());
             }
             if (ff1c) {
-                int *src = ff1c->getCIDToGIDMap(&n);
-                codeToGID.reserve(n);
-                codeToGID.insert(codeToGID.begin(), src, src + n);
-                gfree(src);
-                delete ff1c;
+                std::vector<int> src = ff1c->getCIDToGIDMap();
+                codeToGID = std::move(src);
             }
         }
 
@@ -346,29 +341,23 @@ CairoFreeTypeFont *CairoFreeTypeFont::create(const std::shared_ptr<GfxFont> &gfx
         break;
 
     case fontCIDType0COT:
-        if (std::static_pointer_cast<GfxCIDFont>(gfxFont)->getCIDToGID()) {
-            n = std::static_pointer_cast<GfxCIDFont>(gfxFont)->getCIDToGIDLen();
-            if (n) {
-                const int *src = std::static_pointer_cast<GfxCIDFont>(gfxFont)->getCIDToGID();
-                codeToGID.reserve(n);
-                codeToGID.insert(codeToGID.begin(), src, src + n);
-            }
+        if (std::static_pointer_cast<GfxCIDFont>(gfxFont)->getCIDToGIDLen() > 0) {
+            std::vector<int> src = std::static_pointer_cast<GfxCIDFont>(gfxFont)->getCIDToGID();
+            codeToGID = std::move(src);
         }
 
         if (codeToGID.empty()) {
             if (!useCIDs) {
                 std::unique_ptr<FoFiTrueType> ff;
                 if (!font_data.empty()) {
-                    ff = FoFiTrueType::make(font_data.data(), font_data.size());
+                    ff = FoFiTrueType::make(std::span(font_data), faceIndex);
                 } else {
                     ff = FoFiTrueType::load(fileName.c_str(), faceIndex);
                 }
                 if (ff) {
                     if (ff->isOpenTypeCFF()) {
-                        int *src = ff->getCIDToGIDMap(&n);
-                        codeToGID.reserve(n);
-                        codeToGID.insert(codeToGID.begin(), src, src + n);
-                        gfree(src);
+                        std::vector<int> src = ff->getCIDToGIDMap();
+                        codeToGID = std::move(src);
                     }
                 }
             }
@@ -389,6 +378,9 @@ CairoFreeTypeFont *CairoFreeTypeFont::create(const std::shared_ptr<GfxFont> &gfx
     return new CairoFreeTypeFont(ref, font_face->cairo_font_face, std::move(codeToGID), substitute);
 
 err2:
+    if (fontLoc && fontLoc->locType == gfxFontLocEmbedded) {
+        gfxFont->invalidateEmbeddedFont();
+    }
     fprintf(stderr, "some font thing failed\n");
     return nullptr;
 }
@@ -423,7 +415,7 @@ static cairo_status_t _init_type3_glyph(cairo_scaled_font_t *scaled_font, cairo_
     type3_font_info_t *info;
 
     info = (type3_font_info_t *)cairo_font_face_get_user_data(cairo_scaled_font_get_font_face(scaled_font), &type3_font_key);
-    const double *mat = info->font->getFontBBox();
+    const std::array<double, 4> &mat = info->font->getFontBBox();
     extents->ascent = mat[3]; /* y2 */
     extents->descent = -mat[3]; /* -y1 */
     extents->height = extents->ascent + extents->descent;
@@ -438,7 +430,6 @@ static cairo_status_t _render_type3_glyph(cairo_scaled_font_t *scaled_font, unsi
     Dict *charProcs;
     Object charProc;
     cairo_matrix_t matrix, invert_y_axis;
-    const double *mat;
     double wx, wy;
     type3_font_info_t *info;
     Gfx *gfx;
@@ -448,14 +439,16 @@ static cairo_status_t _render_type3_glyph(cairo_scaled_font_t *scaled_font, unsi
 
     charProcs = std::static_pointer_cast<Gfx8BitFont>(info->font)->getCharProcs();
     if (!charProcs) {
-        return CAIRO_STATUS_USER_FONT_ERROR;
+        // error already logged by Gfx8BitFont constructor
+        return CAIRO_STATUS_SUCCESS;
     }
 
-    if ((int)glyph >= charProcs->getLength()) {
-        return CAIRO_STATUS_USER_FONT_ERROR;
+    if (glyph >= (unsigned)charProcs->getLength()) {
+        error(errSyntaxError, -1, "Type3 character not in /CharProcs");
+        return CAIRO_STATUS_SUCCESS;
     }
 
-    mat = info->font->getFontMatrix();
+    const std::array<double, 6> &mat = info->font->getFontMatrix();
     matrix.xx = mat[0];
     matrix.yx = mat[1];
     matrix.xy = mat[2];
@@ -481,7 +474,8 @@ static cairo_status_t _render_type3_glyph(cairo_scaled_font_t *scaled_font, unsi
     output_dev->setType3RenderType(color ? CairoOutputDev::Type3RenderColor : CairoOutputDev::Type3RenderMask);
     charProc = charProcs->getVal(glyph);
     if (!charProc.isStream()) {
-        return CAIRO_STATUS_USER_FONT_ERROR;
+        error(errSyntaxError, -1, "Type3 character /{0:s} value not a stream", charProcs->getKey(glyph));
+        return CAIRO_STATUS_SUCCESS;
     }
     Object charProcResObject = charProc.streamGetDict()->lookup("Resources");
     if (charProcResObject.isDict()) {
@@ -536,7 +530,6 @@ CairoType3Font *CairoType3Font::create(const std::shared_ptr<GfxFont> &gfxFont, 
 {
     std::vector<int> codeToGID;
     char *name;
-    const double *mat;
 
     Dict *charProcs = std::static_pointer_cast<Gfx8BitFont>(gfxFont)->getCharProcs();
     Ref ref = *gfxFont->getID();
@@ -554,7 +547,7 @@ CairoType3Font *CairoType3Font::create(const std::shared_ptr<GfxFont> &gfxFont, 
     output_dev->setPrinting(printing);
 
     Dict *resDict = std::static_pointer_cast<Gfx8BitFont>(gfxFont)->getResources();
-    mat = gfxFont->getFontBBox();
+    const std::array<double, 4> &mat = gfxFont->getFontBBox();
     PDFRectangle box;
     box.x1 = mat[0];
     box.y1 = mat[1];
@@ -568,7 +561,7 @@ CairoType3Font *CairoType3Font::create(const std::shared_ptr<GfxFont> &gfxFont, 
     char **enc = std::static_pointer_cast<Gfx8BitFont>(gfxFont)->getEncoding();
     codeToGID.resize(256);
     for (int i = 0; i < 256; ++i) {
-        codeToGID[i] = 0;
+        codeToGID[i] = EMPTY_ARRAY;
         if (charProcs && (name = enc[i])) {
             for (int j = 0; j < charProcs->getLength(); j++) {
                 if (strcmp(name, charProcs->getKey(j)) == 0) {
@@ -583,7 +576,7 @@ CairoType3Font *CairoType3Font::create(const std::shared_ptr<GfxFont> &gfxFont, 
 
 CairoType3Font::CairoType3Font(Ref refA, cairo_font_face_t *cairo_font_faceA, std::vector<int> &&codeToGIDA, bool printingA, XRef *xref) : CairoFont(refA, cairo_font_faceA, std::move(codeToGIDA), false, printingA) { }
 
-CairoType3Font::~CairoType3Font() { }
+CairoType3Font::~CairoType3Font() = default;
 
 bool CairoType3Font::matches(Ref &other, bool printingA)
 {
@@ -605,7 +598,7 @@ CairoFontEngine::CairoFontEngine(FT_Library libA)
     useCIDs = major > 2 || (major == 2 && (minor > 1 || (minor == 1 && patch > 7)));
 }
 
-CairoFontEngine::~CairoFontEngine() { }
+CairoFontEngine::~CairoFontEngine() = default;
 
 std::shared_ptr<CairoFont> CairoFontEngine::getFont(const std::shared_ptr<GfxFont> &gfxFont, PDFDoc *doc, bool printing, XRef *xref)
 {

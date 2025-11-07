@@ -27,6 +27,7 @@
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2020 Philipp Knechtges <philipp-dev@knechtges.com>
+// Copyright (C) 2024 Nelson Benítez León <nbenitezl@gmail.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -110,6 +111,9 @@ public:
     // Does this device need to clip pages to the crop box even when the
     // box is the crop box?
     virtual bool needClipToCropBox() { return false; }
+
+    // Does this device supports transparency (alpha channel) in JPX streams?
+    virtual bool supportJPXtransparency() { return false; }
 
     //----- initialization and control
 
@@ -230,7 +234,8 @@ public:
     virtual void stroke(GfxState * /*state*/) { }
     virtual void fill(GfxState * /*state*/) { }
     virtual void eoFill(GfxState * /*state*/) { }
-    virtual bool tilingPatternFill(GfxState * /*state*/, Gfx * /*gfx*/, Catalog * /*cat*/, GfxTilingPattern * /*tPat*/, const double * /*mat*/, int /*x0*/, int /*y0*/, int /*x1*/, int /*y1*/, double /*xStep*/, double /*yStep*/)
+    virtual bool tilingPatternFill(GfxState * /*state*/, Gfx * /*gfx*/, Catalog * /*cat*/, GfxTilingPattern * /*tPat*/, const std::array<double, 6> & /*mat*/, int /*x0*/, int /*y0*/, int /*x1*/, int /*y1*/, double /*xStep*/,
+                                   double /*yStep*/)
     {
         return false;
     }
@@ -334,10 +339,10 @@ public:
 
     //----- transparency groups and soft masks
     virtual bool checkTransparencyGroup(GfxState * /*state*/, bool /*knockout*/) { return true; }
-    virtual void beginTransparencyGroup(GfxState * /*state*/, const double * /*bbox*/, GfxColorSpace * /*blendingColorSpace*/, bool /*isolated*/, bool /*knockout*/, bool /*forSoftMask*/) { }
+    virtual void beginTransparencyGroup(GfxState * /*state*/, const std::array<double, 4> & /*bbox*/, GfxColorSpace * /*blendingColorSpace*/, bool /*isolated*/, bool /*knockout*/, bool /*forSoftMask*/) { }
     virtual void endTransparencyGroup(GfxState * /*state*/) { }
-    virtual void paintTransparencyGroup(GfxState * /*state*/, const double * /*bbox*/) { }
-    virtual void setSoftMask(GfxState * /*state*/, const double * /*bbox*/, bool /*alpha*/, Function * /*transferFunc*/, GfxColor * /*backdropColor*/) { }
+    virtual void paintTransparencyGroup(GfxState * /*state*/, const std::array<double, 4> & /*bbox*/) { }
+    virtual void setSoftMask(GfxState * /*state*/, const std::array<double, 4> & /*bbox*/, bool /*alpha*/, Function * /*transferFunc*/, GfxColor * /*backdropColor*/) { }
     virtual void clearSoftMask(GfxState * /*state*/) { }
 
     //----- links

@@ -32,7 +32,7 @@
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019, 2022 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2020 Eddie Kohler <ekohler@gmail.com>
-// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -67,7 +67,7 @@ void removeStyleSuffix(std::string &familyName)
 
 }
 
-#define xoutRound(x) ((int)(x + 0.5))
+#define xoutRound(x) ((int)((x) + 0.5))
 extern bool xml;
 extern bool fontFullName;
 
@@ -88,9 +88,9 @@ HtmlFontColor::HtmlFontColor(GfxRGB rgb, double opacity_)
     }
 }
 
-GooString *HtmlFontColor::convtoX(unsigned int xcol) const
+std::string HtmlFontColor::convtoX(unsigned int xcol)
 {
-    GooString *xret = new GooString();
+    std::string xret;
     char tmp;
     unsigned int k;
     k = (xcol / 16);
@@ -99,29 +99,23 @@ GooString *HtmlFontColor::convtoX(unsigned int xcol) const
     } else {
         tmp = (char)('a' + k - 10);
     }
-    xret->append(tmp);
+    xret.push_back(tmp);
     k = (xcol % 16);
     if (k < 10) {
         tmp = (char)('0' + k);
     } else {
         tmp = (char)('a' + k - 10);
     }
-    xret->append(tmp);
+    xret.push_back(tmp);
     return xret;
 }
 
-GooString *HtmlFontColor::toString() const
+std::string HtmlFontColor::toString() const
 {
-    GooString *tmp = new GooString("#");
-    GooString *tmpr = convtoX(r);
-    GooString *tmpg = convtoX(g);
-    GooString *tmpb = convtoX(b);
-    tmp->append(tmpr);
-    tmp->append(tmpg);
-    tmp->append(tmpb);
-    delete tmpr;
-    delete tmpg;
-    delete tmpb;
+    std::string tmp { "#" };
+    tmp.append(convtoX(r));
+    tmp.append(convtoX(g));
+    tmp.append(convtoX(b));
     return tmp;
 }
 
@@ -144,7 +138,7 @@ HtmlFont::HtmlFont(const GfxFont &font, int _size, GfxRGB rgb, double opacity)
     }
 
     if (const std::optional<std::string> &fontname = font.getName()) {
-        FontName = new GooString(*fontname);
+        FontName = *fontname;
 
         GooString fontnameLower(*fontname);
         fontnameLower.lowerCase();
@@ -157,10 +151,10 @@ HtmlFont::HtmlFont(const GfxFont &font, int _size, GfxRGB rgb, double opacity)
             italic = true;
         }
 
-        familyName = fontname->c_str();
+        familyName = *fontname;
         removeStyleSuffix(familyName);
     } else {
-        FontName = new GooString(defaultFamilyName);
+        FontName = defaultFamilyName;
         familyName = defaultFamilyName;
     }
 
@@ -175,15 +169,12 @@ HtmlFont::HtmlFont(const HtmlFont &x)
     bold = x.bold;
     familyName = x.familyName;
     color = x.color;
-    FontName = new GooString(x.FontName);
+    FontName = x.FontName;
     rotOrSkewed = x.rotOrSkewed;
     memcpy(rotSkewMat, x.rotSkewMat, sizeof(rotSkewMat));
 }
 
-HtmlFont::~HtmlFont()
-{
-    delete FontName;
-}
+HtmlFont::~HtmlFont() = default;
 
 HtmlFont &HtmlFont::operator=(const HtmlFont &x)
 {
@@ -196,8 +187,7 @@ HtmlFont &HtmlFont::operator=(const HtmlFont &x)
     bold = x.bold;
     familyName = x.familyName;
     color = x.color;
-    delete FontName;
-    FontName = new GooString(x.FontName);
+    FontName = x.FontName;
     return *this;
 }
 
@@ -207,7 +197,7 @@ HtmlFont &HtmlFont::operator=(const HtmlFont &x)
 */
 bool HtmlFont::isEqual(const HtmlFont &x) const
 {
-    return (size == x.size) && (lineSize == x.lineSize) && (FontName->cmp(x.FontName) == 0) && (bold == x.bold) && (italic == x.italic) && (color.isEqual(x.getColor())) && isRotOrSkewed() == x.isRotOrSkewed()
+    return (size == x.size) && (lineSize == x.lineSize) && (FontName == x.FontName) && (bold == x.bold) && (italic == x.italic) && (color.isEqual(x.getColor())) && isRotOrSkewed() == x.isRotOrSkewed()
             && (!isRotOrSkewed() || rot_matrices_equal(getRotMat(), x.getRotMat()));
 }
 
@@ -220,14 +210,14 @@ bool HtmlFont::isEqualIgnoreBold(const HtmlFont &x) const
     return ((size == x.size) && (familyName == x.familyName) && (color.isEqual(x.getColor())));
 }
 
-GooString *HtmlFont::getFontName()
+std::string HtmlFont::getFontName() const
 {
-    return new GooString(familyName);
+    return familyName;
 }
 
-GooString *HtmlFont::getFullName()
+std::string HtmlFont::getFullName() const
 {
-    return new GooString(FontName);
+    return FontName;
 }
 
 // this method if plain wrong todo
@@ -265,7 +255,7 @@ std::unique_ptr<GooString> HtmlFont::HtmlFilter(const Unicode *u, int uLen)
             break;
         case ' ':
         case '\t':
-            tmp->append(!xml && (i + 1 >= uLen || !tmp->getLength() || tmp->getChar(tmp->getLength() - 1) == ' ') ? "&#160;" : " ");
+            tmp->append(!xml && (i + 1 >= uLen || tmp->empty() || tmp->getChar(tmp->size() - 1) == ' ') ? "&#160;" : " ");
             break;
         default: {
             // convert unicode to string
@@ -279,9 +269,9 @@ std::unique_ptr<GooString> HtmlFont::HtmlFilter(const Unicode *u, int uLen)
     return tmp;
 }
 
-HtmlFontAccu::HtmlFontAccu() { }
+HtmlFontAccu::HtmlFontAccu() = default;
 
-HtmlFontAccu::~HtmlFontAccu() { }
+HtmlFontAccu::~HtmlFontAccu() = default;
 
 int HtmlFontAccu::AddFont(const HtmlFont &font)
 {
@@ -297,15 +287,15 @@ int HtmlFontAccu::AddFont(const HtmlFont &font)
 }
 
 // get CSS font definition for font #i
-GooString *HtmlFontAccu::CSStyle(int i, int j)
+std::unique_ptr<GooString> HtmlFontAccu::CSStyle(int i, int j)
 {
-    GooString *tmp = new GooString();
+    auto tmp = std::make_unique<GooString>();
 
     std::vector<HtmlFont>::iterator g = accu.begin();
     g += i;
     HtmlFont font = *g;
-    GooString *colorStr = font.getColor().toString();
-    GooString *fontName = (fontFullName ? font.getFullName() : font.getFontName());
+    std::string colorStr = font.getColor().toString();
+    std::string fontName = (fontFullName ? font.getFullName() : font.getFontName());
 
     if (!xml) {
         tmp->append(".ft");
@@ -365,7 +355,5 @@ GooString *HtmlFontAccu::CSStyle(int i, int j)
         tmp->append("\"/>");
     }
 
-    delete fontName;
-    delete colorStr;
     return tmp;
 }

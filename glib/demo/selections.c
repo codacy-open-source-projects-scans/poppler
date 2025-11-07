@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2010 Carlos Garcia Campos  <carlosgc@gnome.org>
+ * Copyright (C) 2025 Nelson Benítez León <nbenitezl@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,6 +37,8 @@ typedef struct
     GtkWidget *fg_color_button;
     GtkWidget *bg_color_button;
     GtkWidget *copy_button;
+    GtkWidget *transparent_button;
+    GtkWidget *opacity_range;
 
     PopplerPage *page;
     cairo_surface_t *surface;
@@ -197,7 +200,12 @@ static gboolean pgd_selections_render_selections(PgdSelectionsDemo *demo)
     if (demo->scale != 1.0) {
         cairo_scale(cr, demo->scale, demo->scale);
     }
-    poppler_page_render_selection(demo->page, cr, &doc_area, &demo->doc_area, demo->style, &demo->glyph_color, &demo->background_color);
+    if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(demo->transparent_button))) {
+        double opacity_val = gtk_range_get_value(GTK_RANGE(demo->opacity_range));
+        poppler_page_render_transparent_selection(demo->page, cr, &doc_area, &demo->doc_area, demo->style, &demo->background_color, opacity_val);
+    } else {
+        poppler_page_render_selection(demo->page, cr, &doc_area, &demo->doc_area, demo->style, &demo->glyph_color, &demo->background_color);
+    }
     cairo_destroy(cr);
 
     demo->doc_area = doc_area;
@@ -543,6 +551,18 @@ GtkWidget *pgd_selections_properties_selector_create(PgdSelectionsDemo *demo)
     gtk_box_pack_start(GTK_BOX(hbox), color_hbox, FALSE, TRUE, 0);
     gtk_widget_show(color_hbox);
 
+    demo->transparent_button = gtk_check_button_new_with_label("Transparent");
+    gtk_box_pack_start(GTK_BOX(hbox), demo->transparent_button, TRUE, TRUE, 0);
+    gtk_widget_show(demo->transparent_button);
+
+    demo->opacity_range = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0., 1., 0.1);
+    gtk_box_pack_start(GTK_BOX(hbox), demo->opacity_range, TRUE, TRUE, 0);
+    gtk_widget_show(demo->opacity_range);
+    g_object_bind_property(demo->transparent_button, "active", demo->opacity_range, "sensitive", G_BINDING_SYNC_CREATE);
+
+    gtk_box_pack_start(GTK_BOX(hbox), color_hbox, FALSE, TRUE, 0);
+    gtk_widget_show(color_hbox);
+
     demo->copy_button = gtk_button_new_with_label("Copy");
     g_signal_connect(G_OBJECT(demo->copy_button), "clicked", G_CALLBACK(pgd_selections_copy), (gpointer)demo);
     gtk_box_pack_end(GTK_BOX(hbox), demo->copy_button, FALSE, TRUE, 0);
@@ -585,11 +605,7 @@ GtkWidget *pgd_selections_create_widget(PopplerDocument *document)
     g_signal_connect(demo->darea, "query_tooltip", G_CALLBACK(pgd_selections_drawing_area_query_tooltip), (gpointer)demo);
     demo->swindow = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(demo->swindow), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-#if GTK_CHECK_VERSION(3, 7, 8)
     gtk_container_add(GTK_CONTAINER(demo->swindow), demo->darea);
-#else
-    gtk_scrolled_window_add_with_viewport(GTK_SCROLLED_WINDOW(demo->swindow), demo->darea);
-#endif
     gtk_widget_show(demo->darea);
 
     gtk_box_pack_start(GTK_BOX(vbox), demo->swindow, TRUE, TRUE, 0);

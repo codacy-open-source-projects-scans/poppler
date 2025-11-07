@@ -22,6 +22,8 @@
 // Copyright (C) 2016 Alok Anand <alok4nand@gmail.com>
 // Copyright (C) 2016 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
+// Copyright (C) 2025 Nelson Benítez León <nbenitezl@gmail.com>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -80,7 +82,7 @@ bool Decrypt::makeFileKey(int encVersion, int encRevision, int keyLength, const 
         // check the owner password
         if (ownerPassword) {
             //~ this is supposed to convert the password to UTF-8 using "SASLprep"
-            len = ownerPassword->getLength();
+            len = ownerPassword->size();
             if (len > 127) {
                 len = 127;
             }
@@ -120,7 +122,7 @@ bool Decrypt::makeFileKey(int encVersion, int encRevision, int keyLength, const 
         // check the user password
         if (userPassword) {
             //~ this is supposed to convert the password to UTF-8 using "SASLprep"
-            len = userPassword->getLength();
+            len = userPassword->size();
             if (len > 127) {
                 len = 127;
             }
@@ -161,7 +163,7 @@ bool Decrypt::makeFileKey(int encVersion, int encRevision, int keyLength, const 
 
         // try using the supplied owner password to generate the user password
         if (ownerPassword) {
-            len = ownerPassword->getLength();
+            len = ownerPassword->size();
             if (len < 32) {
                 memcpy(test, ownerPassword->c_str(), len);
                 memcpy(test + len, passwordPad, 32 - len);
@@ -219,9 +221,9 @@ bool Decrypt::makeFileKey2(int encVersion, int encRevision, int keyLength, const
     bool ok;
 
     // generate file key
-    buf = (unsigned char *)gmalloc(72 + fileID->getLength());
+    buf = (unsigned char *)gmalloc(72 + fileID->size());
     if (userPassword) {
-        len = userPassword->getLength();
+        len = userPassword->size();
         if (len < 32) {
             memcpy(buf, userPassword->c_str(), len);
             memcpy(buf + len, passwordPad, 32 - len);
@@ -236,8 +238,8 @@ bool Decrypt::makeFileKey2(int encVersion, int encRevision, int keyLength, const
     buf[65] = (permissions >> 8) & 0xff;
     buf[66] = (permissions >> 16) & 0xff;
     buf[67] = (permissions >> 24) & 0xff;
-    memcpy(buf + 68, fileID->c_str(), fileID->getLength());
-    len = 68 + fileID->getLength();
+    memcpy(buf + 68, fileID->c_str(), fileID->size());
+    len = 68 + fileID->size();
     if (!encryptMetadata) {
         buf[len++] = 0xff;
         buf[len++] = 0xff;
@@ -272,8 +274,8 @@ bool Decrypt::makeFileKey2(int encVersion, int encRevision, int keyLength, const
             }
         }
         memcpy(buf, passwordPad, 32);
-        memcpy(buf + 32, fileID->c_str(), fileID->getLength());
-        md5(buf, 32 + fileID->getLength(), buf);
+        memcpy(buf + 32, fileID->c_str(), fileID->size());
+        md5(buf, 32 + fileID->size(), buf);
         ok = memcmp(test, buf, 16) == 0;
     } else {
         ok = false;
@@ -347,11 +349,11 @@ BaseCryptStream::~BaseCryptStream()
     }
 }
 
-void BaseCryptStream::reset()
+bool BaseCryptStream::reset()
 {
     charactersRead = 0;
     nextCharBuff = EOF;
-    str->reset();
+    return str->reset();
 }
 
 Goffset BaseCryptStream::getPos()
@@ -400,11 +402,11 @@ EncryptStream::EncryptStream(Stream *strA, const unsigned char *fileKey, CryptAl
     }
 }
 
-EncryptStream::~EncryptStream() { }
+EncryptStream::~EncryptStream() = default;
 
-void EncryptStream::reset()
+bool EncryptStream::reset()
 {
-    BaseCryptStream::reset();
+    bool baseResult = BaseCryptStream::reset();
 
     switch (algo) {
     case cryptRC4:
@@ -426,6 +428,8 @@ void EncryptStream::reset()
     case cryptNone:
         break;
     }
+
+    return baseResult;
 }
 
 int EncryptStream::lookChar()
@@ -479,12 +483,12 @@ int EncryptStream::lookChar()
 
 DecryptStream::DecryptStream(Stream *strA, const unsigned char *fileKey, CryptAlgorithm algoA, int keyLength, Ref refA) : BaseCryptStream(strA, fileKey, algoA, keyLength, refA) { }
 
-DecryptStream::~DecryptStream() { }
+DecryptStream::~DecryptStream() = default;
 
-void DecryptStream::reset()
+bool DecryptStream::reset()
 {
     int i;
-    BaseCryptStream::reset();
+    bool baseResult = BaseCryptStream::reset();
 
     switch (algo) {
     case cryptRC4:
@@ -508,6 +512,8 @@ void DecryptStream::reset()
     case cryptNone:
         break;
     }
+
+    return baseResult;
 }
 
 int DecryptStream::lookChar()
@@ -1764,7 +1770,7 @@ static void revision6Hash(const GooString *inputPassword, unsigned char *K, cons
     unsigned char aesKey[16];
     unsigned char BE16byteNumber[16];
 
-    int inputPasswordLength = inputPassword->getLength();
+    int inputPasswordLength = inputPassword->size();
     int KLength = 32;
     const int userKeyLength = userKey ? 48 : 0;
     int sequenceLength;

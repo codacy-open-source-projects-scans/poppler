@@ -13,7 +13,7 @@
 //
 // Copyright (C) 2013, 2014, 2021 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2018, 2021 Albert Astals Cid <aacid@kde.org>
-// Copyright (C) 2018 Stefan Brüns <stefan.bruens@rwth-aachen.de>
+// Copyright (C) 2018, 2025 Stefan Brüns <stefan.bruens@rwth-aachen.de>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -38,7 +38,6 @@ class SplashBitmap;
 
 struct SplashIntersect
 {
-    int y;
     int x0, x1; // intersection of segment with [y, y+1)
     int count; // EO/NZWN counter increment
 };
@@ -70,13 +69,6 @@ public:
     // Return the path's bounding box.
     void getBBoxAA(int *xMinA, int *yMinA, int *xMaxA, int *yMaxA) const;
 
-    // Returns true if at least part of the path was outside the
-    // clipYMin/clipYMax bounds passed to the constructor.
-    bool hasPartialClip() const { return partialClip; }
-
-    // Return the min/max x values for the span at <y>.
-    void getSpanBounds(int y, int *spanXMin, int *spanXMax) const;
-
     // Returns true if (<x>,<y>) is inside the path.
     bool test(int x, int y) const;
 
@@ -91,15 +83,14 @@ public:
     // Clips an anti-aliased line by setting pixels to zero.  On entry,
     // all non-zero pixels are between <x0> and <x1>.  This function
     // will update <x0> and <x1>.
-    void clipAALine(SplashBitmap *aaBuf, int *x0, int *x1, int y) const;
+    void clipAALine(SplashBitmap *aaBuf, const int *x0, const int *x1, int y) const;
 
 private:
     void computeIntersections(const SplashXPath &xPath);
-    bool addIntersection(double segYMin, double segYMax, int y, int x0, int x1, int count);
+    void addIntersection(double segYMin, int y, int x0, int x1, int count);
 
-    bool eo;
+    const bool eo;
     int xMin, yMin, xMax, yMax;
-    bool partialClip;
 
 #ifdef USE_BOOST_HEADERS
     typedef boost::container::small_vector<SplashIntersect, 4> IntersectionLine;

@@ -12,9 +12,10 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2010 Paweł Wiejacha <pawel.wiejacha@gmail.com>
-// Copyright (C) 2010, 2011, 2018, 2019, 2021 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2010, 2011, 2018, 2019, 2021, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2017 Adrian Johnson <ajohnson@redneon.com>
+// Copyright (C) 2025 Stefan Brüns <stefan.bruens@rwth-aachen.de>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -51,7 +52,7 @@ struct SplashXPathAdjust
 //------------------------------------------------------------------------
 
 // Transform a point from user space to device space.
-inline void SplashXPath::transform(SplashCoord *matrix, SplashCoord xi, SplashCoord yi, SplashCoord *xo, SplashCoord *yo)
+inline void SplashXPath::transform(const SplashCoord *matrix, SplashCoord xi, SplashCoord yi, SplashCoord *xo, SplashCoord *yo)
 {
     //                          [ m[0] m[1] 0 ]
     // [xo yo 1] = [xi yi 1] *  [ m[2] m[3] 0 ]
@@ -64,7 +65,7 @@ inline void SplashXPath::transform(SplashCoord *matrix, SplashCoord xi, SplashCo
 // SplashXPath
 //------------------------------------------------------------------------
 
-SplashXPath::SplashXPath(SplashPath *path, SplashCoord *matrix, SplashCoord flatness, bool closeSubpaths, bool adjustLines, int linePosI)
+SplashXPath::SplashXPath(const SplashPath &path, SplashCoord *matrix, SplashCoord flatness, bool closeSubpaths, bool adjustLines, int linePosI)
 {
     SplashPathHint *hint;
     SplashXPathPoint *pts;
@@ -74,18 +75,18 @@ SplashXPath::SplashXPath(SplashPath *path, SplashCoord *matrix, SplashCoord flat
     int curSubpath, i, j;
 
     // transform the points
-    pts = (SplashXPathPoint *)gmallocn(path->length, sizeof(SplashXPathPoint));
-    for (i = 0; i < path->length; ++i) {
-        transform(matrix, path->pts[i].x, path->pts[i].y, &pts[i].x, &pts[i].y);
+    pts = (SplashXPathPoint *)gmallocn(path.length, sizeof(SplashXPathPoint));
+    for (i = 0; i < path.length; ++i) {
+        transform(matrix, path.pts[i].x, path.pts[i].y, &pts[i].x, &pts[i].y);
     }
 
     // set up the stroke adjustment hints
-    if (path->hints) {
-        adjusts = (SplashXPathAdjust *)gmallocn_checkoverflow(path->hintsLength, sizeof(SplashXPathAdjust));
+    if (path.hints) {
+        adjusts = (SplashXPathAdjust *)gmallocn_checkoverflow(path.hintsLength, sizeof(SplashXPathAdjust));
         if (adjusts) {
-            for (i = 0; i < path->hintsLength; ++i) {
-                hint = &path->hints[i];
-                if (hint->ctrl0 + 1 >= path->length || hint->ctrl1 + 1 >= path->length) {
+            for (i = 0; i < path.hintsLength; ++i) {
+                hint = &path.hints[i];
+                if (hint->ctrl0 + 1 >= path.length || hint->ctrl1 + 1 >= path.length) {
                     gfree(adjusts);
                     adjusts = nullptr;
                     break;
@@ -154,7 +155,7 @@ SplashXPath::SplashXPath(SplashPath *path, SplashCoord *matrix, SplashCoord flat
 
     // perform stroke adjustment
     if (adjusts) {
-        for (i = 0, adjust = adjusts; i < path->hintsLength; ++i, ++adjust) {
+        for (i = 0, adjust = adjusts; i < path.hintsLength; ++i, ++adjust) {
             for (j = adjust->firstPt; j <= adjust->lastPt; ++j) {
                 strokeAdjust(adjust, &pts[j].x, &pts[j].y);
             }
@@ -169,10 +170,13 @@ SplashXPath::SplashXPath(SplashPath *path, SplashCoord *matrix, SplashCoord flat
     adj0 = adj1 = 0; // make gcc happy
     curSubpath = 0;
     i = 0;
-    while (i < path->length) {
+    // reserve space for segments, rough estimate
+    grow(path.length * 2);
+
+    while (i < path.length) {
 
         // first point in subpath - skip it
-        if (path->flags[i] & splashPathFirst) {
+        if (path.flags[i] & splashPathFirst) {
             x0 = pts[i].x;
             y0 = pts[i].y;
             xsp = x0;
@@ -183,15 +187,15 @@ SplashXPath::SplashXPath(SplashPath *path, SplashCoord *matrix, SplashCoord flat
         } else {
 
             // curve segment
-            if (path->flags[i] & splashPathCurve) {
+            if (path.flags[i] & splashPathCurve) {
                 x1 = pts[i].x;
                 y1 = pts[i].y;
                 x2 = pts[i + 1].x;
                 y2 = pts[i + 1].y;
                 x3 = pts[i + 2].x;
                 y3 = pts[i + 2].y;
-                addCurve(x0, y0, x1, y1, x2, y2, x3, y3, flatness, (path->flags[i - 1] & splashPathFirst), (path->flags[i + 2] & splashPathLast),
-                         !closeSubpaths && (path->flags[i - 1] & splashPathFirst) && !(path->flags[i - 1] & splashPathClosed), !closeSubpaths && (path->flags[i + 2] & splashPathLast) && !(path->flags[i + 2] & splashPathClosed));
+                addCurve(x0, y0, x1, y1, x2, y2, x3, y3, flatness, (path.flags[i - 1] & splashPathFirst), (path.flags[i + 2] & splashPathLast),
+                         !closeSubpaths && (path.flags[i - 1] & splashPathFirst) && !(path.flags[i - 1] & splashPathClosed), !closeSubpaths && (path.flags[i + 2] & splashPathLast) && !(path.flags[i + 2] & splashPathClosed));
                 x0 = x3;
                 y0 = y3;
                 i += 3;
@@ -207,7 +211,7 @@ SplashXPath::SplashXPath(SplashPath *path, SplashCoord *matrix, SplashCoord flat
             }
 
             // close a subpath
-            if (closeSubpaths && (path->flags[i - 1] & splashPathLast) && (pts[i - 1].x != pts[curSubpath].x || pts[i - 1].y != pts[curSubpath].y)) {
+            if (closeSubpaths && (path.flags[i - 1] & splashPathLast) && (pts[i - 1].x != pts[curSubpath].x || pts[i - 1].y != pts[curSubpath].y)) {
                 addSegment(x0, y0, xsp, ysp);
             }
         }
@@ -267,9 +271,14 @@ void SplashXPath::grow(int nSegs)
 
 void SplashXPath::addCurve(SplashCoord x0, SplashCoord y0, SplashCoord x1, SplashCoord y1, SplashCoord x2, SplashCoord y2, SplashCoord x3, SplashCoord y3, SplashCoord flatness, bool first, bool last, bool end0, bool end1)
 {
-    SplashCoord *cx = new SplashCoord[(splashMaxCurveSplits + 1) * 3];
-    SplashCoord *cy = new SplashCoord[(splashMaxCurveSplits + 1) * 3];
-    int *cNext = new int[splashMaxCurveSplits + 1];
+    if (!curveData) {
+        // allocate on first use
+        curveData = std::make_unique<CurveData>();
+    }
+    SplashCoord *cx = curveData->cx.data();
+    SplashCoord *cy = curveData->cy.data();
+    int *cNext = curveData->cNext.data();
+
     SplashCoord xl0, xl1, xl2, xr0, xr1, xr2, xr3, xx1, xx2, xh;
     SplashCoord yl0, yl1, yl2, yr0, yr1, yr2, yr3, yy1, yy2, yh;
     SplashCoord dx, dy, mx, my, d1, d2, flatness2;
@@ -364,10 +373,6 @@ void SplashXPath::addCurve(SplashCoord x0, SplashCoord y0, SplashCoord x1, Splas
             *(cNext + p3) = p2;
         }
     }
-
-    delete[] cx;
-    delete[] cy;
-    delete[] cNext;
 }
 
 void SplashXPath::addSegment(SplashCoord x0, SplashCoord y0, SplashCoord x1, SplashCoord y1)
@@ -382,20 +387,27 @@ void SplashXPath::addSegment(SplashCoord x0, SplashCoord y0, SplashCoord x1, Spl
     segs[length].y1 = y1;
     segs[length].flags = 0;
     if (y1 == y0) {
-        segs[length].dxdy = segs[length].dydx = 0;
+        segs[length].dxdy = 0;
         segs[length].flags |= splashXPathHoriz;
         if (x1 == x0) {
             segs[length].flags |= splashXPathVert;
         }
-    } else if (x1 == x0) {
-        segs[length].dxdy = segs[length].dydx = 0;
+        ++length;
+        return;
+    }
+
+    if (x1 == x0) {
+        segs[length].dxdy = 0;
         segs[length].flags |= splashXPathVert;
     } else {
         segs[length].dxdy = (x1 - x0) / (y1 - y0);
-        segs[length].dydx = (SplashCoord)1 / segs[length].dxdy;
     }
     if (y0 > y1) {
-        segs[length].flags |= splashXPathFlip;
+        segs[length].y1 = y0;
+        segs[length].y0 = y1;
+        segs[length].x1 = x0;
+        segs[length].x0 = x1;
+        segs[length].flags |= splashXPathFlipped;
     }
     ++length;
 }
@@ -406,20 +418,10 @@ struct cmpXPathSegsFunctor
     {
         SplashCoord x0, y0, x1, y1;
 
-        if (seg0.flags & splashXPathFlip) {
-            x0 = seg0.x1;
-            y0 = seg0.y1;
-        } else {
-            x0 = seg0.x0;
-            y0 = seg0.y0;
-        }
-        if (seg1.flags & splashXPathFlip) {
-            x1 = seg1.x1;
-            y1 = seg1.y1;
-        } else {
-            x1 = seg1.x0;
-            y1 = seg1.y0;
-        }
+        x0 = seg0.x0;
+        y0 = seg0.y0;
+        x1 = seg1.x0;
+        y1 = seg1.y0;
         return (y0 != y1) ? (y0 < y1) : (x0 < x1);
     }
 };

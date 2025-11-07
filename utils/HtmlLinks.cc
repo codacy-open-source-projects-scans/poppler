@@ -18,8 +18,9 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2008 Boris Toloknov <tlknv@yandex.ru>
-// Copyright (C) 2010, 2021, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2010, 2021, 2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2013 Julien Nabet <serval2412@yahoo.fr>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -36,10 +37,10 @@ HtmlLink::HtmlLink(const HtmlLink &x)
     Ymin = x.Ymin;
     Xmax = x.Xmax;
     Ymax = x.Ymax;
-    dest = new GooString(x.dest);
+    dest = x.dest->copy();
 }
 
-HtmlLink::HtmlLink(double xmin, double ymin, double xmax, double ymax, GooString *_dest)
+HtmlLink::HtmlLink(double xmin, double ymin, double xmax, double ymax, std::unique_ptr<GooString> &&_dest) : dest(std::move(_dest))
 {
     if (xmin < xmax) {
         Xmin = xmin;
@@ -55,13 +56,9 @@ HtmlLink::HtmlLink(double xmin, double ymin, double xmax, double ymax, GooString
         Ymin = ymax;
         Ymax = ymin;
     }
-    dest = new GooString(_dest);
 }
 
-HtmlLink::~HtmlLink()
-{
-    delete dest;
-}
+HtmlLink::~HtmlLink() = default;
 
 bool HtmlLink::isEqualDest(const HtmlLink &x) const
 {
@@ -77,10 +74,11 @@ bool HtmlLink::inLink(double xmin, double ymin, double xmax, double ymax) const
     return (y > Ymin) && (xmin < Xmax) && (xmax > Xmin);
 }
 
-static GooString *EscapeSpecialChars(GooString *s)
+// returns nullptr if same as input string (to avoid copying)
+static std::unique_ptr<GooString> EscapeSpecialChars(GooString *s)
 {
-    GooString *tmp = nullptr;
-    for (int i = 0, j = 0; i < s->getLength(); i++, j++) {
+    std::unique_ptr<GooString> tmp;
+    for (size_t i = 0, j = 0; i < s->size(); i++, j++) {
         const char *replace = nullptr;
         switch (s->getChar(i)) {
         case '"':
@@ -100,27 +98,24 @@ static GooString *EscapeSpecialChars(GooString *s)
         }
         if (replace) {
             if (!tmp) {
-                tmp = new GooString(s);
+                tmp = s->copy();
             }
             if (tmp) {
-                tmp->del(j, 1);
+                tmp->erase(j, 1);
                 int l = strlen(replace);
                 tmp->insert(j, replace, l);
                 j += l - 1;
             }
         }
     }
-    return tmp ? tmp : s;
+    return tmp;
 }
 
-GooString *HtmlLink::getLinkStart() const
+std::unique_ptr<GooString> HtmlLink::getLinkStart() const
 {
-    GooString *res = new GooString("<a href=\"");
-    GooString *d = xml ? EscapeSpecialChars(dest) : dest;
-    res->append(d);
-    if (d != dest) {
-        delete d;
-    }
+    std::unique_ptr<GooString> res = std::make_unique<GooString>("<a href=\"");
+    std::unique_ptr<GooString> d = xml ? EscapeSpecialChars(dest.get()) : nullptr;
+    res->append(d ? d.get() : dest.get());
     res->append("\">");
     return res;
 }
@@ -136,9 +131,9 @@ GooString *HtmlLink::getLinkStart() const
   return tmp;
   }*/
 
-HtmlLinks::HtmlLinks() { }
+HtmlLinks::HtmlLinks() = default;
 
-HtmlLinks::~HtmlLinks() { }
+HtmlLinks::~HtmlLinks() = default;
 
 bool HtmlLinks::inLink(double xmin, double ymin, double xmax, double ymax, size_t &p) const
 {

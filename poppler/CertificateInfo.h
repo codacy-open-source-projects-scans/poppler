@@ -8,7 +8,7 @@
 // Copyright 2018, 2019 Albert Astals Cid <aacid@kde.org>
 // Copyright 2018 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright 2020 Thorsten Behrens <Thorsten.Behrens@CIB.de>
-// Copyright 2023 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2023, 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -57,7 +57,13 @@ enum class KeyLocation
     HardwareToken /** The key is on a dedicated hardware token, either a smartcard or a dedicated usb token (e.g. gnuk, nitrokey or yubikey) */
 };
 
-class POPPLER_PRIVATE_EXPORT X509CertificateInfo
+enum class CertificateType
+{
+    X509,
+    PGP
+};
+
+class POPPLER_PRIVATE_EXPORT X509CertificateInfo // TODO consider rename to just CertificateInfo
 {
 public:
     X509CertificateInfo();
@@ -117,7 +123,10 @@ public:
     unsigned int getKeyUsageExtensions() const;
     const GooString &getCertificateDER() const;
     bool getIsSelfSigned() const;
+    bool isQualified() const;
+    void setQualified(bool qualified);
     KeyLocation getKeyLocation() const;
+    CertificateType getCertificateType() const;
 
     /* SETTERS */
     void setVersion(int);
@@ -131,6 +140,7 @@ public:
     void setCertificateDER(const GooString &);
     void setIsSelfSigned(bool);
     void setKeyLocation(KeyLocation location);
+    void setCertificateType(CertificateType type);
 
 private:
     EntityInfo issuer_info;
@@ -142,8 +152,10 @@ private:
     GooString cert_nick;
     unsigned int ku_extensions;
     int cert_version;
+    bool is_qualified;
     bool is_self_signed;
     KeyLocation keyLocation;
+    CertificateType certificate_type = CertificateType::X509;
 };
 
 #endif

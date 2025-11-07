@@ -8,7 +8,7 @@ class TestGooString : public QObject
     Q_OBJECT
 public:
     explicit TestGooString(QObject *parent = nullptr) : QObject(parent) { }
-private slots:
+private Q_SLOTS:
     void testInsertData_data();
     void testInsertData();
     void testInsert();
@@ -125,36 +125,31 @@ void TestGooString::testFormat()
 void TestGooString::testFromNullptr()
 {
     {
-        GooString str { static_cast<const GooString *>(nullptr) };
-        QCOMPARE(str.getLength(), 0);
-    }
-
-    {
         GooString str;
         str.Set(static_cast<const GooString *>(nullptr));
-        QCOMPARE(str.getLength(), 0);
+        QCOMPARE(str.size(), 0);
     }
 
     {
         GooString str { static_cast<const char *>(nullptr) };
-        QCOMPARE(str.getLength(), 0);
+        QCOMPARE(str.size(), 0);
     }
 
     {
         GooString str { static_cast<const char *>(nullptr), 0 };
-        QCOMPARE(str.getLength(), 0);
+        QCOMPARE(str.size(), 0);
     }
 
     {
         GooString str;
         str.Set(static_cast<const char *>(nullptr));
-        QCOMPARE(str.getLength(), 0);
+        QCOMPARE(str.size(), 0);
     }
 
     {
         GooString str;
         str.Set(static_cast<const char *>(nullptr), 0);
-        QCOMPARE(str.getLength(), 0);
+        QCOMPARE(str.size(), 0);
     }
 }
 

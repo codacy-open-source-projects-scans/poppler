@@ -17,13 +17,14 @@
 // Copyright (C) 2008 Hugo Mercier <hmercier31@gmail.com>
 // Copyright (C) 2010, 2011 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2012 Tobias Koening <tobias.koenig@kdab.com>
-// Copyright (C) 2018-2023 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2018-2023, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Intevation GmbH <intevation@intevation.de>
 // Copyright (C) 2019, 2020 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2020 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2020 Marek Kasik <mkasik@redhat.com>
 // Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -120,7 +121,7 @@ class POPPLER_PRIVATE_EXPORT LinkDest
 {
 public:
     // Build a LinkDest from the array.
-    explicit LinkDest(const Array *a);
+    explicit LinkDest(const Array &a);
 
     // Was the LinkDest created successfully?
     bool isOk() const { return ok; }
@@ -569,7 +570,7 @@ class LinkUnknown : public LinkAction
 {
 public:
     // Build a LinkUnknown with the specified action type.
-    explicit LinkUnknown(const char *actionA);
+    explicit LinkUnknown(std::string &&actionA);
 
     ~LinkUnknown() override;
 
@@ -601,10 +602,10 @@ public:
     Links(const Links &) = delete;
     Links &operator=(const Links &) = delete;
 
-    const std::vector<AnnotLink *> &getLinks() const { return links; }
+    const std::vector<std::shared_ptr<AnnotLink>> &getLinks() const { return links; }
 
 private:
-    std::vector<AnnotLink *> links;
+    std::vector<std::shared_ptr<AnnotLink>> links;
 };
 
 #endif

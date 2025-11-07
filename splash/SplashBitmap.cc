@@ -26,6 +26,7 @@
 // Copyright (C) 2018 Martin Packman <gzlist@googlemail.com>
 // Copyright (C) 2019 Christian Persch <chpe@src.gnome.org>
 // Copyright (C) 2019 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -59,6 +60,7 @@ SplashBitmap::SplashBitmap(int widthA, int heightA, int rowPadA, SplashColorMode
     height = heightA;
     mode = modeA;
     rowPad = rowPadA;
+    rowSize = -1; // some compilers can't see it will be initialized
     switch (mode) {
     case splashModeMono1:
         if (width > 0) {
@@ -444,7 +446,7 @@ void SplashBitmap::getRGBLine(int yl, SplashColorPtr line)
         m = byteToDbl(col[1]);
         y = byteToDbl(col[2]);
         k = byteToDbl(col[3]);
-        if (separationList->size() > 0) {
+        if (!separationList->empty()) {
             for (std::size_t i = 0; i < separationList->size(); i++) {
                 if (col[i + 4] > 0) {
                     GfxCMYK cmyk;
@@ -497,7 +499,7 @@ void SplashBitmap::getXBGRLine(int yl, SplashColorPtr line, ConversionMode conve
         m = byteToDbl(col[1]);
         y = byteToDbl(col[2]);
         k = byteToDbl(col[3]);
-        if (separationList->size() > 0) {
+        if (!separationList->empty()) {
             for (std::size_t i = 0; i < separationList->size(); i++) {
                 if (col[i + 4] > 0) {
                     GfxCMYK cmyk;
@@ -615,7 +617,7 @@ void SplashBitmap::getCMYKLine(int yl, SplashColorPtr line)
 
     for (int x = 0; x < width; x++) {
         getPixel(x, yl, col);
-        if (separationList->size() > 0) {
+        if (!separationList->empty()) {
             double c, m, y, k;
             c = byteToDbl(col[0]);
             m = byteToDbl(col[1]);

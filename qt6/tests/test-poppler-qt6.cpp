@@ -81,7 +81,7 @@ void PDFDisplay::display()
     }
 }
 
-PDFDisplay::~PDFDisplay() { }
+PDFDisplay::~PDFDisplay() = default;
 
 void PDFDisplay::paintEvent(QPaintEvent *e)
 {
@@ -167,7 +167,7 @@ int main(int argc, char **argv)
 
     if (doc->hasEmbeddedFiles()) {
         qDebug() << "Embedded files:";
-        foreach (Poppler::EmbeddedFile *file, doc->embeddedFiles()) {
+        Q_FOREACH (Poppler::EmbeddedFile *file, doc->embeddedFiles()) {
             qDebug() << "   " << file->name();
         }
         qDebug();
@@ -195,13 +195,13 @@ int main(int argc, char **argv)
         test.display();
         test.show(); // show it
 
-        return a.exec(); // start event loop
+        return QApplication::exec(); // start event loop
     } else {
         std::unique_ptr<Poppler::Page> page = doc->page(0);
 
         QLabel *l = new QLabel(page->text(QRectF()), nullptr);
         l->show();
-        return a.exec();
+        return QApplication::exec();
     }
 }
 

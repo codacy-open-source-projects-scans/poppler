@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2010, 2011, Pino Toscano <pino@kde.org>
  * Copyright (C) 2021 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>
+ * Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -35,7 +36,12 @@ class TestStrings : public QObject
 public:
     explicit TestStrings(QObject *parent = nullptr) : QObject(parent) { }
 
-private slots:
+    GooString *newGooString(const char *s);
+    GooString *newGooString(const char *s, int l);
+
+    QVector<GooString *> m_gooStrings;
+
+private Q_SLOTS:
     void initTestCase();
     void cleanupTestCase();
     void check_unicodeToQString_data();
@@ -46,12 +52,6 @@ private slots:
     void check_QStringToUnicodeGooString();
     void check_QStringToGooString_data();
     void check_QStringToGooString();
-
-private:
-    GooString *newGooString(const char *s);
-    GooString *newGooString(const char *s, int l);
-
-    QVector<GooString *> m_gooStrings;
 };
 
 void TestStrings::initTestCase()
@@ -190,17 +190,15 @@ void TestStrings::check_QStringToUnicodeGooString()
     QFETCH(QString, string);
     QFETCH(QByteArray, result);
 
-    GooString *goo = Poppler::QStringToUnicodeGooString(string);
+    std::unique_ptr<GooString> goo = Poppler::QStringToUnicodeGooString(string);
     if (string.isEmpty()) {
         QVERIFY(goo->toStr().empty());
-        QCOMPARE(goo->getLength(), 0);
+        QCOMPARE(goo->size(), 0);
     } else {
         QVERIFY(hasUnicodeByteOrderMark(goo->toStr()));
-        QCOMPARE(goo->getLength(), string.length() * 2 + 2);
-        QCOMPARE(result, QByteArray::fromRawData(goo->c_str() + 2, goo->getLength() - 2));
+        QCOMPARE(goo->size(), string.length() * 2 + 2);
+        QCOMPARE(result, QByteArray::fromRawData(goo->c_str() + 2, goo->size() - 2));
     }
-
-    delete goo;
 }
 
 void TestStrings::check_QStringToGooString_data()
@@ -219,10 +217,8 @@ void TestStrings::check_QStringToGooString()
     QFETCH(QString, string);
     QFETCH(GooString *, result);
 
-    GooString *goo = Poppler::QStringToGooString(string);
+    const std::unique_ptr<GooString> goo = Poppler::QStringToGooString(string);
     QCOMPARE(goo->c_str(), result->c_str());
-
-    delete goo;
 }
 
 GooString *TestStrings::newGooString(const char *s)

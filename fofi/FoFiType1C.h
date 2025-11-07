@@ -17,6 +17,7 @@
 // Copyright (C) 2012 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2018-2020 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2022 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -30,7 +31,9 @@
 
 #include "poppler_private_export.h"
 
+#include <memory>
 #include <set>
+#include <vector>
 
 class GooString;
 
@@ -153,12 +156,17 @@ struct Type1CEexecBuf
 
 class POPPLER_PRIVATE_EXPORT FoFiType1C : public FoFiBase
 {
+    class PrivateTag
+    {
+    };
+
 public:
     // Create a FoFiType1C object from a memory buffer.
-    static FoFiType1C *make(const unsigned char *fileA, int lenA);
+    static std::unique_ptr<FoFiType1C> make(std::vector<unsigned char> &&fileA);
+    static std::unique_ptr<FoFiType1C> make(std::span<unsigned char> data);
 
     // Create a FoFiType1C object from a file on disk.
-    static FoFiType1C *load(const char *fileName);
+    static std::unique_ptr<FoFiType1C> load(const char *fileName);
 
     ~FoFiType1C() override;
 
@@ -175,7 +183,7 @@ public:
 
     // Return the mapping from CIDs to GIDs, and return the number of
     // CIDs in *<nCIDs>.  This is only useful for CID fonts.
-    int *getCIDToGIDMap(int *nCIDs) const;
+    std::vector<int> getCIDToGIDMap() const;
 
     // Return the font matrix as an array of six numbers.
     void getFontMatrix(double *mat) const;
@@ -196,7 +204,7 @@ public:
     //     font's internal CID-to-GID mapping is used
     // (3) is <codeMap> is NULL and this is an 8-bit CFF font, then
     //     the identity CID-to-GID mapping is used
-    void convertToCIDType0(const char *psName, const int *codeMap, int nCodes, FoFiOutputFunc outputFunc, void *outputStream);
+    void convertToCIDType0(const char *psName, const std::vector<int> &codeMap, FoFiOutputFunc outputFunc, void *outputStream);
 
     // Convert to a Type 0 (but non-CID) composite font, suitable for
     // embedding in a PostScript file.  <psName> will be used as the
@@ -207,10 +215,12 @@ public:
     //     font's internal CID-to-GID mapping is used
     // (3) is <codeMap> is NULL and this is an 8-bit CFF font, then
     //     the identity CID-to-GID mapping is used
-    void convertToType0(const char *psName, const int *codeMap, int nCodes, FoFiOutputFunc outputFunc, void *outputStream);
+    void convertToType0(const char *psName, const std::vector<int> &codeMap, FoFiOutputFunc outputFunc, void *outputStream);
+
+    explicit FoFiType1C(std::vector<unsigned char> &&fileA, PrivateTag = {});
+    explicit FoFiType1C(std::span<unsigned char> data, PrivateTag = {});
 
 private:
-    FoFiType1C(const unsigned char *fileA, int lenA, bool freeFileDataA);
     void eexecCvtGlyph(Type1CEexecBuf *eb, const char *glyphName, int offset, int nBytes, const Type1CIndex *subrIdx, const Type1CPrivateDict *pDict);
     void cvtGlyph(int offset, int nBytes, GooString *charBuf, const Type1CIndex *subrIdx, const Type1CPrivateDict *pDict, bool top, std::set<int> &offsetBeingParsed);
     void cvtGlyphWidth(bool useOp, GooString *charBuf, const Type1CPrivateDict *pDict);
@@ -232,7 +242,7 @@ private:
     void getIndexVal(const Type1CIndex *idx, int i, Type1CIndexVal *val, bool *ok) const;
     char *getString(int sid, char *buf, bool *ok) const;
 
-    GooString *name;
+    std::unique_ptr<GooString> name;
     char **encoding;
 
     Type1CIndex nameIdx;

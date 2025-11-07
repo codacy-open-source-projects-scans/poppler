@@ -15,7 +15,7 @@
 //
 // Copyright (C) 2005 Jeff Muizelaar <jeff@infidigm.net>
 // Copyright (C) 2008 Julien Rebetez <julien@fhtagn.net>
-// Copyright (C) 2008, 2010, 2011, 2016-2022, 2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2008, 2010, 2011, 2016-2022, 2024, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2009 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2009 Stefan Thomas <thomas@eload24.com>
 // Copyright (C) 2010 Hib Eris <hib@hiberis.nl>
@@ -33,8 +33,9 @@
 // Copyright (C) 2021 Hubert Figuiere <hub@figuiere.net>
 // Copyright (C) 2021 Christian Persch <chpe@src.gnome.org>
 // Copyright (C) 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
-// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2024 Fernando Herrera <fherrera@onirica.com>
+// Copyright (C) 2024, 2025 Nelson Benítez León <nbenitezl@gmail.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -48,6 +49,7 @@
 #include <cstdio>
 #include <vector>
 #include <span>
+#include <optional>
 
 #include "poppler-config.h"
 #include "poppler_private_export.h"
@@ -124,8 +126,8 @@ public:
     // Get kind of stream.
     virtual StreamKind getKind() const = 0;
 
-    // Reset stream to beginning.
-    virtual void reset() = 0;
+    // Reset stream to beginning. Returns 'false' if stream was found to be invalid, 'true' otherwise.
+    [[nodiscard]] virtual bool reset() = 0;
 
     // Close down the stream.
     virtual void close();
@@ -151,7 +153,10 @@ public:
     {
         unsigned char readBuf[4096];
         int readChars;
-        reset();
+        if (!reset()) {
+            s.clear();
+            return;
+        }
         while ((readChars = doGetChars(4096, readBuf)) != 0) {
             s.append((const char *)readBuf, readChars);
         }
@@ -168,7 +173,9 @@ public:
         int length = 0;
         int charsToRead = initialSize;
         bool continueReading = true;
-        reset();
+        if (!reset()) {
+            return {};
+        }
         while (continueReading && (readChars = doGetChars(charsToRead, buf.data() + length)) != 0) {
             length += readChars;
             if (readChars == charsToRead) {
@@ -212,7 +219,7 @@ public:
     // Resets the stream without reading anything (even not the headers)
     // WARNING: Reading the stream with something else than getUnfilteredChar
     // may lead to unexcepted behaviour until you call reset ()
-    virtual void unfilteredReset() = 0;
+    [[nodiscard]] virtual bool unfilteredReset() = 0;
 
     // Get next line from stream.
     virtual char *getLine(char *buf, int size);
@@ -231,7 +238,7 @@ public:
     virtual void setPos(Goffset pos, int dir = 0) = 0;
 
     // Get PostScript command for the filter(s).
-    virtual GooString *getPSFilter(int psLevel, const char *indent);
+    virtual std::optional<std::string> getPSFilter(int psLevel, const char *indent);
 
     // Does this stream type potentially contain non-printable chars?
     virtual bool isBinary(bool last = true) const = 0;
@@ -251,7 +258,7 @@ public:
     virtual bool isEncoder() const { return false; }
 
     // Get image parameters which are defined by the stream contents.
-    virtual void getImageParams(int * /*bitsPerComponent*/, StreamColorSpaceMode * /*csMode*/) { }
+    virtual void getImageParams(int * /*bitsPerComponent*/, StreamColorSpaceMode * /*csMode*/, bool * /*hasAlpha*/) { }
 
     // Return the next stream in the "stack".
     virtual Stream *getNextStream() const { return nullptr; }
@@ -304,7 +311,7 @@ public:
     // Put a char in the stream
     virtual void put(char c) = 0;
 
-    virtual size_t write(std::span<unsigned char> data) = 0;
+    virtual size_t write(std::span<const unsigned char> data) = 0;
 
     virtual void printf(const char *format, ...) GCC_PRINTF_FORMAT(2, 3) = 0;
 };
@@ -325,7 +332,7 @@ public:
 
     void put(char c) override;
 
-    size_t write(std::span<unsigned char> data) override;
+    size_t write(std::span<const unsigned char> data) override;
 
     void printf(const char *format, ...) override GCC_PRINTF_FORMAT(2, 3);
 
@@ -346,7 +353,7 @@ public:
     BaseStream(Object &&dictA, Goffset lengthA);
     ~BaseStream() override;
     virtual BaseStream *copy() = 0;
-    virtual Stream *makeSubStream(Goffset start, bool limited, Goffset length, Object &&dict) = 0;
+    virtual std::unique_ptr<Stream> makeSubStream(Goffset start, bool limited, Goffset length, Object &&dict) = 0;
     void setPos(Goffset pos, int dir = 0) override = 0;
     bool isBinary(bool last = true) const override { return last; }
     BaseStream *getBaseStream() override { return this; }
@@ -384,7 +391,7 @@ public:
     BaseSeekInputStream(Goffset startA, bool limitedA, Goffset lengthA, Object &&dictA);
     ~BaseSeekInputStream() override;
     StreamKind getKind() const override { return strWeird; }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     void close() override;
     int getChar() override { return (bufPtr >= bufEnd && !fillBuf()) ? EOF : (*bufPtr++ & 0xff); }
     int lookChar() override { return (bufPtr >= bufEnd && !fillBuf()) ? EOF : (*bufPtr & 0xff); }
@@ -394,7 +401,7 @@ public:
     void moveStart(Goffset delta) override;
 
     int getUnfilteredChar() override { return getChar(); }
-    void unfilteredReset() override { reset(); }
+    [[nodiscard]] bool unfilteredReset() override { return reset(); }
 
 protected:
     Goffset start;
@@ -440,7 +447,7 @@ public:
     Stream *getNextStream() const override { return str; }
 
     int getUnfilteredChar() override { return str->getUnfilteredChar(); }
-    void unfilteredReset() override { str->unfilteredReset(); }
+    [[nodiscard]] bool unfilteredReset() override { return str->unfilteredReset(); }
 
 protected:
     Stream *str;
@@ -464,7 +471,7 @@ public:
     ImageStream &operator=(const ImageStream &other) = delete;
 
     // Reset the stream.
-    void reset();
+    [[nodiscard]] bool reset();
 
     // Close the stream previously reset
     void close();
@@ -534,7 +541,7 @@ private:
 // FileStream
 //------------------------------------------------------------------------
 
-#define fileStreamBufSize 256
+#define fileStreamBufSize 16384
 
 class POPPLER_PRIVATE_EXPORT FileStream : public BaseStream
 {
@@ -542,9 +549,9 @@ public:
     FileStream(GooFile *fileA, Goffset startA, bool limitedA, Goffset lengthA, Object &&dictA);
     ~FileStream() override;
     BaseStream *copy() override;
-    Stream *makeSubStream(Goffset startA, bool limitedA, Goffset lengthA, Object &&dictA) override;
+    std::unique_ptr<Stream> makeSubStream(Goffset startA, bool limitedA, Goffset lengthA, Object &&dictA) override;
     StreamKind getKind() const override { return strFile; }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     void close() override;
     int getChar() override { return (bufPtr >= bufEnd && !fillBuf()) ? EOF : (*bufPtr++ & 0xff); }
     int lookChar() override { return (bufPtr >= bufEnd && !fillBuf()) ? EOF : (*bufPtr & 0xff); }
@@ -554,7 +561,7 @@ public:
     void moveStart(Goffset delta) override;
 
     int getUnfilteredChar() override { return getChar(); }
-    void unfilteredReset() override { reset(); }
+    [[nodiscard]] bool unfilteredReset() override { return reset(); }
 
     bool getNeedsEncryptionOnSave() const { return needsEncryptionOnSave; }
     void setNeedsEncryptionOnSave(bool needsEncryptionOnSaveA) { needsEncryptionOnSave = needsEncryptionOnSaveA; }
@@ -585,7 +592,6 @@ private:
         return n;
     }
 
-private:
     GooFile *file;
     Goffset offset;
     Goffset start;
@@ -609,12 +615,12 @@ private:
 class POPPLER_PRIVATE_EXPORT CachedFileStream : public BaseStream
 {
 public:
-    CachedFileStream(CachedFile *ccA, Goffset startA, bool limitedA, Goffset lengthA, Object &&dictA);
+    CachedFileStream(std::shared_ptr<CachedFile> ccA, Goffset startA, bool limitedA, Goffset lengthA, Object &&dictA);
     ~CachedFileStream() override;
     BaseStream *copy() override;
-    Stream *makeSubStream(Goffset startA, bool limitedA, Goffset lengthA, Object &&dictA) override;
+    std::unique_ptr<Stream> makeSubStream(Goffset startA, bool limitedA, Goffset lengthA, Object &&dictA) override;
     StreamKind getKind() const override { return strCachedFile; }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     void close() override;
     int getChar() override { return (bufPtr >= bufEnd && !fillBuf()) ? EOF : (*bufPtr++ & 0xff); }
     int lookChar() override { return (bufPtr >= bufEnd && !fillBuf()) ? EOF : (*bufPtr & 0xff); }
@@ -624,12 +630,12 @@ public:
     void moveStart(Goffset delta) override;
 
     int getUnfilteredChar() override { return getChar(); }
-    void unfilteredReset() override { reset(); }
+    [[nodiscard]] bool unfilteredReset() override { return reset(); }
 
 private:
     bool fillBuf();
 
-    CachedFile *cc;
+    std::shared_ptr<CachedFile> cc;
     Goffset start;
     bool limited;
     char buf[cachedStreamBufSize];
@@ -659,7 +665,7 @@ public:
 
     BaseStream *copy() override { return new BaseMemStream(buf, start, length, dict.copy()); }
 
-    Stream *makeSubStream(Goffset startA, bool limited, Goffset lengthA, Object &&dictA) override
+    std::unique_ptr<Stream> makeSubStream(Goffset startA, bool limited, Goffset lengthA, Object &&dictA) override
     {
         Goffset newLength;
 
@@ -668,12 +674,16 @@ public:
         } else {
             newLength = lengthA;
         }
-        return new BaseMemStream(buf, startA, newLength, std::move(dictA));
+        return std::make_unique<BaseMemStream>(buf, startA, newLength, std::move(dictA));
     }
 
     StreamKind getKind() const override { return strWeird; }
 
-    void reset() override { bufPtr = buf + start; }
+    [[nodiscard]] bool reset() override
+    {
+        bufPtr = buf + start;
+        return true;
+    }
 
     void close() override { }
 
@@ -711,7 +721,7 @@ public:
 
     int getUnfilteredChar() override { return getChar(); }
 
-    void unfilteredReset() override { reset(); }
+    bool unfilteredReset() override { return reset(); }
 
 protected:
     T *buf;
@@ -751,14 +761,15 @@ public:
     ~MemStream() override;
 };
 
-class AutoFreeMemStream : public BaseMemStream<char>
+class AutoFreeMemStream final : public BaseMemStream<const char>
 {
     bool filterRemovalForbidden = false;
+    std::vector<char> m_data;
 
 public:
     // AutoFreeMemStream takes ownership over the buffer.
     // The buffer should be created using gmalloc().
-    AutoFreeMemStream(char *bufA, Goffset startA, Goffset lengthA, Object &&dictA) : BaseMemStream(bufA, startA, lengthA, std::move(dictA)) { }
+    AutoFreeMemStream(std::vector<char> &&data, Object &&dictA) : BaseMemStream(data.data(), 0, data.size(), std::move(dictA)), m_data(std::move(data)) { }
     ~AutoFreeMemStream() override;
 
     // A hack to deal with the strange behaviour of PDFDoc::writeObject().
@@ -782,9 +793,9 @@ public:
     EmbedStream(Stream *strA, Object &&dictA, bool limitedA, Goffset lengthA, bool reusableA = false);
     ~EmbedStream() override;
     BaseStream *copy() override;
-    Stream *makeSubStream(Goffset start, bool limitedA, Goffset lengthA, Object &&dictA) override;
+    std::unique_ptr<Stream> makeSubStream(Goffset start, bool limitedA, Goffset lengthA, Object &&dictA) override;
     StreamKind getKind() const override { return str->getKind(); }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     int getChar() override;
     int lookChar() override;
     Goffset getPos() override;
@@ -793,7 +804,7 @@ public:
     void moveStart(Goffset delta) override;
 
     int getUnfilteredChar() override { return str->getUnfilteredChar(); }
-    void unfilteredReset() override { str->unfilteredReset(); }
+    [[nodiscard]] bool unfilteredReset() override { return str->unfilteredReset(); }
 
     void rewind();
     void restore();
@@ -824,7 +835,7 @@ public:
     explicit ASCIIHexStream(Stream *strA);
     ~ASCIIHexStream() override;
     StreamKind getKind() const override { return strASCIIHex; }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     int getChar() override
     {
         int c = lookChar();
@@ -832,7 +843,7 @@ public:
         return c;
     }
     int lookChar() override;
-    GooString *getPSFilter(int psLevel, const char *indent) override;
+    std::optional<std::string> getPSFilter(int psLevel, const char *indent) override;
     bool isBinary(bool last = true) const override;
 
 private:
@@ -850,7 +861,7 @@ public:
     explicit ASCII85Stream(Stream *strA);
     ~ASCII85Stream() override;
     StreamKind getKind() const override { return strASCII85; }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     int getChar() override
     {
         int ch = lookChar();
@@ -858,7 +869,7 @@ public:
         return ch;
     }
     int lookChar() override;
-    GooString *getPSFilter(int psLevel, const char *indent) override;
+    std::optional<std::string> getPSFilter(int psLevel, const char *indent) override;
     bool isBinary(bool last = true) const override;
 
 private:
@@ -878,12 +889,12 @@ public:
     LZWStream(Stream *strA, int predictor, int columns, int colors, int bits, int earlyA);
     ~LZWStream() override;
     StreamKind getKind() const override { return strLZW; }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     int getChar() override;
     int lookChar() override;
     int getRawChar() override;
     void getRawChars(int nChars, int *buffer) override;
-    GooString *getPSFilter(int psLevel, const char *indent) override;
+    std::optional<std::string> getPSFilter(int psLevel, const char *indent) override;
     bool isBinary(bool last = true) const override;
 
 private:
@@ -938,10 +949,10 @@ public:
     explicit RunLengthStream(Stream *strA);
     ~RunLengthStream() override;
     StreamKind getKind() const override { return strRunLength; }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     int getChar() override { return (bufPtr >= bufEnd && !fillBuf()) ? EOF : (*bufPtr++ & 0xff); }
     int lookChar() override { return (bufPtr >= bufEnd && !fillBuf()) ? EOF : (*bufPtr & 0xff); }
-    GooString *getPSFilter(int psLevel, const char *indent) override;
+    std::optional<std::string> getPSFilter(int psLevel, const char *indent) override;
     bool isBinary(bool last = true) const override;
 
 private:
@@ -968,7 +979,7 @@ public:
     CCITTFaxStream(Stream *strA, int encodingA, bool endOfLineA, bool byteAlignA, int columnsA, int rowsA, bool endOfBlockA, bool blackA, int damagedRowsBeforeErrorA);
     ~CCITTFaxStream() override;
     StreamKind getKind() const override { return strCCITTFax; }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     int getChar() override
     {
         int c = lookChar();
@@ -976,10 +987,10 @@ public:
         return c;
     }
     int lookChar() override;
-    GooString *getPSFilter(int psLevel, const char *indent) override;
+    std::optional<std::string> getPSFilter(int psLevel, const char *indent) override;
     bool isBinary(bool last = true) const override;
 
-    void unfilteredReset() override;
+    [[nodiscard]] bool unfilteredReset() override;
 
     int getEncoding() { return encoding; }
     bool getEndOfLine() { return endOfLine; }
@@ -990,7 +1001,7 @@ public:
     int getDamagedRowsBeforeError() { return damagedRowsBeforeError; }
 
 private:
-    void ccittReset(bool unfiltered);
+    [[nodiscard]] bool ccittReset(bool unfiltered);
     int encoding; // 'K' parameter
     bool endOfLine; // 'EndOfLine' parameter
     bool byteAlign; // 'EncodedByteAlign' parameter
@@ -1065,17 +1076,17 @@ public:
     DCTStream(Stream *strA, int colorXformA, Dict *dict, int recursion);
     ~DCTStream() override;
     StreamKind getKind() const override { return strDCT; }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     void close() override;
     int getChar() override;
     int lookChar() override;
-    GooString *getPSFilter(int psLevel, const char *indent) override;
+    std::optional<std::string> getPSFilter(int psLevel, const char *indent) override;
     bool isBinary(bool last = true) const override;
 
-    void unfilteredReset() override;
+    [[nodiscard]] bool unfilteredReset() override;
 
 private:
-    void dctReset(bool unfiltered);
+    [[nodiscard]] bool dctReset(bool unfiltered);
     bool progressive; // set if in progressive mode
     bool interleaved; // set if in interleaved mode
     int width, height; // image size
@@ -1169,17 +1180,17 @@ public:
     FlateStream(Stream *strA, int predictor, int columns, int colors, int bits);
     ~FlateStream() override;
     StreamKind getKind() const override { return strFlate; }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     int getChar() override;
     int lookChar() override;
     int getRawChar() override;
     void getRawChars(int nChars, int *buffer) override;
-    GooString *getPSFilter(int psLevel, const char *indent) override;
+    std::optional<std::string> getPSFilter(int psLevel, const char *indent) override;
     bool isBinary(bool last = true) const override;
-    void unfilteredReset() override;
+    [[nodiscard]] bool unfilteredReset() override;
 
 private:
-    void flateReset(bool unfiltered);
+    [[nodiscard]] bool flateReset(bool unfiltered);
     inline int doGetRawChar()
     {
         int c;
@@ -1245,10 +1256,10 @@ public:
     explicit EOFStream(Stream *strA);
     ~EOFStream() override;
     StreamKind getKind() const override { return strWeird; }
-    void reset() override { }
+    [[nodiscard]] bool reset() override { return true; }
     int getChar() override { return EOF; }
     int lookChar() override { return EOF; }
-    GooString *getPSFilter(int /*psLevel*/, const char * /*indent*/) override { return nullptr; }
+    std::optional<std::string> getPSFilter(int /*psLevel*/, const char * /*indent*/) override { return {}; }
     bool isBinary(bool /*last = true*/) const override { return false; }
 };
 
@@ -1262,10 +1273,10 @@ public:
     BufStream(Stream *strA, int bufSizeA);
     ~BufStream() override;
     StreamKind getKind() const override { return strWeird; }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     int getChar() override;
     int lookChar() override;
-    GooString *getPSFilter(int psLevel, const char *indent) override { return nullptr; }
+    std::optional<std::string> getPSFilter(int psLevel, const char *indent) override { return {}; }
     bool isBinary(bool last = true) const override;
 
     int lookChar(int idx);
@@ -1285,10 +1296,10 @@ public:
     FixedLengthEncoder(Stream *strA, int lengthA);
     ~FixedLengthEncoder() override;
     StreamKind getKind() const override { return strWeird; }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     int getChar() override;
     int lookChar() override;
-    GooString *getPSFilter(int /*psLevel*/, const char * /*indent*/) override { return nullptr; }
+    std::optional<std::string> getPSFilter(int /*psLevel*/, const char * /*indent*/) override { return {}; }
     bool isBinary(bool /*last = true*/) const override;
     bool isEncoder() const override { return true; }
 
@@ -1307,10 +1318,10 @@ public:
     explicit ASCIIHexEncoder(Stream *strA);
     ~ASCIIHexEncoder() override;
     StreamKind getKind() const override { return strWeird; }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     int getChar() override { return (bufPtr >= bufEnd && !fillBuf()) ? EOF : (*bufPtr++ & 0xff); }
     int lookChar() override { return (bufPtr >= bufEnd && !fillBuf()) ? EOF : (*bufPtr & 0xff); }
-    GooString *getPSFilter(int /*psLevel*/, const char * /*indent*/) override { return nullptr; }
+    std::optional<std::string> getPSFilter(int /*psLevel*/, const char * /*indent*/) override { return {}; }
     bool isBinary(bool /*last = true*/) const override { return false; }
     bool isEncoder() const override { return true; }
 
@@ -1334,10 +1345,10 @@ public:
     explicit ASCII85Encoder(Stream *strA);
     ~ASCII85Encoder() override;
     StreamKind getKind() const override { return strWeird; }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     int getChar() override { return (bufPtr >= bufEnd && !fillBuf()) ? EOF : (*bufPtr++ & 0xff); }
     int lookChar() override { return (bufPtr >= bufEnd && !fillBuf()) ? EOF : (*bufPtr & 0xff); }
-    GooString *getPSFilter(int /*psLevel*/, const char * /*indent*/) override { return nullptr; }
+    std::optional<std::string> getPSFilter(int /*psLevel*/, const char * /*indent*/) override { return {}; }
     bool isBinary(bool /*last = true*/) const override { return false; }
     bool isEncoder() const override { return true; }
 
@@ -1361,10 +1372,10 @@ public:
     explicit RunLengthEncoder(Stream *strA);
     ~RunLengthEncoder() override;
     StreamKind getKind() const override { return strWeird; }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     int getChar() override { return (bufPtr >= bufEnd && !fillBuf()) ? EOF : (*bufPtr++ & 0xff); }
     int lookChar() override { return (bufPtr >= bufEnd && !fillBuf()) ? EOF : (*bufPtr & 0xff); }
-    GooString *getPSFilter(int /*psLevel*/, const char * /*indent*/) override { return nullptr; }
+    std::optional<std::string> getPSFilter(int /*psLevel*/, const char * /*indent*/) override { return {}; }
     bool isBinary(bool /*last = true*/) const override { return true; }
     bool isEncoder() const override { return true; }
 
@@ -1395,10 +1406,10 @@ public:
     explicit LZWEncoder(Stream *strA);
     ~LZWEncoder() override;
     StreamKind getKind() const override { return strWeird; }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     int getChar() override;
     int lookChar() override;
-    GooString *getPSFilter(int psLevel, const char *indent) override { return nullptr; }
+    std::optional<std::string> getPSFilter(int psLevel, const char *indent) override { return {}; }
     bool isBinary(bool last = true) const override { return true; }
     bool isEncoder() const override { return true; }
 
@@ -1425,10 +1436,10 @@ public:
     explicit CMYKGrayEncoder(Stream *strA);
     ~CMYKGrayEncoder() override;
     StreamKind getKind() const override { return strWeird; }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     int getChar() override { return (bufPtr >= bufEnd && !fillBuf()) ? EOF : (*bufPtr++ & 0xff); }
     int lookChar() override { return (bufPtr >= bufEnd && !fillBuf()) ? EOF : (*bufPtr & 0xff); }
-    GooString *getPSFilter(int /*psLevel*/, const char * /*indent*/) override { return nullptr; }
+    std::optional<std::string> getPSFilter(int /*psLevel*/, const char * /*indent*/) override { return {}; }
     bool isBinary(bool /*last = true*/) const override { return false; }
     bool isEncoder() const override { return true; }
 
@@ -1451,10 +1462,10 @@ public:
     explicit RGBGrayEncoder(Stream *strA);
     ~RGBGrayEncoder() override;
     StreamKind getKind() const override { return strWeird; }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     int getChar() override { return (bufPtr >= bufEnd && !fillBuf()) ? EOF : (*bufPtr++ & 0xff); }
     int lookChar() override { return (bufPtr >= bufEnd && !fillBuf()) ? EOF : (*bufPtr & 0xff); }
-    GooString *getPSFilter(int /*psLevel*/, const char * /*indent*/) override { return nullptr; }
+    std::optional<std::string> getPSFilter(int /*psLevel*/, const char * /*indent*/) override { return {}; }
     bool isBinary(bool /*last = true*/) const override { return false; }
     bool isEncoder() const override { return true; }
 
@@ -1480,10 +1491,10 @@ public:
     explicit SplashBitmapCMYKEncoder(SplashBitmap *bitmapA);
     ~SplashBitmapCMYKEncoder() override;
     StreamKind getKind() const override { return strWeird; }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     int getChar() override;
     int lookChar() override;
-    GooString *getPSFilter(int /*psLevel*/, const char * /*indent*/) override { return nullptr; }
+    std::optional<std::string> getPSFilter(int /*psLevel*/, const char * /*indent*/) override { return {}; }
     bool isBinary(bool /*last = true*/) const override { return true; }
 
     // Although we are an encoder, we return false here, since we do not want do be auto-deleted by
@@ -1491,7 +1502,7 @@ public:
     bool isEncoder() const override { return false; }
 
     int getUnfilteredChar() override { return getChar(); }
-    void unfilteredReset() override { reset(); }
+    [[nodiscard]] bool unfilteredReset() override { return reset(); }
 
     BaseStream *getBaseStream() override { return nullptr; }
     Stream *getUndecodedStream() override { return this; }
@@ -1518,10 +1529,10 @@ private:
 // Object Stream accessors.
 //------------------------------------------------------------------------
 
-inline void Object::streamReset()
+inline bool Object::streamReset()
 {
     OBJECT_TYPE_CHECK(objStream);
-    stream->reset();
+    return stream->reset();
 }
 
 inline void Object::streamClose()

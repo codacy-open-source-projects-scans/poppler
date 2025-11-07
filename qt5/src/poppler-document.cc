@@ -1,7 +1,7 @@
 /* poppler-document.cc: qt interface to poppler
  * Copyright (C) 2005, Net Integration Technologies, Inc.
  * Copyright (C) 2005, 2008, Brad Hards <bradh@frogmouth.net>
- * Copyright (C) 2005-2010, 2012, 2013, 2015, 2017-2022, Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2005-2010, 2012, 2013, 2015, 2017-2022, 2024, 2025, Albert Astals Cid <aacid@kde.org>
  * Copyright (C) 2006-2010, Pino Toscano <pino@kde.org>
  * Copyright (C) 2010, 2011 Hib Eris <hib@hiberis.nl>
  * Copyright (C) 2012 Koji Otani <sho@bbr.jp>
@@ -21,6 +21,8 @@
  * Copyright (C) 2021 Mahmoud Khalil <mahmoudkhalil11@gmail.com>
  * Copyright (C) 2021 Hubert Figuiere <hub@figuiere.net>
  * Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
+ * Copyright (C) 2024 Stefan Brüns <stefan.bruens@rwth-aachen.de>
+ * Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -54,6 +56,7 @@
 #include <QtCore/QDebug>
 #include <QtCore/QFile>
 #include <QtCore/QByteArray>
+#include <QTimeZone>
 
 #include "poppler-form.h"
 #include "poppler-private.h"
@@ -245,9 +248,8 @@ QByteArray Document::fontData(const FontInfo &fi) const
 
         Object refObj(fi.m_data->embRef);
         Object strObj = refObj.fetch(xref);
-        if (strObj.isStream()) {
+        if (strObj.isStream() && strObj.streamReset()) {
             int c;
-            strObj.streamReset();
             while ((c = strObj.streamGetChar()) != EOF) {
                 result.append((char)c);
             }
@@ -274,8 +276,8 @@ bool Document::setInfo(const QString &key, const QString &val)
         return false;
     }
 
-    GooString *goo = QStringToUnicodeGooString(val);
-    m_doc->doc->setDocInfoStringEntry(key.toLatin1().constData(), goo);
+    std::unique_ptr<GooString> goo = QStringToUnicodeGooString(val);
+    m_doc->doc->setDocInfoStringEntry(key.toLatin1().constData(), std::move(goo));
     return true;
 }
 
@@ -571,12 +573,12 @@ Document::PdfVersion Document::getPdfVersion() const
 
 Page *Document::page(const QString &label) const
 {
-    GooString label_g(label.toLatin1().data());
+    const GooString label_g(label.toLatin1().data());
     int index;
 
-    if (!m_doc->doc->getCatalog()->labelToIndex(&label_g, &index)) {
-        std::unique_ptr<GooString> label_ug(QStringToUnicodeGooString(label));
-        if (!m_doc->doc->getCatalog()->labelToIndex(label_ug.get(), &index)) {
+    if (!m_doc->doc->getCatalog()->labelToIndex(label_g, &index)) {
+        const std::unique_ptr<GooString> label_ug(QStringToUnicodeGooString(label));
+        if (!m_doc->doc->getCatalog()->labelToIndex(*label_ug, &index)) {
             return nullptr;
         }
     }
@@ -597,14 +599,12 @@ QDomDocument *Document::toc() const
     }
 
     const std::vector<::OutlineItem *> *items = outline->getItems();
-    if (!items || items->size() < 1) {
+    if (!items || items->empty()) {
         return nullptr;
     }
 
     QDomDocument *toc = new QDomDocument();
-    if (items->size() > 0) {
-        m_doc->addTocChildren(toc, toc, items);
-    }
+    m_doc->addTocChildren(toc, toc, items);
 
     return toc;
 }
@@ -626,10 +626,9 @@ QVector<OutlineItem> Document::outline() const
 
 LinkDestination *Document::linkDestination(const QString &name)
 {
-    GooString *namedDest = QStringToGooString(name);
-    LinkDestinationData ldd(nullptr, namedDest, m_doc, false);
+    const std::unique_ptr<GooString> namedDest = QStringToGooString(name);
+    LinkDestinationData ldd(nullptr, namedDest.get(), m_doc, false);
     LinkDestination *ld = new LinkDestination(ldd);
-    delete namedDest;
     return ld;
 }
 
@@ -827,10 +826,9 @@ QStringList Document::scripts() const
     const int numScripts = catalog->numJS();
     QStringList scripts;
     for (int i = 0; i < numScripts; ++i) {
-        GooString *s = catalog->getJS(i);
-        if (s) {
+        std::string s = catalog->getJS(i);
+        if (!s.empty()) {
             scripts.append(UnicodeParsedString(s));
-            delete s;
         }
     }
     return scripts;
@@ -923,22 +921,22 @@ QDateTime convertDate(const char *dateString)
         QDate d(year, mon, day);
         QTime t(hour, min, sec);
         if (d.isValid() && t.isValid()) {
-            QDateTime dt(d, t, Qt::UTC);
+            int tzSecs = 0;
             if (tz) {
                 // then we have some form of timezone
                 if ('Z' == tz) {
                     // We are already at UTC
                 } else if ('+' == tz) {
                     // local time is ahead of UTC
-                    dt = dt.addSecs(-1 * ((tzHours * 60) + tzMins) * 60);
+                    tzSecs = (tzHours * 3600) + (tzMins * 60);
                 } else if ('-' == tz) {
                     // local time is behind UTC
-                    dt = dt.addSecs(((tzHours * 60) + tzMins) * 60);
+                    tzSecs = (tzHours * -3600) + (tzMins * -60);
                 } else {
                     qWarning("unexpected tz val");
                 }
             }
-            return dt;
+            return QDateTime(d, t, QTimeZone(tzSecs));
         }
     }
     return QDateTime();

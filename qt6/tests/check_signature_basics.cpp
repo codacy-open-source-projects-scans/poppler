@@ -4,7 +4,7 @@
 //
 // This file is licensed under the GPLv2 or later
 //
-// Copyright 2023, 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2023-2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //========================================================================
 
 // Simple tests of reading signatures
@@ -13,6 +13,7 @@
 // that will have an expiry date, and adding time bombs to unit tests is
 // probably not a good idea.
 #include <QtTest/QTest>
+#include <QTemporaryDir>
 #include "PDFDoc.h"
 #include "GlobalParams.h"
 #include "SignatureInfo.h"
@@ -25,8 +26,15 @@ class TestSignatureBasics : public QObject
 public:
     explicit TestSignatureBasics(QObject *parent = nullptr) : QObject(parent) { }
 
-private:
     std::unique_ptr<PDFDoc> doc;
+
+    static std::unique_ptr<QTemporaryDir> tmpdir;
+    static void initMain()
+    {
+        tmpdir = std::make_unique<QTemporaryDir>();
+        qputenv("GNUPGHOME", tmpdir->path().toLocal8Bit().data());
+    }
+
 private Q_SLOTS:
     void init();
     void initTestCase_data();
@@ -38,6 +46,8 @@ private Q_SLOTS:
     void testSignedRanges();
 };
 
+std::unique_ptr<QTemporaryDir> TestSignatureBasics::tmpdir;
+
 void TestSignatureBasics::init()
 {
 #ifdef ENABLE_SIGNATURES
@@ -46,34 +56,44 @@ void TestSignatureBasics::init()
     QCOMPARE(CryptoSign::Factory::getActive(), backend);
 #endif
 
+    QFETCH_GLOBAL(std::string, filename);
+
     globalParams = std::make_unique<GlobalParams>();
-    doc = std::make_unique<PDFDoc>(std::make_unique<GooString>(TESTDATADIR "/unittestcases/pdf-signature-sample-2sigs.pdf"));
+    doc = std::make_unique<PDFDoc>(std::make_unique<GooString>(filename));
     QVERIFY(doc);
     QVERIFY(doc->isOk());
 }
 
 void TestSignatureBasics::initTestCase_data()
 {
-    QTest::addColumn<CryptoSign::Backend::Type>("backend");
 
 #ifdef ENABLE_SIGNATURES
     const auto availableBackends = CryptoSign::Factory::getAvailable();
+    QTest::addColumn<CryptoSign::Backend::Type>("backend");
+#endif
+    QTest::addColumn<std::string>("filename");
+
+    for (auto document : { TESTDATADIR "/unittestcases/pdf-signature-sample-2sigs.pdf", TESTDATADIR "/unittestcases/pdf-signature-sample-2sigs-randompadded.pdf" }) {
+#ifdef ENABLE_SIGNATURES
 
 #    ifdef ENABLE_NSS3
-    if (std::find(availableBackends.begin(), availableBackends.end(), CryptoSign::Backend::Type::NSS3) != availableBackends.end()) {
-        QTest::newRow("nss") << CryptoSign::Backend::Type::NSS3;
-    } else {
-        QWARN("Compiled with NSS3, but NSS not functional");
-    }
+        if (std::ranges::find(availableBackends, CryptoSign::Backend::Type::NSS3) != availableBackends.end()) {
+            QTest::addRow("nss %s", document) << CryptoSign::Backend::Type::NSS3 << std::string { document };
+        } else {
+            QWARN("Compiled with NSS3, but NSS not functional");
+        }
 #    endif
 #    ifdef ENABLE_GPGME
-    if (std::find(availableBackends.begin(), availableBackends.end(), CryptoSign::Backend::Type::GPGME) != availableBackends.end()) {
-        QTest::newRow("gpg") << CryptoSign::Backend::Type::GPGME;
-    } else {
-        QWARN("Compiled with GPGME, but GPGME not functional");
-    }
+        if (std::ranges::find(availableBackends, CryptoSign::Backend::Type::GPGME) != availableBackends.end()) {
+            QTest::addRow("gpg %s", document) << CryptoSign::Backend::Type::GPGME << std::string { document };
+        } else {
+            QWARN("Compiled with GPGME, but GPGME not functional");
+        }
 #    endif
+#else
+        QTest::addRow("%s", document) << std::string { document };
 #endif
+    }
 }
 
 void TestSignatureBasics::cleanupTestCase()
@@ -87,10 +107,10 @@ void TestSignatureBasics::testSignatureCount()
     auto signatureFields = doc->getSignatureFields();
     QCOMPARE(signatureFields.size(), 4);
     // count active signatures
-    QVERIFY(signatureFields[0]->getSignature());
-    QVERIFY(signatureFields[1]->getSignature());
-    QVERIFY(!signatureFields[2]->getSignature());
-    QVERIFY(!signatureFields[3]->getSignature());
+    QVERIFY(!signatureFields[0]->getSignature().empty());
+    QVERIFY(!signatureFields[1]->getSignature().empty());
+    QVERIFY(signatureFields[2]->getSignature().empty());
+    QVERIFY(signatureFields[3]->getSignature().empty());
 }
 
 void TestSignatureBasics::testSignatureSizes()
@@ -101,15 +121,15 @@ void TestSignatureBasics::testSignatureSizes()
     // a padded field. At least the pdf specification suggest to pad
     // the field.
     // Poppler before 23.04 did not have a padded field, later versions do.
-    QCOMPARE(signatureFields[0]->getSignature()->getLength(), 10230); // Signature data size is 2340
-    QCOMPARE(signatureFields[1]->getSignature()->getLength(), 10196); // Signature data size is 2340
+    QCOMPARE(signatureFields[0]->getSignature().size(), 10230); // Signature data size is 2340
+    QCOMPARE(signatureFields[1]->getSignature().size(), 10196); // Signature data size is 2340
 }
 
 void TestSignatureBasics::testSignerInfo()
 {
     auto signatureFields = doc->getSignatureFields();
     QCOMPARE(signatureFields[0]->getCreateWidget()->getField()->getFullyQualifiedName()->toStr(), std::string { "P2.AnA_Signature0_B_" });
-    QCOMPARE(signatureFields[0]->getSignatureType(), ETSI_CAdES_detached);
+    QCOMPARE(signatureFields[0]->getSignatureType(), CryptoSign::SignatureType::ETSI_CAdES_detached);
     auto siginfo0 = signatureFields[0]->validateSignatureAsync(false, false, -1 /* now */, false, false, {});
     signatureFields[0]->validateSignatureResult();
 #ifdef ENABLE_SIGNATURES
@@ -123,7 +143,7 @@ void TestSignatureBasics::testSignerInfo()
     QCOMPARE(siginfo0->getSigningTime(), time_t(1677570911));
 
     QCOMPARE(signatureFields[1]->getCreateWidget()->getField()->getFullyQualifiedName()->toStr(), std::string { "P2.AnA_Signature1_B_" });
-    QCOMPARE(signatureFields[1]->getSignatureType(), ETSI_CAdES_detached);
+    QCOMPARE(signatureFields[1]->getSignatureType(), CryptoSign::SignatureType::ETSI_CAdES_detached);
     auto siginfo1 = signatureFields[1]->validateSignatureAsync(false, false, -1 /* now */, false, false, {});
     signatureFields[1]->validateSignatureResult();
 #ifdef ENABLE_SIGNATURES
@@ -143,17 +163,16 @@ void TestSignatureBasics::testSignerInfo()
     QCOMPARE(siginfo1->getSigningTime(), time_t(1677840601));
 
     QCOMPARE(signatureFields[2]->getCreateWidget()->getField()->getFullyQualifiedName()->toStr(), std::string { "P2.AnA_Signature2_B_" });
-    QCOMPARE(signatureFields[2]->getSignatureType(), unsigned_signature_field);
+    QCOMPARE(signatureFields[2]->getSignatureType(), CryptoSign::SignatureType::unsigned_signature_field);
     QCOMPARE(signatureFields[3]->getCreateWidget()->getField()->getFullyQualifiedName()->toStr(), std::string { "P2.AnA_Signature3_B_" });
-    QCOMPARE(signatureFields[3]->getSignatureType(), unsigned_signature_field);
+    QCOMPARE(signatureFields[3]->getSignatureType(), CryptoSign::SignatureType::unsigned_signature_field);
 }
 
 void TestSignatureBasics::testSignedRanges()
 {
     auto signatureFields = doc->getSignatureFields();
 
-    Goffset size0;
-    auto sig0 = signatureFields[0]->getCheckedSignature(&size0);
+    auto [sig0, size0] = signatureFields[0]->getCheckedSignature();
     QVERIFY(sig0);
     auto ranges0 = signatureFields[0]->getSignedRangeBounds();
     QCOMPARE(ranges0.size(), 4);
@@ -163,8 +182,7 @@ void TestSignatureBasics::testSignedRanges()
     QCOMPARE(ranges0[3], 58529);
     QVERIFY(ranges0[3] != size0); // signature does not cover all of it
 
-    Goffset size1;
-    auto sig1 = signatureFields[1]->getCheckedSignature(&size1);
+    auto [sig1, size1] = signatureFields[1]->getCheckedSignature();
     QVERIFY(sig1);
     auto ranges1 = signatureFields[1]->getSignedRangeBounds();
     QCOMPARE(ranges1.size(), 4);

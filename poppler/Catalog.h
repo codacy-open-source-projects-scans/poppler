@@ -14,7 +14,7 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2005 Kristian Høgsberg <krh@redhat.com>
-// Copyright (C) 2005, 2007, 2009-2011, 2013, 2017-2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005, 2007, 2009-2011, 2013, 2017-2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2005 Jonathan Blandford <jrb@redhat.com>
 // Copyright (C) 2005, 2006, 2008 Brad Hards <bradh@frogmouth.net>
 // Copyright (C) 2007 Julien Rebetez <julienr@svn.gnome.org>
@@ -32,8 +32,9 @@
 // Copyright (C) 2020 Katarina Behrens <Katarina.Behrens@cib.de>
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
 // Copyright (C) 2021 RM <rm+git@arcsin.org>
-// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2024 Hubert Figuière <hub@figuiere.net>
+// Copyright (C) 2025 Trystan Mata <trystan.mata@tytanium.xyz>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -47,6 +48,7 @@
 #include "poppler_private_export.h"
 #include "Object.h"
 #include "Link.h"
+#include "GfxState.h"
 
 #include <memory>
 #include <optional>
@@ -89,7 +91,7 @@ public:
 private:
     struct Entry
     {
-        Entry(Array *array, int index);
+        Entry(const Array &array, int index);
         ~Entry();
         GooString name;
         Object value;
@@ -196,10 +198,10 @@ public:
     const GooString *getJSName(int i) { return getJSNameTree()->getName(i); }
 
     // Get the i'th JavaScript script (at the Document level) in the document
-    GooString *getJS(int i);
+    std::string getJS(int i);
 
     // Convert between page indices and page labels.
-    bool labelToIndex(GooString *label, int *index);
+    bool labelToIndex(const GooString &label, int *index);
     bool indexToLabel(int index, GooString *label);
 
     Object *getOutline();
@@ -211,7 +213,7 @@ public:
     void removeFormFromAcroForm(const Ref formRef);
     void setAcroFormModified();
 
-    OCGs *getOptContentConfig() { return optContent; }
+    const OCGs *getOptContentConfig() { return optContent.get(); }
 
     int getPDFMajorVersion() const { return catalogPdfMajorVersion; }
     int getPDFMinorVersion() const { return catalogPdfMinorVersion; }
@@ -269,6 +271,11 @@ public:
 
     std::unique_ptr<LinkAction> getOpenAction() const;
 
+#ifdef USE_CMS
+    GfxLCMSProfilePtr getDisplayProfile();
+    std::shared_ptr<GfxXYZ2DisplayTransforms> getXYZ2DisplayTransforms();
+#endif
+
 private:
     // Get page label info.
     PageLabelInfo *getPageLabelInfo();
@@ -279,7 +286,7 @@ private:
     std::unordered_map<Ref, std::size_t> refPageMap;
     std::vector<Object> *pagesList;
     std::vector<Ref> *pagesRefList;
-    std::vector<PageAttrs *> *attrsList;
+    std::vector<std::unique_ptr<PageAttrs>> attrsList;
     std::vector<int> *kidsIdxList;
     Form *form;
     ViewerPreferences *viewerPrefs;
@@ -296,7 +303,7 @@ private:
     Object outline; // outline dictionary
     Object acroForm; // AcroForm dictionary
     Object viewerPreferences; // ViewerPreference dictionary
-    OCGs *optContent; // Optional Content groups
+    std::unique_ptr<OCGs> optContent; // Optional Content groups
     bool ok; // true if catalog is valid
     PageLabelInfo *pageLabelInfo; // info about page labels
     PageMode pageMode; // page mode
@@ -319,6 +326,11 @@ private:
     int catalogPdfMinorVersion = -1;
 
     mutable std::recursive_mutex mutex;
+
+#ifdef USE_CMS
+    GfxLCMSProfilePtr displayProfile;
+    std::shared_ptr<GfxXYZ2DisplayTransforms> XYZ2DisplayTransforms;
+#endif
 };
 
 #endif

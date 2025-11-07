@@ -13,10 +13,11 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2008, 2010, 2012, 2017, 2019 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2008, 2010, 2012, 2017, 2019, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2013 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2020 Jakub Alba <jakubalba@gmail.com>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -44,12 +45,12 @@ Object Object::copy() const
     CHECK_NOT_DEAD;
 
     Object obj;
-    std::memcpy(reinterpret_cast<void *>(&obj), this, sizeof(Object));
+    std::memcpy(reinterpret_cast<void *>(&obj), this, sizeof(Object)); // NOLINT(bugprone-undefined-memory-manipulation)
 
     switch (type) {
     case objString:
     case objHexString:
-        obj.string = string->copy();
+        obj.string = string->copy().release();
         break;
     case objName:
     case objCmd:
@@ -76,12 +77,12 @@ Object Object::deepCopy() const
     CHECK_NOT_DEAD;
 
     Object obj;
-    std::memcpy(reinterpret_cast<void *>(&obj), this, sizeof(Object));
+    std::memcpy(reinterpret_cast<void *>(&obj), this, sizeof(Object)); // NOLINT(bugprone-undefined-memory-manipulation)
 
     switch (type) {
     case objString:
     case objHexString:
-        obj.string = string->copy();
+        obj.string = string->copy().release();
         break;
     case objName:
     case objCmd:
@@ -150,8 +151,6 @@ const char *Object::getTypeName() const
 
 void Object::print(FILE *f) const
 {
-    int i;
-
     switch (type) {
     case objBool:
         fprintf(f, "%s", booln ? "true" : "false");
@@ -164,12 +163,12 @@ void Object::print(FILE *f) const
         break;
     case objString:
         fprintf(f, "(");
-        fwrite(string->c_str(), 1, string->getLength(), f);
+        fwrite(string->c_str(), 1, string->size(), f);
         fprintf(f, ")");
         break;
     case objHexString:
         fprintf(f, "<");
-        for (i = 0; i < string->getLength(); i++) {
+        for (size_t i = 0; i < string->size(); i++) {
             fprintf(f, "%02x", string->getChar(i) & 0xff);
         }
         fprintf(f, ">");
@@ -182,7 +181,7 @@ void Object::print(FILE *f) const
         break;
     case objArray:
         fprintf(f, "[");
-        for (i = 0; i < arrayGetLength(); ++i) {
+        for (int i = 0; i < arrayGetLength(); ++i) {
             if (i > 0) {
                 fprintf(f, " ");
             }
@@ -193,7 +192,7 @@ void Object::print(FILE *f) const
         break;
     case objDict:
         fprintf(f, "<<");
-        for (i = 0; i < dictGetLength(); ++i) {
+        for (int i = 0; i < dictGetLength(); ++i) {
             fprintf(f, " /%s ", dictGetKey(i));
             const Object &obj = dictGetValNF(i);
             obj.print(f);

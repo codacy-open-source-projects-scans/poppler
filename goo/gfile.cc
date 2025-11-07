@@ -19,7 +19,7 @@
 // Copyright (C) 2006 Kristian Høgsberg <krh@redhat.com>
 // Copyright (C) 2008 Adam Batkin <adam@batkin.net>
 // Copyright (C) 2008, 2010, 2012, 2013 Hib Eris <hib@hiberis.nl>
-// Copyright (C) 2009, 2012, 2014, 2017, 2018, 2021, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2009, 2012, 2014, 2017, 2018, 2021, 2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2009 Kovid Goyal <kovid@kovidgoyal.net>
 // Copyright (C) 2013, 2018 Adam Reichold <adamreichold@myopera.com>
 // Copyright (C) 2013, 2017 Adrian Johnson <ajohnson@redneon.com>
@@ -28,6 +28,7 @@
 // Copyright (C) 2017 Christoph Cullmann <cullmann@kde.org>
 // Copyright (C) 2018 Mojca Miklavec <mojca@macports.org>
 // Copyright (C) 2019, 2021 Christian Persch <chpe@src.gnome.org>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -48,7 +49,6 @@
 #include <limits>
 #include "GooString.h"
 #include "gfile.h"
-#include "gdir.h"
 
 // Some systems don't define this, so just make it something reasonably
 // large.
@@ -99,15 +99,13 @@ GooString *appendToPath(GooString *path, const char *fileName)
 {
 #ifdef _WIN32
     //---------- Win32 ----------
-    GooString *tmp;
     char buf[256];
     char *fp;
 
-    tmp = new GooString(path);
+    auto tmp = path->copy();
     tmp->append('/');
     tmp->append(fileName);
     GetFullPathNameA(tmp->c_str(), sizeof(buf), buf, &fp);
-    delete tmp;
     path->clear();
     path->append(buf);
     return path;
@@ -123,26 +121,26 @@ GooString *appendToPath(GooString *path, const char *fileName)
 
     // appending ".." goes up one directory
     if (!strcmp(fileName, "..")) {
-        for (i = path->getLength() - 2; i >= 0; --i) {
+        for (i = path->size() - 2; i >= 0; --i) {
             if (path->getChar(i) == '/') {
                 break;
             }
         }
         if (i <= 0) {
             if (path->getChar(0) == '/') {
-                path->del(1, path->getLength() - 1);
+                path->erase(1, path->size() - 1);
             } else {
                 path->clear();
                 path->append("..");
             }
         } else {
-            path->del(i, path->getLength() - i);
+            path->erase(i, path->size() - i);
         }
         return path;
     }
 
     // otherwise, append "/" and new path component
-    if (path->getLength() > 0 && path->getChar(path->getLength() - 1) != '/') {
+    if (!path->empty() && path->getChar(path->size() - 1) != '/') {
         path->append('/');
     }
     path->append(fileName);
@@ -434,112 +432,3 @@ bool GooFile::modificationTimeChangedSinceOpen() const
 }
 
 #endif // _WIN32
-
-//------------------------------------------------------------------------
-// GDir and GDirEntry
-//------------------------------------------------------------------------
-
-GDirEntry::GDirEntry(const char *dirPath, const char *nameA, bool doStat)
-{
-#ifdef _WIN32
-    DWORD fa;
-#else
-    struct stat st;
-#endif
-
-    name = new GooString(nameA);
-    dir = false;
-    fullPath = new GooString(dirPath);
-    appendToPath(fullPath, nameA);
-    if (doStat) {
-#ifdef _WIN32
-        fa = GetFileAttributesA(fullPath->c_str());
-        dir = (fa != 0xFFFFFFFF && (fa & FILE_ATTRIBUTE_DIRECTORY));
-#else
-        if (stat(fullPath->c_str(), &st) == 0) {
-            dir = S_ISDIR(st.st_mode);
-        }
-#endif
-    }
-}
-
-GDirEntry::~GDirEntry()
-{
-    delete fullPath;
-    delete name;
-}
-
-GDir::GDir(const char *name, bool doStatA)
-{
-    path = new GooString(name);
-    doStat = doStatA;
-#ifdef _WIN32
-    GooString *tmp;
-
-    tmp = path->copy();
-    tmp->append("/*.*");
-    hnd = FindFirstFileA(tmp->c_str(), &ffd);
-    delete tmp;
-#else
-    dir = opendir(name);
-#endif
-}
-
-GDir::~GDir()
-{
-    delete path;
-#ifdef _WIN32
-    if (hnd != INVALID_HANDLE_VALUE) {
-        FindClose(hnd);
-        hnd = INVALID_HANDLE_VALUE;
-    }
-#else
-    if (dir) {
-        closedir(dir);
-    }
-#endif
-}
-
-std::unique_ptr<GDirEntry> GDir::getNextEntry()
-{
-#ifdef _WIN32
-    if (hnd != INVALID_HANDLE_VALUE) {
-        auto e = std::make_unique<GDirEntry>(path->c_str(), ffd.cFileName, doStat);
-        if (!FindNextFileA(hnd, &ffd)) {
-            FindClose(hnd);
-            hnd = INVALID_HANDLE_VALUE;
-        }
-        return e;
-    }
-#else
-    struct dirent *ent;
-    if (dir) {
-        do {
-            ent = readdir(dir);
-        } while (ent && (!strcmp(ent->d_name, ".") || !strcmp(ent->d_name, "..")));
-        if (ent) {
-            return std::make_unique<GDirEntry>(path->c_str(), ent->d_name, doStat);
-        }
-    }
-#endif
-
-    return {};
-}
-
-void GDir::rewind()
-{
-#ifdef _WIN32
-    GooString *tmp;
-
-    if (hnd != INVALID_HANDLE_VALUE)
-        FindClose(hnd);
-    tmp = path->copy();
-    tmp->append("/*.*");
-    hnd = FindFirstFileA(tmp->c_str(), &ffd);
-    delete tmp;
-#else
-    if (dir) {
-        rewinddir(dir);
-    }
-#endif
-}

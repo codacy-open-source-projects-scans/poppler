@@ -13,7 +13,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2005, 2008, 2015, 2017-2022, 2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005, 2008, 2015, 2017-2022, 2024, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2006 Takashi Iwai <tiwai@suse.de>
 // Copyright (C) 2006 Kristian Høgsberg <krh@redhat.com>
 // Copyright (C) 2007 Julien Rebetez <julienr@svn.gnome.org>
@@ -24,8 +24,8 @@
 // Copyright (C) 2015, 2018 Jason Crain <jason@aquaticape.us>
 // Copyright (C) 2015 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
-// Copyright (C) 2021, 2022 Oliver Sander <oliver.sander@tu-dresden.de>
-// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2021, 2022, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -36,6 +36,7 @@
 #define GFXFONT_H
 
 #include <memory>
+#include <array>
 #include <optional>
 
 #include "goo/GooString.h"
@@ -199,7 +200,7 @@ public:
     bool matches(const char *tagA) const { return tag == tagA; }
 
     // Get font family name.
-    GooString *getFamily() const { return family; }
+    const GooString *getFamily() const { return family.get(); }
 
     // Get font stretch.
     Stretch getStretch() const { return stretch; }
@@ -241,7 +242,7 @@ public:
 
     // Get the PostScript font name for the embedded font.  Returns
     // NULL if there is no embedded font.
-    const GooString *getEmbeddedFontName() const { return embFontName; }
+    const GooString *getEmbeddedFontName() const { return embFontName.get(); }
 
     // Get font descriptor flags.
     int getFlags() const { return flags; }
@@ -255,10 +256,10 @@ public:
     virtual const CharCodeToUnicode *getToUnicode() const = 0;
 
     // Return the font matrix.
-    const double *getFontMatrix() const { return fontMat; }
+    const std::array<double, 6> &getFontMatrix() const { return fontMat; }
 
     // Return the font bounding box.
-    const double *getFontBBox() const { return fontBBox; }
+    const std::array<double, 4> &getFontBBox() const { return fontBBox; }
 
     // Return the ascent and descent values.
     double getAscent() const { return ascent; }
@@ -294,26 +295,28 @@ public:
     // http://sourceforge.net/adobe/aglfn/wiki/AGL%20Specification/
     static const char *getAlternateName(const char *name);
 
+    static bool isBase14Font(std::string_view family, std::string_view style);
+
 protected:
     GfxFont(const char *tagA, Ref idA, std::optional<std::string> &&nameA, GfxFontType typeA, Ref embFontIDA);
 
     static GfxFontType getFontType(XRef *xref, Dict *fontDict, Ref *embID);
     void readFontDescriptor(XRef *xref, Dict *fontDict);
-    CharCodeToUnicode *readToUnicodeCMap(Dict *fontDict, int nBits, CharCodeToUnicode *ctu);
+    [[nodiscard]] std::unique_ptr<CharCodeToUnicode> readToUnicodeCMap(Dict *fontDict, int nBits, std::unique_ptr<CharCodeToUnicode> ctu);
     static std::optional<GfxFontLoc> getExternalFont(const std::string &path, bool cid);
 
     const std::string tag; // PDF font tag
     const Ref id; // reference (used as unique ID)
     std::optional<std::string> name; // font name
-    GooString *family; // font family
+    std::unique_ptr<GooString> family; // font family
     Stretch stretch; // font stretch
     Weight weight; // font weight
     const GfxFontType type; // type of font
     int flags; // font descriptor flags
-    GooString *embFontName; // name of embedded font
+    std::unique_ptr<GooString> embFontName; // name of embedded font
     Ref embFontID; // ref to embedded font file stream
-    double fontMat[6]; // font matrix (Type 3 only)
-    double fontBBox[4]; // font bounding box (Type 3 only)
+    std::array<double, 6> fontMat; // font matrix (Type 3 only)
+    std::array<double, 4> fontBBox; // font bounding box (Type 3 only)
     double missingWidth; // "default" width
     double ascent; // max height above baseline
     double descent; // max depth below baseline
@@ -353,7 +356,7 @@ public:
 
     // Return a char code-to-GID mapping for the provided font file.
     // (This is only useful for TrueType fonts.)
-    int *getCodeToGIDMap(FoFiTrueType *ff);
+    std::vector<int> getCodeToGIDMap(FoFiTrueType *ff);
 
     // Return the Type 3 CharProc dictionary, or NULL if none.
     Dict *getCharProcs();
@@ -365,14 +368,14 @@ public:
     // Return the Type 3 Resources dictionary, or NULL if none.
     Dict *getResources();
 
-private:
     ~Gfx8BitFont() override;
 
+private:
     const Base14FontMapEntry *base14; // for Base-14 fonts only; NULL otherwise
     char *enc[256]; // char code --> char name
     char encFree[256]; // boolean for each char name: if set,
                        //   the string is malloc'ed
-    CharCodeToUnicode *ctu; // char code --> Unicode
+    std::unique_ptr<CharCodeToUnicode> ctu; // char code --> Unicode
     bool hasEncoding;
     bool usesMacRomanEnc;
     double widths[256]; // character widths
@@ -406,28 +409,27 @@ public:
 
     // Return the CID-to-GID mapping table.  These should only be called
     // if type is fontCIDType2.
-    int *getCIDToGID() const { return cidToGID; }
-    unsigned int getCIDToGIDLen() const { return cidToGIDLen; }
+    const std::vector<int> &getCIDToGID() const { return cidToGID; }
+    unsigned int getCIDToGIDLen() const { return cidToGID.size(); }
 
-    int *getCodeToGIDMap(FoFiTrueType *ff, int *codeToGIDLen);
+    std::vector<int> getCodeToGIDMap(FoFiTrueType *ff);
 
     double getWidth(char *s, int len) const;
 
-private:
     ~GfxCIDFont() override;
 
+private:
     int mapCodeToGID(FoFiTrueType *ff, int cmapi, Unicode unicode, bool wmode);
     double getWidth(CID cid) const; // Get width of a character.
 
-    GooString *collection; // collection name
+    std::unique_ptr<GooString> collection; // collection name
     std::shared_ptr<CMap> cMap; // char code --> CID
-    CharCodeToUnicode *ctu; // CID --> Unicode
+    std::shared_ptr<CharCodeToUnicode> ctu; // CID --> Unicode
     bool ctuUsesCharCode; // true: ctu maps char code to Unicode;
                           //   false: ctu maps CID to Unicode
     GfxFontCIDWidths widths; // character widths
-    int *cidToGID; // CID --> GID mapping (for embedded
-                   //   TrueType fonts)
-    unsigned int cidToGIDLen;
+    std::vector<int> cidToGID; // CID --> GID mapping (for embedded
+                               //   TrueType fonts)
 };
 
 //------------------------------------------------------------------------
@@ -438,7 +440,7 @@ class GfxFontDict
 {
 public:
     // Build the font dictionary, given the PDF font dictionary.
-    GfxFontDict(XRef *xref, Ref *fontDictRef, Dict *fontDict);
+    GfxFontDict(XRef *xref, const Ref fontDictRef, Dict *fontDict);
 
     GfxFontDict(const GfxFontDict &) = delete;
     GfxFontDict &operator=(const GfxFontDict &) = delete;

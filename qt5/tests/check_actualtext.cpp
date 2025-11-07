@@ -9,7 +9,10 @@ class TestActualText : public QObject
     Q_OBJECT
 public:
     explicit TestActualText(QObject *parent = nullptr) : QObject(parent) { }
-private slots:
+
+    void checkActualText(Poppler::Document *doc, const QRectF &area, const QString &text);
+
+private Q_SLOTS:
     void checkActualText1();
     void checkActualText2();
     void checkActualText2_data();
@@ -17,9 +20,6 @@ private slots:
     void checkAllOrientations_data();
     void checkFakeboldText();
     void checkFakeboldText_data();
-
-private:
-    void checkActualText(Poppler::Document *doc, const QRectF &area, const QString &text);
 };
 
 void TestActualText::checkActualText(Poppler::Document *doc, const QRectF &area, const QString &text)
@@ -35,7 +35,7 @@ void TestActualText::checkActualText(Poppler::Document *doc, const QRectF &area,
 void TestActualText::checkActualText1()
 {
     Poppler::Document *doc;
-    doc = Poppler::Document::load(TESTDATADIR "/unittestcases/WithActualText.pdf");
+    doc = Poppler::Document::load(QStringLiteral(TESTDATADIR "/unittestcases/WithActualText.pdf"));
     QVERIFY(doc);
 
     checkActualText(doc, QRectF {}, QStringLiteral("The slow brown fox jumps over the black dog."));
@@ -48,7 +48,7 @@ void TestActualText::checkActualText2()
     QFETCH(QRectF, area);
     QFETCH(QString, text);
 
-    QFile file(TESTDATADIR "/unittestcases/WithActualText.pdf");
+    QFile file(QStringLiteral(TESTDATADIR "/unittestcases/WithActualText.pdf"));
     QVERIFY(file.open(QIODevice::ReadOnly));
 
     Poppler::Document *doc;
@@ -87,7 +87,7 @@ void TestActualText::checkAllOrientations()
     QFETCH(QRectF, area);
     QFETCH(QString, text);
 
-    QString path { TESTDATADIR "/unittestcases/orientation.pdf" };
+    QString path { QStringLiteral(TESTDATADIR "/unittestcases/orientation.pdf") };
     std::unique_ptr<Poppler::Document> doc { Poppler::Document::load(path) };
     QVERIFY(doc);
 
@@ -134,25 +134,13 @@ void TestActualText::checkFakeboldText()
     QFETCH(QRectF, area);
     QFETCH(QString, text);
 
-    QString path { TESTDATADIR "/unittestcases/fakebold.pdf" };
+    QString path { QStringLiteral(TESTDATADIR "/unittestcases/fakebold.pdf") };
     std::unique_ptr<Poppler::Document> doc { Poppler::Document::load(path) };
     QVERIFY(doc);
 
     std::unique_ptr<Poppler::Page> page { doc->page(pageNr) };
     QVERIFY(page);
 
-    QEXPECT_FAIL("Upright line 3", "Fakebold not matched when bold word is followed with non-bold glyph", Continue);
-    QEXPECT_FAIL("Upright line 4", "Fakebold not matched when bold word follows non-bold glyph", Continue);
-    QEXPECT_FAIL("Upright line 5", "Fakebold not matched when bold word is enclosed by non-bold glyphs", Continue);
-    QEXPECT_FAIL("Rotated 90' line 3", "Fakebold not matched when bold word is followed with non-bold glyph", Continue);
-    QEXPECT_FAIL("Rotated 90' line 4", "Fakebold not matched when bold word follows non-bold glyph", Continue);
-    QEXPECT_FAIL("Rotated 90' line 5", "Fakebold not matched when bold word is enclosed by non-bold glyphs", Continue);
-    QEXPECT_FAIL("Rotated 180' line 3", "Fakebold not matched when bold word is followed with non-bold glyph", Continue);
-    QEXPECT_FAIL("Rotated 180' line 4", "Fakebold not matched when bold word follows non-bold glyph", Continue);
-    QEXPECT_FAIL("Rotated 180' line 5", "Fakebold not matched when bold word is enclosed by non-bold glyphs", Continue);
-    QEXPECT_FAIL("Rotated 270' line 3", "Fakebold not matched when bold word is followed with non-bold glyph", Continue);
-    QEXPECT_FAIL("Rotated 270' line 4", "Fakebold not matched when bold word follows non-bold glyph", Continue);
-    QEXPECT_FAIL("Rotated 270' line 5", "Fakebold not matched when bold word is enclosed by non-bold glyphs", Continue);
     QCOMPARE(page->text(area), text);
 }
 

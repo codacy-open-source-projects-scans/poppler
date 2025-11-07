@@ -8,6 +8,7 @@
  * Copyright (C) 2014 Adrian Johnson <ajohnson@redneon.com>
  * Copyright (C) 2020 William Bader <williambader@hotmail.com>
  * Copyright (C) 2023 Kevin Ottens <kevin.ottens@enioka.com>. Work sponsored by De Bortoli Wines
+ * Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -61,19 +62,7 @@ public:
 };
 
 PSConverterPrivate::PSConverterPrivate()
-    : BaseConverterPrivate(),
-      hDPI(72),
-      vDPI(72),
-      rotate(0),
-      paperWidth(-1),
-      paperHeight(-1),
-      marginRight(0),
-      marginBottom(0),
-      marginLeft(0),
-      marginTop(0),
-      opts(PSConverter::Printing),
-      pageConvertedCallback(nullptr),
-      pageConvertedPayload(nullptr)
+    : hDPI(72), vDPI(72), rotate(0), paperWidth(-1), paperHeight(-1), marginRight(0), marginBottom(0), marginLeft(0), marginTop(0), opts(PSConverter::Printing), pageConvertedCallback(nullptr), pageConvertedPayload(nullptr)
 {
 }
 
@@ -85,7 +74,7 @@ PSConverter::PSConverter(DocumentData *document) : BaseConverter(*new PSConverte
     d->document = document;
 }
 
-PSConverter::~PSConverter() { }
+PSConverter::~PSConverter() = default;
 
 void PSConverter::setPageList(const QList<int> &pageList)
 {
@@ -240,7 +229,7 @@ bool PSConverter::convert()
     }
 
     std::vector<int> pages;
-    foreach (int page, d->pageList) {
+    Q_FOREACH (int page, d->pageList) {
         pages.push_back(page);
     }
 
@@ -260,7 +249,7 @@ bool PSConverter::convert()
     if (psOut->isOk()) {
         bool isPrinting = (d->opts & Printing) ? true : false;
         bool showAnnotations = (d->opts & HideAnnotations) ? false : true;
-        foreach (int page, d->pageList) {
+        Q_FOREACH (int page, d->pageList) {
             d->document->doc->displayPage(psOut, page, d->hDPI, d->vDPI, d->rotate, false, true, isPrinting, nullptr, nullptr, annotDisplayDecideCbk, &showAnnotations, true);
             if (d->pageConvertedCallback) {
                 (*d->pageConvertedCallback)(page, d->pageConvertedPayload);

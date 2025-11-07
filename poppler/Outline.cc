@@ -14,7 +14,7 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2005 Marco Pesenti Gritti <mpg@redhat.com>
-// Copyright (C) 2008, 2016-2019, 2021, 2023 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2008, 2016-2019, 2021, 2023, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2009 Nick Jones <nick.jones@network-box.com>
 // Copyright (C) 2016 Jason Crain <jason@aquaticape.us>
 // Copyright (C) 2017 Adrian Johnson <ajohnson@redneon.com>
@@ -22,7 +22,7 @@
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019, 2020 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2021 RM <rm+git@arcsin.org>
-// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -91,8 +91,7 @@ static void insertChildHelper(const std::string &itemTitle, int destPageNum, uns
 
     Object outlineItem = Object(new Dict(xref));
 
-    GooString *g = new GooString(itemTitle);
-    outlineItem.dictSet("Title", Object(g));
+    outlineItem.dictSet("Title", Object(std::make_unique<GooString>(itemTitle)));
     outlineItem.dictSet("Dest", Object(a));
     outlineItem.dictSet("Count", Object(1));
     outlineItem.dictAdd("Parent", Object(parentObjRef));
@@ -302,8 +301,7 @@ int Outline::addOutlineTreeNodeList(const std::vector<OutlineTreeNode> &nodeList
         }
         lastRef = outlineItemRef;
 
-        GooString *g = new GooString(node.title);
-        outlineItem.dictSet("Title", Object(g));
+        outlineItem.dictSet("Title", Object(std::make_unique<GooString>(node.title)));
         outlineItem.dictSet("Dest", Object(a));
         itemCount++;
 
@@ -414,6 +412,16 @@ OutlineItem::OutlineItem(const Dict *dict, Ref refA, OutlineItem *parentA, XRef 
     if (obj1.isString()) {
         const GooString *s = obj1.getString();
         title = TextStringToUCS4(s->toStr());
+        // All downstream users treats empty titles
+        // as this item (and children) doesn't exist
+        // but there exists documents in the wild
+        // where outline is empty.
+        // In order to don't break downstreams, do
+        // replace it with a zero width space.
+        if (title.empty()) {
+            static const std::vector<Unicode> zeroWidthSpace { 0x200B };
+            title = UTF16toUCS4(zeroWidthSpace);
+        }
     }
 
     obj1 = dict->lookup("Dest");
@@ -450,9 +458,7 @@ std::vector<OutlineItem *> *OutlineItem::readItemList(OutlineItem *parent, const
 {
     auto items = new std::vector<OutlineItem *>();
 
-    // could be a hash (unordered_map) too for better avg case check
-    // small number of objects expected, likely doesn't matter
-    std::set<Ref> alreadyRead;
+    RefRecursionChecker alreadyRead;
 
     OutlineItem *parentO = parent;
     while (parentO) {
@@ -461,12 +467,11 @@ std::vector<OutlineItem *> *OutlineItem::readItemList(OutlineItem *parent, const
     }
 
     Object tempObj = firstItemRef->copy();
-    while (tempObj.isRef() && (tempObj.getRefNum() >= 0) && (tempObj.getRefNum() < xrefA->getNumObjects()) && alreadyRead.find(tempObj.getRef()) == alreadyRead.end()) {
+    while (tempObj.isRef() && (tempObj.getRefNum() >= 0) && (tempObj.getRefNum() < xrefA->getNumObjects()) && alreadyRead.insert(tempObj.getRef())) {
         Object obj = tempObj.fetch(xrefA);
         if (!obj.isDict()) {
             break;
         }
-        alreadyRead.insert(tempObj.getRef());
         OutlineItem *item = new OutlineItem(obj.getDict(), tempObj.getRef(), parent, xrefA, docA);
         items->push_back(item);
         tempObj = obj.dictLookupNF("Next").copy();
@@ -490,9 +495,9 @@ void OutlineItem::open()
 void OutlineItem::setTitle(const std::string &titleA)
 {
     Object dict = xref->fetch(ref);
-    GooString *g = new GooString(titleA);
+    auto g = std::make_unique<GooString>(titleA);
     title = TextStringToUCS4(g->toStr());
-    dict.dictSet("Title", Object(g));
+    dict.dictSet("Title", Object(std::move(g)));
     xref->setModifiedObject(&dict, ref);
 }
 

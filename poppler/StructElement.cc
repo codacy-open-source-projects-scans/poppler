@@ -6,11 +6,12 @@
 //
 // Copyright 2013, 2014 Igalia S.L.
 // Copyright 2014 Luigi Scarso <luigi.scarso@gmail.com>
-// Copyright 2014, 2017-2019, 2021, 2023 Albert Astals Cid <aacid@kde.org>
+// Copyright 2014, 2017-2019, 2021, 2023, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright 2015 Dmytro Morgun <lztoad@gmail.com>
 // Copyright 2018, 2021, 2023 Adrian Johnson <ajohnson@redneon.com>
 // Copyright 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright 2018 Adam Reichold <adam.reichold@t-online.de>
+// Copyright 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -154,15 +155,15 @@ static bool isTextString(Object *value)
     static bool name(Object *value)                                                                                                                                                                                                            \
     {                                                                                                                                                                                                                                          \
         if (!value->isArray())                                                                                                                                                                                                                 \
-            return allowSingle ? checkItem(value) : false;                                                                                                                                                                                     \
+            return (allowSingle) ? checkItem(value) : false;                                                                                                                                                                                   \
                                                                                                                                                                                                                                                \
-        if (length && value->arrayGetLength() != length)                                                                                                                                                                                       \
+        if ((length) && value->arrayGetLength() != (length))                                                                                                                                                                                   \
             return false;                                                                                                                                                                                                                      \
                                                                                                                                                                                                                                                \
         bool okay = true;                                                                                                                                                                                                                      \
         for (int i = 0; i < value->arrayGetLength(); i++) {                                                                                                                                                                                    \
             Object obj = value->arrayGet(i);                                                                                                                                                                                                   \
-            if ((!allowNulls && obj.isNull()) || !checkItem(&obj)) {                                                                                                                                                                           \
+            if ((!(allowNulls) && obj.isNull()) || !checkItem(&obj)) {                                                                                                                                                                         \
                 okay = false;                                                                                                                                                                                                                  \
                 break;                                                                                                                                                                                                                         \
             }                                                                                                                                                                                                                                  \
@@ -193,7 +194,7 @@ struct AttributeMapEntry
 
 struct AttributeDefaults
 {
-    AttributeDefaults() {}; // needed to support old clang
+    AttributeDefaults() = default; // needed to support old clang
 
     Object Inline = Object(objName, "Inline");
     Object LrTb = Object(objName, "LrTb");
@@ -210,20 +211,11 @@ struct AttributeDefaults
 
 static const AttributeDefaults attributeDefaults;
 
-#define ATTR_LIST_END                                                                                                                                                                                                                          \
-    {                                                                                                                                                                                                                                          \
-        Attribute::Unknown, nullptr, nullptr, false, nullptr                                                                                                                                                                                   \
-    }
+#define ATTR_LIST_END { Attribute::Unknown, nullptr, nullptr, false, nullptr }
 
-#define ATTR_WITH_DEFAULT(name, inherit, check, defval)                                                                                                                                                                                        \
-    {                                                                                                                                                                                                                                          \
-        Attribute::name, #name, &attributeDefaults.defval, inherit, check                                                                                                                                                                      \
-    }
+#define ATTR_WITH_DEFAULT(name, inherit, check, defval) { Attribute::name, #name, &attributeDefaults.defval, inherit, check }
 
-#define ATTR(name, inherit, check)                                                                                                                                                                                                             \
-    {                                                                                                                                                                                                                                          \
-        Attribute::name, #name, nullptr, inherit, check                                                                                                                                                                                        \
-    }
+#define ATTR(name, inherit, check) { Attribute::name, #name, nullptr, inherit, check }
 
 static const AttributeMapEntry attributeMapCommonShared[] = { ATTR_WITH_DEFAULT(Placement, false, isPlacementName, Inline),
                                                               ATTR_WITH_DEFAULT(WritingMode, true, isWritingModeName, LrTb),
@@ -547,7 +539,7 @@ static StructElement::Type nameToType(const char *name)
 // Attribute
 //------------------------------------------------------------------------
 
-Attribute::Attribute(GooString &&nameA, Object *valueA) : type(UserProperty), owner(UserProperties), revision(0), name(std::move(nameA)), value(), hidden(false), formatted(nullptr)
+Attribute::Attribute(GooString &&nameA, Object *valueA) : type(UserProperty), owner(UserProperties), revision(0), name(std::move(nameA)), hidden(false)
 {
     assert(valueA);
     value = valueA->copy();
@@ -557,10 +549,7 @@ Attribute::Attribute(Type typeA, Object *valueA)
     : type(typeA),
       owner(UserProperties), // TODO: Determine corresponding owner from Type
       revision(0),
-      name(),
-      value(),
-      hidden(false),
-      formatted(nullptr)
+      hidden(false)
 {
     assert(valueA);
 
@@ -571,10 +560,7 @@ Attribute::Attribute(Type typeA, Object *valueA)
     }
 }
 
-Attribute::~Attribute()
-{
-    delete formatted;
-}
+Attribute::~Attribute() = default;
 
 const char *Attribute::getTypeName() const
 {
@@ -601,17 +587,16 @@ Object *Attribute::getDefaultValue(Attribute::Type type)
     return entry ? const_cast<Object *>(entry->defval) : nullptr;
 }
 
-void Attribute::setFormattedValue(const char *formattedA)
+void Attribute::setFormattedValue(const GooString *formattedA)
 {
     if (formattedA) {
         if (formatted) {
             formatted->Set(formattedA);
         } else {
-            formatted = new GooString(formattedA);
+            formatted = formattedA->copy();
         }
     } else {
-        delete formatted;
-        formatted = nullptr;
+        formatted = {};
     }
 }
 
@@ -676,7 +661,7 @@ Attribute *Attribute::parseUserProperty(Dict *property)
     Attribute *attribute = new Attribute(std::move(name), &value);
     obj = property->lookup("F");
     if (obj.isString()) {
-        attribute->setFormattedValue(obj.getString()->c_str());
+        attribute->setFormattedValue(obj.getString());
     } else if (!obj.isNull()) {
         error(errSyntaxWarning, -1, "F object is wrong type ({0:s})", obj.getTypeName());
     }
@@ -699,11 +684,6 @@ StructElement::StructData::StructData() : altText(nullptr), actualText(nullptr),
 
 StructElement::StructData::~StructData()
 {
-    delete altText;
-    delete actualText;
-    delete id;
-    delete title;
-    delete language;
     for (StructElement *element : elements) {
         delete element;
     }
@@ -963,7 +943,7 @@ void StructElement::parse(Dict *element)
     // Object ID (optional), to be looked at the IDTree in the tree root.
     obj = element->lookup("ID");
     if (obj.isString()) {
-        s->id = obj.getString()->copy();
+        s->id = obj.takeString();
     }
 
     // Page reference (optional) in which at least one of the child items
@@ -981,31 +961,31 @@ void StructElement::parse(Dict *element)
     // Element title (optional).
     obj = element->lookup("T");
     if (obj.isString()) {
-        s->title = obj.getString()->copy();
+        s->title = obj.takeString();
     }
 
     // Language (optional).
     obj = element->lookup("Lang");
     if (obj.isString()) {
-        s->language = obj.getString()->copy();
+        s->language = obj.takeString();
     }
 
     // Alternative text (optional).
     obj = element->lookup("Alt");
     if (obj.isString()) {
-        s->altText = obj.getString()->copy();
+        s->altText = obj.takeString();
     }
 
     // Expanded form of an abbreviation (optional).
     obj = element->lookup("E");
     if (obj.isString()) {
-        s->expandedAbbr = obj.getString()->copy();
+        s->expandedAbbr = obj.takeString();
     }
 
     // Actual text (optional).
     obj = element->lookup("ActualText");
     if (obj.isString()) {
-        s->actualText = obj.getString()->copy();
+        s->actualText = obj.takeString();
     }
 
     // Attributes directly attached to the element (optional).

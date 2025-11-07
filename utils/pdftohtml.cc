@@ -13,7 +13,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2007-2008, 2010, 2012, 2015-2020, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2007-2008, 2010, 2012, 2015-2020, 2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2010 Hib Eris <hib@hiberis.nl>
 // Copyright (C) 2010 Mike Slegeir <tehpola@yahoo.com>
 // Copyright (C) 2010, 2013 Suzuki Toshiya <mpsuzuki@hiroshima-u.ac.jp>
@@ -30,7 +30,7 @@
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019, 2021, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2021 Hubert Figuiere <hub@figuiere.net>
-// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -102,7 +102,7 @@ static char userPassword[33] = "";
 static bool printVersion = false;
 
 static std::unique_ptr<GooString> getInfoString(Dict *infoDict, const char *key);
-static GooString *getInfoDate(Dict *infoDict, const char *key);
+static std::optional<std::string> getInfoDate(Dict *infoDict, const char *key);
 
 static char textEncName[128] = "";
 
@@ -164,8 +164,8 @@ int main(int argc, char *argv[])
     std::unique_ptr<GooString> author;
     std::unique_ptr<GooString> keywords;
     std::unique_ptr<GooString> subject;
-    GooString *date = nullptr;
-    GooString *htmlFileName = nullptr;
+    std::optional<std::string> date;
+    std::unique_ptr<GooString> htmlFileName;
     HtmlOutputDev *htmlOut = nullptr;
     SplashOutputDev *splashOut = nullptr;
     bool doOutline;
@@ -241,33 +241,32 @@ int main(int argc, char *argv[])
 
     // construct text file name
     if (argc == 3) {
-        GooString *tmp = new GooString(argv[2]);
+        auto tmp = std::make_unique<GooString>(argv[2]);
         if (!xml) {
-            if (tmp->getLength() >= 5) {
-                const char *p = tmp->c_str() + tmp->getLength() - 5;
+            if (tmp->size() >= 5) {
+                const char *p = tmp->c_str() + tmp->size() - 5;
                 if (!strcmp(p, ".html") || !strcmp(p, ".HTML")) {
-                    htmlFileName = new GooString(tmp->c_str(), tmp->getLength() - 5);
+                    htmlFileName = std::make_unique<GooString>(tmp->c_str(), tmp->size() - 5);
                 }
             }
         } else {
-            if (tmp->getLength() >= 4) {
-                const char *p = tmp->c_str() + tmp->getLength() - 4;
+            if (tmp->size() >= 4) {
+                const char *p = tmp->c_str() + tmp->size() - 4;
                 if (!strcmp(p, ".xml") || !strcmp(p, ".XML")) {
-                    htmlFileName = new GooString(tmp->c_str(), tmp->getLength() - 4);
+                    htmlFileName = std::make_unique<GooString>(tmp->c_str(), tmp->size() - 4);
                 }
             }
         }
         if (!htmlFileName) {
-            htmlFileName = new GooString(tmp);
+            htmlFileName = std::move(tmp);
         }
-        delete tmp;
     } else if (fileName->cmp("fd://0") == 0) {
         error(errCommandLine, -1, "You have to provide an output filename when reading from stdin.");
         goto error;
     } else {
-        const char *p = fileName->c_str() + fileName->getLength() - 4;
+        const char *p = fileName->c_str() + fileName->size() - 4;
         if (!strcmp(p, ".pdf") || !strcmp(p, ".PDF")) {
-            htmlFileName = new GooString(fileName->c_str(), fileName->getLength() - 4);
+            htmlFileName = std::make_unique<GooString>(fileName->c_str(), fileName->size() - 4);
         } else {
             htmlFileName = fileName->copy();
         }
@@ -322,7 +321,7 @@ int main(int argc, char *argv[])
         }
     }
     if (!docTitle) {
-        docTitle = std::make_unique<GooString>(htmlFileName);
+        docTitle = htmlFileName->copy();
     }
 
     if (!singleHtml) {
@@ -335,9 +334,6 @@ int main(int argc, char *argv[])
     // write text file
     htmlOut = new HtmlOutputDev(doc->getCatalog(), htmlFileName->c_str(), docTitle->c_str(), author ? author->c_str() : nullptr, keywords ? keywords->c_str() : nullptr, subject ? subject->c_str() : nullptr, date ? date->c_str() : nullptr,
                                 rawOrder, firstPage, doOutline);
-    if (date) {
-        delete date;
-    }
 
     if ((complexMode || singleHtml) && !xml && !ignore) {
         // White paper color
@@ -385,10 +381,6 @@ int main(int argc, char *argv[])
 error:
     delete fileName;
 
-    if (htmlFileName) {
-        delete htmlFileName;
-    }
-
     return exit_status;
 }
 
@@ -412,10 +404,10 @@ static std::unique_ptr<GooString> getInfoString(Dict *infoDict, const char *key)
         // Convert rawString to unicode
         if (hasUnicodeByteOrderMark(rawString->toStr())) {
             isUnicode = true;
-            unicodeLength = (obj.getString()->getLength() - 2) / 2;
+            unicodeLength = (obj.getString()->size() - 2) / 2;
         } else {
             isUnicode = false;
-            unicodeLength = obj.getString()->getLength();
+            unicodeLength = obj.getString()->size();
         }
         unicodeString = new Unicode[unicodeLength];
 
@@ -435,13 +427,12 @@ static std::unique_ptr<GooString> getInfoString(Dict *infoDict, const char *key)
     return encodedString;
 }
 
-static GooString *getInfoDate(Dict *infoDict, const char *key)
+static std::optional<std::string> getInfoDate(Dict *infoDict, const char *key)
 {
     Object obj;
     int year, mon, day, hour, min, sec, tz_hour, tz_minute;
     char tz;
     struct tm tmStruct;
-    GooString *result = nullptr;
     char buf[256];
 
     obj = infoDict->lookup(key);
@@ -460,13 +451,13 @@ static GooString *getInfoDate(Dict *infoDict, const char *key)
             tmStruct.tm_isdst = -1;
             mktime(&tmStruct); // compute the tm_wday and tm_yday fields
             if (strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S+00:00", &tmStruct)) {
-                result = new GooString(buf);
+                return std::string(buf);
             } else {
-                result = new GooString(s);
+                return s->toStr();
             }
         } else {
-            result = new GooString(s);
+            return s->toStr();
         }
     }
-    return result;
+    return {};
 }

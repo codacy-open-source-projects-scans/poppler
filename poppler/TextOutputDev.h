@@ -23,11 +23,12 @@
 // Copyright (C) 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Sanchit Anand <sanxchit@gmail.com>
-// Copyright (C) 2018, 2020, 2021 Nelson Benítez León <nbenitezl@gmail.com>
+// Copyright (C) 2018, 2020, 2021, 2025 Nelson Benítez León <nbenitezl@gmail.com>
 // Copyright (C) 2019, 2022 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2019 Dan Shea <dan.shea@logical-innovations.com>
 // Copyright (C) 2020 Suzuki Toshiya <mpsuzuki@hiroshima-u.ac.jp>
-// Copyright (C) 2024 Stefan Brüns <stefan.bruens@rwth-aachen.de>
+// Copyright (C) 2024, 2025 Stefan Brüns <stefan.bruens@rwth-aachen.de>
+// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -167,7 +168,7 @@ public:
     // <word>.
     double primaryDelta(const TextWord *word) const;
 
-    static int cmpYX(const void *p1, const void *p2);
+    static bool cmpYX(const TextWord *const word1, const TextWord *const word2);
 
     void visitSelection(TextSelectionVisitor *visitor, const PDFRectangle *selection, SelectionStyle style);
 
@@ -272,20 +273,23 @@ public:
     TextPool(const TextPool &) = delete;
     TextPool &operator=(const TextPool &) = delete;
 
-    TextWord *getPool(int baseIdx) { return pool[baseIdx - minBaseIdx]; }
-    void setPool(int baseIdx, TextWord *p) { pool[baseIdx - minBaseIdx] = p; }
+    TextWord *getPool(int baseIdx) { return pool[baseIdx - minBaseIdx].head; }
+    void setPool(int baseIdx, TextWord *p) { pool[baseIdx - minBaseIdx].head = p; }
 
     int getBaseIdx(double base) const;
 
     void addWord(TextWord *word);
+    void sort();
 
 private:
     int minBaseIdx; // min baseline bucket index
     int maxBaseIdx; // max baseline bucket index
-    TextWord **pool; // array of linked lists, one for each
-                     //   baseline value (multiple of 4 pts)
-    TextWord *cursor; // pointer to last-accessed word
-    int cursorBaseIdx; // baseline bucket index of last-accessed word
+    struct WordList
+    {
+        TextWord *head = nullptr;
+        TextWord *tail = nullptr;
+    };
+    std::vector<WordList> pool;
 
     friend class TextBlock;
     friend class TextPage;
@@ -323,7 +327,7 @@ public:
 
     int cmpYX(const TextLine *line) const;
 
-    static int cmpXY(const void *p1, const void *p2);
+    static bool cmpXY(const TextLine *const line1, const TextLine *const line2);
 
     void coalesce(const UnicodeMap *uMap);
 
@@ -393,9 +397,7 @@ public:
     // Update this block's priMin and priMax values, looking at <blk>.
     void updatePriMinMax(const TextBlock *blk);
 
-    static int cmpXYPrimaryRot(const void *p1, const void *p2);
-
-    static int cmpYXPrimaryRot(const void *p1, const void *p2);
+    static bool cmpXYPrimaryRot(const TextBlock *const blk1, const TextBlock *const blk2);
 
     int primaryCmp(const TextBlock *blk) const;
 
@@ -634,17 +636,17 @@ public:
                   double *xMax, double *yMax, PDFRectangle *continueMatch, bool *ignoredHyphen);
 
     // Get the text which is inside the specified rectangle.
-    GooString *getText(double xMin, double yMin, double xMax, double yMax, EndOfLineKind textEOL) const;
+    GooString getText(double xMin, double yMin, double xMax, double yMax, EndOfLineKind textEOL) const;
 
     void visitSelection(TextSelectionVisitor *visitor, const PDFRectangle *selection, SelectionStyle style);
 
-    void drawSelection(OutputDev *out, double scale, int rotation, const PDFRectangle *selection, SelectionStyle style, const GfxColor *glyph_color, const GfxColor *box_color);
+    void drawSelection(OutputDev *out, double scale, int rotation, const PDFRectangle *selection, SelectionStyle style, const GfxColor *glyph_color, const GfxColor *box_color, double box_opacity, bool draw_glyphs);
 
     std::vector<PDFRectangle *> *getSelectionRegion(const PDFRectangle *selection, SelectionStyle style, double scale);
 
-    GooString *getSelectionText(const PDFRectangle *selection, SelectionStyle style);
+    GooString getSelectionText(const PDFRectangle *selection, SelectionStyle style);
 
-    std::vector<TextWordSelection *> **getSelectionWords(const PDFRectangle *selection, SelectionStyle style, int *nLines);
+    [[nodiscard]] std::vector<std::vector<std::unique_ptr<TextWordSelection>>> getSelectionWords(const PDFRectangle *selection, SelectionStyle style);
 
     // Find a string by character position and length.  If found, sets
     // the text bounding rectangle and returns true; otherwise returns
@@ -747,7 +749,7 @@ public:
 private:
     TextPage *text;
 
-    GooString *actualText; // replacement text for the span
+    std::unique_ptr<GooString> actualText; // replacement text for the span
     double actualTextX0;
     double actualTextY0;
     double actualTextX1;
@@ -847,18 +849,18 @@ public:
     bool findText(const Unicode *s, int len, bool startAtTop, bool stopAtBottom, bool startAtLast, bool stopAtLast, bool caseSensitive, bool backward, bool wholeWord, double *xMin, double *yMin, double *xMax, double *yMax) const;
 
     // Get the text which is inside the specified rectangle.
-    GooString *getText(double xMin, double yMin, double xMax, double yMax) const;
+    GooString getText(double xMin, double yMin, double xMax, double yMax) const;
 
     // Find a string by character position and length.  If found, sets
     // the text bounding rectangle and returns true; otherwise returns
     // false.
     bool findCharRange(int pos, int length, double *xMin, double *yMin, double *xMax, double *yMax) const;
 
-    void drawSelection(OutputDev *out, double scale, int rotation, const PDFRectangle *selection, SelectionStyle style, const GfxColor *glyph_color, const GfxColor *box_color);
+    void drawSelection(OutputDev *out, double scale, int rotation, const PDFRectangle *selection, SelectionStyle style, const GfxColor *glyph_color, const GfxColor *box_color, double box_opacity, bool draw_glyphs);
 
     std::vector<PDFRectangle *> *getSelectionRegion(const PDFRectangle *selection, SelectionStyle style, double scale);
 
-    GooString *getSelectionText(const PDFRectangle *selection, SelectionStyle style);
+    GooString getSelectionText(const PDFRectangle *selection, SelectionStyle style);
 
     // If true, will combine characters when a base and combining
     // character are drawn on eachother.

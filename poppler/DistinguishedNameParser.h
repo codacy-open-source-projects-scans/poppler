@@ -7,7 +7,9 @@
 // Copyright 2002 g10 Code GmbH
 // Copyright 2004 Klarälvdalens Datakonsult AB
 // Copyright 2021 g10 Code GmbH
-// Copyright 2023 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2023, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2024 Albert Astals Cid <aacid@kde.org>
+// Copyright 2025 Ingo Klöcker <dev@ingo-kloecker.de>
 //
 // Derived from libkleopatra (KDE key management library) dn.cpp
 //
@@ -51,7 +53,7 @@ inline unsigned char xtoi(unsigned char c)
     if (c <= 'F') {
         return c - 'A' + 10;
     }
-    return c < 'a' + 10;
+    return c - 'a' + 10;
 }
 
 inline unsigned char xtoi(unsigned char first, unsigned char second)
@@ -138,6 +140,9 @@ static std::pair<std::optional<std::string_view>, std::pair<std::string, std::st
         /* hexstring */
         stringv.remove_prefix(1);
         auto endHex = stringv.find_first_not_of("1234567890abcdefABCDEF");
+        if (endHex == std::string_view::npos) {
+            endHex = stringv.size();
+        }
         if (!endHex || (endHex % 2 == 1)) {
             return {}; /* empty or odd number of digits */
         }
@@ -285,7 +290,7 @@ static Result parseString(std::string_view string)
         }
 
         string = partResult.value();
-        if (dnPair.first.size() && dnPair.second.size()) {
+        if (!dnPair.first.empty() && !dnPair.second.empty()) {
             result.emplace_back(std::move(dnPair));
         }
 
@@ -311,7 +316,7 @@ static Result parseString(std::string_view string)
 /// or nullopt if key is not available
 inline std::optional<std::string> FindFirstValue(const Result &dn, std::string_view key)
 {
-    auto first = std::find_if(dn.begin(), dn.end(), [&key](const auto &it) { return it.first == key; });
+    auto first = std::ranges::find_if(dn, [&key](const auto &it) { return it.first == key; });
     if (first == dn.end()) {
         return {};
     }

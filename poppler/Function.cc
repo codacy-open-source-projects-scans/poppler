@@ -13,13 +13,14 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2006, 2008-2010, 2013-2015, 2017-2020, 2022-2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2006, 2008-2010, 2013-2015, 2017-2020, 2022-2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2006 Jeff Muizelaar <jeff@infidigm.net>
 // Copyright (C) 2010 Christian Feuersänger <cfeuersaenger@googlemail.com>
 // Copyright (C) 2011 Andrea Canciani <ranma42@gmail.com>
 // Copyright (C) 2012 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2012 Adam Reichold <adamreichold@myopera.com>
 // Copyright (C) 2013 Fabio D'Urso <fabiodurso@hotmail.it>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -50,26 +51,24 @@
 
 Function::Function() : domain {} { }
 
-Function::~Function() { }
+Function::~Function() = default;
 
-Function *Function::parse(Object *funcObj)
+std::unique_ptr<Function> Function::parse(Object *funcObj)
 {
-    std::set<int> usedParents;
-    return parse(funcObj, &usedParents);
+    RefRecursionChecker usedParents;
+    return parse(funcObj, usedParents);
 }
 
-Function *Function::parse(Object *funcObj, std::set<int> *usedParents)
+std::unique_ptr<Function> Function::parse(Object *funcObj, RefRecursionChecker &usedParents)
 {
-    Function *func;
     Dict *dict;
-    int funcType;
 
     if (funcObj->isStream()) {
         dict = funcObj->streamGetDict();
     } else if (funcObj->isDict()) {
         dict = funcObj->getDict();
     } else if (funcObj->isName("Identity")) {
-        return new IdentityFunction();
+        return std::make_unique<IdentityFunction>();
     } else {
         error(errSyntaxError, -1, "Expected function dictionary or stream");
         return nullptr;
@@ -80,22 +79,22 @@ Function *Function::parse(Object *funcObj, std::set<int> *usedParents)
         error(errSyntaxError, -1, "Function type is missing or wrong type");
         return nullptr;
     }
-    funcType = obj1.getInt();
+    int funcType = obj1.getInt();
+    std::unique_ptr<Function> func;
 
     if (funcType == 0) {
-        func = new SampledFunction(funcObj, dict);
+        func = std::make_unique<SampledFunction>(funcObj, dict);
     } else if (funcType == 2) {
-        func = new ExponentialFunction(funcObj, dict);
+        func = std::make_unique<ExponentialFunction>(funcObj, dict);
     } else if (funcType == 3) {
-        func = new StitchingFunction(funcObj, dict, usedParents);
+        func = std::make_unique<StitchingFunction>(funcObj, dict, usedParents);
     } else if (funcType == 4) {
-        func = new PostScriptFunction(funcObj, dict);
+        func = std::make_unique<PostScriptFunction>(funcObj, dict);
     } else {
         error(errSyntaxError, -1, "Unimplemented function type ({0:d})", funcType);
         return nullptr;
     }
     if (!func->isOk()) {
-        delete func;
         return nullptr;
     }
 
@@ -193,7 +192,7 @@ IdentityFunction::IdentityFunction()
     hasRange = false;
 }
 
-IdentityFunction::~IdentityFunction() { }
+IdentityFunction::~IdentityFunction() = default;
 
 void IdentityFunction::transform(const double *in, double *out) const
 {
@@ -363,10 +362,13 @@ SampledFunction::SampledFunction(Object *funcObj, Dict *dict) : cacheOut {}
         error(errSyntaxError, -1, "Function has invalid number of samples");
         return;
     }
+    if (!str->reset()) {
+        error(errSyntaxError, -1, "Stream reset error");
+        return;
+    }
     buf = 0;
     bits = 0;
     bitMask = (1 << sampleBits) - 1;
-    str->reset();
     for (i = 0; i < nSamples; ++i) {
         if (sampleBits == 8) {
             s = str->getChar();
@@ -413,7 +415,7 @@ SampledFunction::~SampledFunction()
     }
 }
 
-SampledFunction::SampledFunction(const SampledFunction *func) : Function(func)
+SampledFunction::SampledFunction(const SampledFunction *func, PrivateTag) : Function(func)
 {
     memcpy(sampleSize, func->sampleSize, funcMaxInputs * sizeof(int));
 
@@ -622,9 +624,9 @@ ExponentialFunction::ExponentialFunction(Object *funcObj, Dict *dict)
     ok = true;
 }
 
-ExponentialFunction::~ExponentialFunction() { }
+ExponentialFunction::~ExponentialFunction() = default;
 
-ExponentialFunction::ExponentialFunction(const ExponentialFunction *func) : Function(func)
+ExponentialFunction::ExponentialFunction(const ExponentialFunction *func, PrivateTag) : Function(func)
 {
     memcpy(c0, func->c0, funcMaxOutputs * sizeof(double));
     memcpy(c1, func->c1, funcMaxOutputs * sizeof(double));
@@ -656,20 +658,18 @@ void ExponentialFunction::transform(const double *in, double *out) const
             }
         }
     }
-    return;
 }
 
 //------------------------------------------------------------------------
 // StitchingFunction
 //------------------------------------------------------------------------
 
-StitchingFunction::StitchingFunction(Object *funcObj, Dict *dict, std::set<int> *usedParents)
+StitchingFunction::StitchingFunction(Object *funcObj, Dict *dict, RefRecursionChecker &usedParents)
 {
     Object obj1;
     int i;
 
     ok = false;
-    funcs = nullptr;
     bounds = nullptr;
     encode = nullptr;
     scale = nullptr;
@@ -689,26 +689,19 @@ StitchingFunction::StitchingFunction(Object *funcObj, Dict *dict, std::set<int> 
         error(errSyntaxError, -1, "Missing 'Functions' entry in stitching function");
         return;
     }
-    k = obj1.arrayGetLength();
-    funcs = (Function **)gmallocn(k, sizeof(Function *));
+    const int k = obj1.arrayGetLength();
+    funcs.resize(k);
     bounds = (double *)gmallocn(k + 1, sizeof(double));
     encode = (double *)gmallocn(2 * k, sizeof(double));
     scale = (double *)gmallocn(k, sizeof(double));
     for (i = 0; i < k; ++i) {
-        funcs[i] = nullptr;
-    }
-    for (i = 0; i < k; ++i) {
-        std::set<int> usedParentsAux = *usedParents;
         Ref ref;
         Object obj2 = obj1.getArray()->get(i, &ref);
-        if (ref != Ref::INVALID()) {
-            if (usedParentsAux.find(ref.num) == usedParentsAux.end()) {
-                usedParentsAux.insert(ref.num);
-            } else {
-                return;
-            }
+        if (!usedParents.insert(ref)) {
+            return;
         }
-        if (!(funcs[i] = Function::parse(&obj2, &usedParentsAux))) {
+        const RefRecursionCheckerRemover remover(usedParents, ref);
+        if (!(funcs[i] = Function::parse(&obj2, usedParents))) {
             return;
         }
         if (funcs[i]->getInputSize() != 1 || (i > 0 && funcs[i]->getOutputSize() != funcs[0]->getOutputSize())) {
@@ -762,18 +755,16 @@ StitchingFunction::StitchingFunction(Object *funcObj, Dict *dict, std::set<int> 
 
     n = funcs[0]->getOutputSize();
     ok = true;
-    return;
 }
 
-StitchingFunction::StitchingFunction(const StitchingFunction *func) : Function(func)
+StitchingFunction::StitchingFunction(const StitchingFunction *func, PrivateTag) : Function(func)
 {
-    k = func->k;
-
-    funcs = (Function **)gmallocn(k, sizeof(Function *));
-    for (int i = 0; i < k; ++i) {
-        funcs[i] = func->funcs[i]->copy();
+    funcs.reserve(func->funcs.size());
+    for (const std::unique_ptr<Function> &f : func->funcs) {
+        funcs.push_back(f->copy());
     }
 
+    const int k = funcs.size();
     bounds = (double *)gmallocn(k + 1, sizeof(double));
     memcpy(bounds, func->bounds, (k + 1) * sizeof(double));
 
@@ -788,16 +779,6 @@ StitchingFunction::StitchingFunction(const StitchingFunction *func) : Function(f
 
 StitchingFunction::~StitchingFunction()
 {
-    int i;
-
-    if (funcs) {
-        for (i = 0; i < k; ++i) {
-            if (funcs[i]) {
-                delete funcs[i];
-            }
-        }
-    }
-    gfree(funcs);
     gfree(bounds);
     gfree(encode);
     gfree(scale);
@@ -815,6 +796,7 @@ void StitchingFunction::transform(const double *in, double *out) const
     } else {
         x = in[0];
     }
+    const int k = funcs.size();
     for (i = 0; i < k - 1; ++i) {
         if (x < bounds[i + 1]) {
             break;
@@ -1066,7 +1048,7 @@ void PSStack::roll(int n, int j)
     PSObject obj;
     int i, k;
 
-    if (unlikely(n == 0)) {
+    if (unlikely(n == 0 || j == INT_MIN)) {
         return;
     }
     if (j >= 0) {
@@ -1108,7 +1090,6 @@ PostScriptFunction::PostScriptFunction(Object *funcObj, Dict *dict)
     int i;
 
     code = nullptr;
-    codeString = nullptr;
     codeSize = 0;
     ok = false;
 
@@ -1127,10 +1108,13 @@ PostScriptFunction::PostScriptFunction(Object *funcObj, Dict *dict)
         goto err1;
     }
     str = funcObj->getStream();
+    if (!str->reset()) {
+        error(errSyntaxError, -1, "Stream reset error");
+        goto err1;
+    }
 
     //----- parse the function
-    codeString = new GooString();
-    str->reset();
+    codeString = std::make_unique<GooString>();
     if (getToken(str)->cmp("{") != 0) {
         error(errSyntaxError, -1, "Expected '{{' at start of PostScript function");
         goto err1;
@@ -1156,7 +1140,7 @@ err1:
     return;
 }
 
-PostScriptFunction::PostScriptFunction(const PostScriptFunction *func) : Function(func)
+PostScriptFunction::PostScriptFunction(const PostScriptFunction *func, PrivateTag) : Function(func)
 {
     codeSize = func->codeSize;
 
@@ -1174,7 +1158,6 @@ PostScriptFunction::PostScriptFunction(const PostScriptFunction *func) : Functio
 PostScriptFunction::~PostScriptFunction()
 {
     gfree(code);
-    delete codeString;
 }
 
 void PostScriptFunction::transform(const double *in, double *out) const
@@ -1373,7 +1356,7 @@ std::unique_ptr<GooString> PostScriptFunction::getToken(Stream *str)
             codeString->append(c);
         }
     }
-    return std::make_unique<GooString>(s);
+    return std::make_unique<GooString>(std::move(s));
 }
 
 void PostScriptFunction::resizeCode(int newSize)
@@ -1387,7 +1370,7 @@ void PostScriptFunction::resizeCode(int newSize)
 void PostScriptFunction::exec(PSStack *stack, int codePtr) const
 {
     int i1, i2;
-    double r1, r2, result;
+    double r1, r2;
     bool b1, b2;
 
     while (true) {
@@ -1429,15 +1412,16 @@ void PostScriptFunction::exec(PSStack *stack, int codePtr) const
                     stack->pushBool(b1 && b2);
                 }
                 break;
-            case psOpAtan:
+            case psOpAtan: {
                 r2 = stack->popNum();
                 r1 = stack->popNum();
-                result = atan2(r1, r2) * 180.0 / M_PI;
+                double result = atan2(r1, r2) * 180.0 / M_PI;
                 if (result < 0) {
                     result += 360.0;
                 }
                 stack->pushReal(result);
                 break;
+            }
             case psOpBitshift:
                 i2 = stack->popInt();
                 i1 = stack->popInt();
@@ -1578,10 +1562,16 @@ void PostScriptFunction::exec(PSStack *stack, int codePtr) const
                 break;
             case psOpMul:
                 if (stack->topTwoAreInts()) {
+                    int result;
                     i2 = stack->popInt();
                     i1 = stack->popInt();
-                    //~ should check for out-of-range, and push a real instead
-                    stack->pushInt(i1 * i2);
+                    //~ should push a real instead?
+                    if (checkedMultiply(i1, i2, &result)) {
+                        error(errSyntaxError, -1, "PostScriptFunction::exec: Multiplication of two integers overflows: {0:d} {1:d}", i1, i2);
+                        stack->pushInt(0);
+                    } else {
+                        stack->pushInt(result);
+                    }
                 } else {
                     r2 = stack->popNum();
                     r1 = stack->popNum();

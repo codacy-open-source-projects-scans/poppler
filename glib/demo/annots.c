@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2008 Inigo Martinez <inigomartinez@gmail.com>
+ * Copyright (C) 2025 Lucas Baudin <lucas.baudin@ensae.fr>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -48,10 +49,20 @@ typedef struct
     const gchar *label;
 } Annotations;
 
-static const Annotations supported_annots[] = {
-    { POPPLER_ANNOT_TEXT, "Text" },           { POPPLER_ANNOT_LINE, "Line" },         { POPPLER_ANNOT_SQUARE, "Square" },         { POPPLER_ANNOT_CIRCLE, "Circle" }, { POPPLER_ANNOT_HIGHLIGHT, "Highlight" },
-    { POPPLER_ANNOT_UNDERLINE, "Underline" }, { POPPLER_ANNOT_SQUIGGLY, "Squiggly" }, { POPPLER_ANNOT_STRIKE_OUT, "Strike Out" }, { POPPLER_ANNOT_STAMP, "Stamp" },
-};
+#define POPPLER_ANNOT_HIGHLIGHT_INK 1000
+
+static const Annotations supported_annots[] = { { POPPLER_ANNOT_TEXT, "Text" },
+                                                { POPPLER_ANNOT_FREE_TEXT, "Free Text" },
+                                                { POPPLER_ANNOT_LINE, "Line" },
+                                                { POPPLER_ANNOT_SQUARE, "Square" },
+                                                { POPPLER_ANNOT_CIRCLE, "Circle" },
+                                                { POPPLER_ANNOT_HIGHLIGHT, "Highlight" },
+                                                { POPPLER_ANNOT_UNDERLINE, "Underline" },
+                                                { POPPLER_ANNOT_SQUIGGLY, "Squiggly" },
+                                                { POPPLER_ANNOT_STRIKE_OUT, "Strike Out" },
+                                                { POPPLER_ANNOT_STAMP, "Stamp" },
+                                                { POPPLER_ANNOT_INK, "Ink" },
+                                                { POPPLER_ANNOT_HIGHLIGHT_INK, "Highlight Ink" } };
 
 static const char *stamp_types[] = { [POPPLER_ANNOT_STAMP_ICON_UNKNOWN] = "Unknown",
                                      [POPPLER_ANNOT_STAMP_ICON_APPROVED] = "APPROVED",
@@ -355,6 +366,11 @@ static void pgd_annots_update_cursor(PgdAnnotsDemo *demo, GdkCursorType cursor_t
     }
 }
 
+static void pgd_annots_save(GtkWidget *button, PgdAnnotsDemo *demo)
+{
+    poppler_document_save(demo->doc, "file:///tmp/tmp_save.pdf", NULL);
+}
+
 static void pgd_annots_start_add_annot(GtkWidget *button, PgdAnnotsDemo *demo)
 {
     GtkTreeModel *model;
@@ -478,6 +494,27 @@ static void pgd_annot_view_set_annot_free_text(GtkWidget *table, PopplerAnnotFre
     text = get_free_text_callout_line(annot);
     pgd_table_add_property(GTK_GRID(table), "<b>Callout:</b>", text, row);
     g_free(text);
+
+    PopplerColor *color = poppler_annot_get_color(POPPLER_ANNOT(annot));
+
+    if (color) {
+        text = g_strdup_printf("(%d, %d, %d)", color->red, color->green, color->blue);
+    } else {
+        text = g_strdup("null");
+    }
+    pgd_table_add_property(GTK_GRID(table), "<b>Color:</b>", text, row);
+    g_free(text);
+
+    PopplerFontDescription *font_desc = poppler_annot_free_text_get_font_desc(annot);
+    PangoFontDescription *p = pango_font_description_new();
+    pango_font_description_set_family(p, font_desc->font_name);
+    pango_font_description_set_stretch(p, (PangoStretch)font_desc->stretch);
+    pango_font_description_set_weight(p, (PangoWeight)font_desc->weight);
+    pango_font_description_set_style(p, (PangoStyle)font_desc->style);
+    pango_font_description_set_size(p, font_desc->size_pt * PANGO_SCALE);
+    text = pango_font_description_to_string(p);
+    pgd_table_add_property(GTK_GRID(table), "<b>Font:</b>", text, row);
+    g_free(text);
 }
 
 static void pgd_annot_view_set_annot_stamp(GtkWidget *table, PopplerAnnotStamp *annot, gint *row)
@@ -486,6 +523,40 @@ static void pgd_annot_view_set_annot_stamp(GtkWidget *table, PopplerAnnotStamp *
 
     icon = poppler_annot_stamp_get_icon(annot);
     pgd_table_add_property(GTK_GRID(table), "<b>Icon Name:</b>", stamp_types[icon], row);
+}
+
+static void pgd_annot_view_set_annot_ink(GtkWidget *table, PopplerAnnotInk *ink_annot, gint *row)
+{
+    gchar *text;
+    PopplerRectangle rect;
+    g_autofree PopplerPath **ink_list;
+    gsize ink_list_size;
+    GString *ink_list_str;
+
+    poppler_annot_get_rectangle(POPPLER_ANNOT(ink_annot), &rect);
+    text = g_strdup_printf("X1: %.2f, Y1: %.2f, X2: %.2f, Y2: %.2f", rect.x1, rect.y1, rect.x2, rect.y2);
+    pgd_table_add_property(GTK_GRID(table), "<b>Bounding Box:</b>", text, row);
+    g_free(text);
+
+    ink_list = poppler_annot_ink_get_ink_list(ink_annot, &ink_list_size);
+
+    // Convert the ink list to a string representation
+    ink_list_str = g_string_new(NULL);
+    for (gsize i = 0; i < ink_list_size; i++) {
+        gsize n_points;
+        PopplerPoint *d = poppler_path_get_points(ink_list[i], &n_points);
+        for (int j = 0; j < n_points; j++) {
+            PopplerPoint *di = d + j;
+            g_string_append_printf(ink_list_str, "(%.2f, %.2f) ", di->x, di->y);
+        }
+        g_string_append(ink_list_str, "\n");
+        poppler_path_free(ink_list[i]);
+    }
+
+    pgd_table_add_property(GTK_GRID(table), "<b>Ink List:</b>", ink_list_str->str, row);
+    g_string_free(ink_list_str, TRUE);
+
+    pgd_table_add_property(GTK_GRID(table), "<b>Draw:</b>", poppler_annot_ink_get_draw_below(ink_annot) ? "below" : "above", row);
 }
 
 static void pgd_annots_file_attachment_save_dialog_response(GtkFileChooser *file_chooser, gint response, PopplerAttachment *attachment)
@@ -585,13 +656,8 @@ static void pgd_annot_view_set_annot(PgdAnnotsDemo *demo, PopplerAnnot *annot)
     table = gtk_grid_new();
     gtk_widget_set_margin_top(table, 5);
     gtk_widget_set_margin_bottom(table, 5);
-#if GTK_CHECK_VERSION(3, 12, 0)
     gtk_widget_set_margin_start(table, 8);
     gtk_widget_set_margin_end(table, 5);
-#else
-    gtk_widget_set_margin_left(table, 8);
-    gtk_widget_set_margin_right(table, 5);
-#endif
     gtk_grid_set_column_spacing(GTK_GRID(table), 6);
     gtk_grid_set_row_spacing(GTK_GRID(table), 6);
 
@@ -614,6 +680,15 @@ static void pgd_annot_view_set_annot(PgdAnnotsDemo *demo, PopplerAnnot *annot)
     poppler_annot_get_rectangle(annot, &rect);
     text = g_strdup_printf("(%.2f;%.2f) (%.2f;%.2f)", rect.x1, rect.y1, rect.x2, rect.y2);
     pgd_table_add_property(GTK_GRID(table), "<b>Coords:</b>", text, &row);
+    g_free(text);
+
+    double border_width;
+    if (poppler_annot_get_border_width(POPPLER_ANNOT(annot), &border_width)) {
+        text = g_strdup_printf("%f", border_width);
+    } else {
+        text = g_strdup("unset");
+    }
+    pgd_table_add_property(GTK_GRID(table), "<b>Border Width:</b>", text, &row);
     g_free(text);
 
     if (POPPLER_IS_ANNOT_MARKUP(annot)) {
@@ -644,6 +719,9 @@ static void pgd_annot_view_set_annot(PgdAnnotsDemo *demo, PopplerAnnot *annot)
         break;
     case POPPLER_ANNOT_STAMP:
         pgd_annot_view_set_annot_stamp(table, POPPLER_ANNOT_STAMP(annot), &row);
+        break;
+    case POPPLER_ANNOT_INK:
+        pgd_annot_view_set_annot_ink(table, POPPLER_ANNOT_INK(annot), &row);
         break;
     default:
         break;
@@ -840,11 +918,11 @@ static void pgd_annots_add_annot(PgdAnnotsDemo *demo)
     PopplerRectangle rect;
     PopplerColor color;
     PopplerAnnot *annot;
-    gdouble height;
+    gdouble height, width;
 
     g_assert(demo->mode == MODE_ADD);
 
-    poppler_page_get_size(demo->page, NULL, &height);
+    poppler_page_get_size(demo->page, &width, &height);
 
     rect.x1 = demo->start.x;
     rect.y1 = height - demo->start.y;
@@ -859,6 +937,17 @@ static void pgd_annots_add_annot(PgdAnnotsDemo *demo)
     case POPPLER_ANNOT_TEXT:
         annot = poppler_annot_text_new(demo->doc, &rect);
 
+        break;
+    case POPPLER_ANNOT_FREE_TEXT:
+        annot = poppler_annot_free_text_new(demo->doc, &rect);
+        poppler_annot_set_contents(annot, "Free Text");
+        PopplerFontDescription *font_desc = poppler_font_description_new("DejaVu Sans");
+        font_desc->size_pt = 17;
+        font_desc->style = POPPLER_STYLE_OBLIQUE;
+        font_desc->weight = POPPLER_WEIGHT_BOLD;
+        font_desc->stretch = POPPLER_STRETCH_CONDENSED;
+        poppler_annot_free_text_set_font_desc(POPPLER_ANNOT_FREE_TEXT(annot), font_desc);
+        poppler_font_description_free(font_desc);
         break;
     case POPPLER_ANNOT_LINE: {
         PopplerPoint start, end;
@@ -904,6 +993,26 @@ static void pgd_annots_add_annot(PgdAnnotsDemo *demo)
         annot = poppler_annot_text_markup_new_strikeout(demo->doc, &rect, quads_array);
         g_array_free(quads_array, TRUE);
     } break;
+    case POPPLER_ANNOT_HIGHLIGHT_INK:
+    case POPPLER_ANNOT_INK: {
+        g_autofree PopplerPath **ink_list = g_new(PopplerPath *, 2);
+        PopplerPoint *ink_path = g_new0(PopplerPoint, 2);
+        annot = poppler_annot_ink_new(demo->doc, &rect);
+
+        ink_path[1].x = width;
+        ink_path[1].y = height;
+        ink_list[0] = poppler_path_new_from_array(ink_path, 2);
+        ink_path = g_new0(PopplerPoint, 2);
+        ink_path[1].y = height;
+        ink_path[0].x = width;
+        ink_list[1] = poppler_path_new_from_array(ink_path, 2);
+        poppler_annot_set_border_width(annot, 10.);
+        poppler_annot_ink_set_draw_below(POPPLER_ANNOT_INK(annot), demo->annot_type == POPPLER_ANNOT_HIGHLIGHT_INK);
+        poppler_page_add_annot(demo->page, annot);
+        poppler_annot_ink_set_ink_list(POPPLER_ANNOT_INK(annot), ink_list, 2);
+        poppler_path_free(ink_list[0]);
+        poppler_path_free(ink_list[1]);
+    } break;
     case POPPLER_ANNOT_STAMP: {
         annot = poppler_annot_stamp_new(demo->doc, &rect);
         gchar *stamp_type = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(demo->stamp_selector));
@@ -933,7 +1042,9 @@ static void pgd_annots_add_annot(PgdAnnotsDemo *demo)
     if (demo->annot_type != POPPLER_ANNOT_STAMP) {
         poppler_annot_set_color(annot, &color);
     }
-    poppler_page_add_annot(demo->page, annot);
+    if (demo->annot_type != POPPLER_ANNOT_INK) {
+        poppler_page_add_annot(demo->page, annot);
+    }
     pgd_annots_add_annot_to_model(demo, annot, rect, TRUE);
     g_object_unref(annot);
 }
@@ -1354,6 +1465,11 @@ GtkWidget *pgd_annots_create_widget(PopplerDocument *document)
     gtk_box_pack_end(GTK_BOX(hbox), button, FALSE, TRUE, 0);
     gtk_widget_show(button);
 
+    button = gtk_button_new_with_label("Save to /tmp");
+    g_signal_connect(button, "clicked", G_CALLBACK(pgd_annots_save), (gpointer)demo);
+    gtk_box_pack_end(GTK_BOX(hbox), button, FALSE, TRUE, 0);
+    gtk_widget_show(button);
+
     gtk_widget_show(hbox);
     gtk_widget_show(hbox2);
 
@@ -1430,11 +1546,7 @@ GtkWidget *pgd_annots_create_widget(PopplerDocument *document)
     g_signal_connect(demo->darea, "button_release_event", G_CALLBACK(pgd_annots_drawing_area_button_release), (gpointer)demo);
 
     swindow = gtk_scrolled_window_new(NULL, NULL);
-#if GTK_CHECK_VERSION(3, 7, 8)
     gtk_container_add(GTK_CONTAINER(swindow), demo->darea);
-#else
-    gtk_scrolled_window_add_with_viewport(GTK_SCROLLED_WINDOW(swindow), demo->darea);
-#endif
     gtk_widget_show(demo->darea);
 
     gtk_paned_add2(GTK_PANED(hpaned), swindow);

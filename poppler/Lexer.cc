@@ -13,12 +13,12 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2006-2010, 2012-2014, 2017-2019 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2006-2010, 2012-2014, 2017-2019, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2006 Krzysztof Kowalczyk <kkowalczyk@gmail.com>
 // Copyright (C) 2010 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2012, 2013 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
-// Copyright (C) 2023 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2023, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2023 Even Rouault <even.rouault@mines-paris.org>
 // Copyright (C) 2023 Oliver Sander <oliver.sander@tu-dresden.de>
 //
@@ -69,17 +69,17 @@ static const long long LongLongSafeLimit = (LLONG_MAX - 9) / 10;
 // Lexer
 //------------------------------------------------------------------------
 
-Lexer::Lexer(XRef *xrefA, Stream *str)
+Lexer::Lexer(XRef *xrefA, std::unique_ptr<Stream> &&str)
 {
     lookCharLastValueCached = LOOK_VALUE_NOT_CACHED;
     xref = xrefA;
 
-    curStr = Object(str);
+    curStr = Object(std::move(str));
     streams = new Array(xref);
     streams->add(curStr.copy());
     strPtr = 0;
     freeArray = true;
-    curStr.streamReset();
+    (void)curStr.streamReset();
 }
 
 Lexer::Lexer(XRef *xrefA, Object *obj)
@@ -99,7 +99,7 @@ Lexer::Lexer(XRef *xrefA, Object *obj)
     if (streams->getLength() > 0) {
         curStr = streams->get(strPtr);
         if (curStr.isStream()) {
-            curStr.streamReset();
+            (void)curStr.streamReset();
         }
     }
 }
@@ -135,7 +135,9 @@ int Lexer::getChar(bool comesFromLook)
             if (strPtr < streams->getLength()) {
                 curStr = streams->get(strPtr);
                 if (curStr.isStream()) {
-                    curStr.streamReset();
+                    if (!curStr.streamReset()) {
+                        return EOF;
+                    }
                 }
             }
         }
@@ -173,7 +175,7 @@ Object Lexer::getObj(int objNum)
     comment = false;
     while (true) {
         if ((c = getChar()) == EOF) {
-            return Object(objEOF);
+            return Object::eof();
         }
         if (comment) {
             if (c == '\r' || c == '\n') {
@@ -418,7 +420,7 @@ Object Lexer::getObj(int objNum)
             }
             return Object(std::move(s));
         } else {
-            return Object(objEOF);
+            return Object::eof();
         }
         break;
     }
@@ -468,7 +470,7 @@ Object Lexer::getObj(int objNum)
                 // Somewhat arbitrary threshold
                 if (unlikely(n == 1024 * 1024)) {
                     error(errSyntaxError, getPos(), "Error: name token is larger than 1 MB. Suspicion of hostile file. Stopping parsing");
-                    return Object(objEOF);
+                    return Object::eof();
                 }
                 s.push_back((char)c);
             }
@@ -560,7 +562,7 @@ Object Lexer::getObj(int objNum)
             return Object(objCmd, tokBuf);
         } else {
             error(errSyntaxError, getPos(), "Illegal character '>'");
-            return Object(objError);
+            return Object::error();
         }
         break;
 
@@ -569,7 +571,7 @@ Object Lexer::getObj(int objNum)
     case '{':
     case '}':
         error(errSyntaxError, getPos(), "Illegal character '{0:c}'", c);
-        return Object(objError);
+        return Object::error();
         break;
 
     // command
@@ -591,7 +593,7 @@ Object Lexer::getObj(int objNum)
         } else if (tokBuf[0] == 'f' && !strcmp(tokBuf, "false")) {
             return Object(false);
         } else if (tokBuf[0] == 'n' && !strcmp(tokBuf, "null")) {
-            return Object(objNull);
+            return Object::null();
         } else {
             return Object(objCmd, tokBuf);
         }
@@ -612,10 +614,10 @@ Object Lexer::getObj(const char *cmdA, int objNum)
     comment = false;
     const char *cmd1 = tokBuf;
     *tokBuf = 0;
-    while (strcmp(cmdA, cmd1) && (objNum < 0 || (xref && xref->getNumEntry(getPos()) == objNum))) {
+    while ((strcmp(cmdA, cmd1) != 0) && (objNum < 0 || (xref && xref->getNumEntry(getPos()) == objNum))) {
         while (true) {
             if ((c = getChar()) == EOF) {
-                return Object(objEOF);
+                return Object::eof();
             }
             if (comment) {
                 if (c == '\r' || c == '\n') {

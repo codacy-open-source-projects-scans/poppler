@@ -13,7 +13,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2006, 2008-2010, 2012, 2018-2022, 2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2006, 2008-2010, 2012, 2018-2022, 2024, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2007 Julien Rebetez <julienr@svn.gnome.org>
 // Copyright (C) 2007 Koji Otani <sho@bbr.jp>
 // Copyright (C) 2008 Michael Vrable <mvrable@cs.ucsd.edu>
@@ -28,7 +28,7 @@
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019 <corentinf@free.fr>
-// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -116,14 +116,15 @@ static bool parseHex(const char *s, int len, unsigned int *val)
 
 //------------------------------------------------------------------------
 
-CharCodeToUnicode *CharCodeToUnicode::makeIdentityMapping()
+std::unique_ptr<CharCodeToUnicode> CharCodeToUnicode::makeIdentityMapping()
 {
-    CharCodeToUnicode *ctu = new CharCodeToUnicode();
+    auto ctu = std::make_unique<CharCodeToUnicode>();
     ctu->isIdentity = true;
     ctu->map.resize(1, 0);
     return ctu;
 }
-CharCodeToUnicode *CharCodeToUnicode::parseCIDToUnicode(const char *fileName, const GooString *collection)
+
+std::unique_ptr<CharCodeToUnicode> CharCodeToUnicode::parseCIDToUnicode(const char *fileName, const std::string &collection)
 {
     FILE *f;
     CharCode size;
@@ -156,50 +157,45 @@ CharCodeToUnicode *CharCodeToUnicode::parseCIDToUnicode(const char *fileName, co
     fclose(f);
     mapA.resize(mapLenA);
 
-    return new CharCodeToUnicode(collection->toStr(), std::move(mapA), {});
+    return std::make_unique<CharCodeToUnicode>(collection, std::move(mapA), std::vector<CharCodeToUnicodeString> {});
 }
 
-CharCodeToUnicode *CharCodeToUnicode::make8BitToUnicode(Unicode *toUnicode)
+std::unique_ptr<CharCodeToUnicode> CharCodeToUnicode::make8BitToUnicode(Unicode *toUnicode)
 {
     std::vector<Unicode> data(toUnicode, toUnicode + 256);
-    return new CharCodeToUnicode({}, std::move(data), {});
+    return std::make_unique<CharCodeToUnicode>(std::optional<std::string> {}, std::move(data), std::vector<CharCodeToUnicodeString> {});
 }
 
-CharCodeToUnicode *CharCodeToUnicode::parseCMap(const GooString *buf, int nBits)
+std::unique_ptr<CharCodeToUnicode> CharCodeToUnicode::parseCMap(const std::string &buf, int nBits)
 {
-    CharCodeToUnicode *ctu;
-
-    ctu = new CharCodeToUnicode(std::optional<std::string>());
-    const char *p = buf->c_str();
-    if (!ctu->parseCMap1(&getCharFromString, &p, nBits)) {
-        delete ctu;
+    auto ctu = std::make_unique<CharCodeToUnicode>(std::optional<std::string> {});
+    const char *p = buf.c_str();
+    if (!ctu->parseCMap1(&getCharFromString, static_cast<void *>(&p), nBits)) {
         return nullptr;
     }
     return ctu;
 }
 
-CharCodeToUnicode *CharCodeToUnicode::parseCMapFromFile(const GooString *fileName, int nBits)
+std::unique_ptr<CharCodeToUnicode> CharCodeToUnicode::parseCMapFromFile(const std::string &fileName, int nBits)
 {
-    CharCodeToUnicode *ctu;
     FILE *f;
 
-    ctu = new CharCodeToUnicode(std::optional<std::string>());
+    auto ctu = std::make_unique<CharCodeToUnicode>(std::optional<std::string>());
     if ((f = globalParams->findToUnicodeFile(fileName))) {
-        if (!ctu->parseCMap1(&getCharFromFile, f, nBits)) {
-            delete ctu;
+        if (!ctu->parseCMap1(&getCharFromFile, static_cast<void *>(f), nBits)) {
             fclose(f);
             return nullptr;
         }
     } else {
-        error(errSyntaxError, -1, "Couldn't find ToUnicode CMap file for '{0:t}'", fileName);
+        error(errSyntaxError, -1, "Couldn't find ToUnicode CMap file for '{0:s}'", fileName.c_str());
     }
     return ctu;
 }
 
-void CharCodeToUnicode::mergeCMap(const GooString *buf, int nBits)
+void CharCodeToUnicode::mergeCMap(const std::string &buf, int nBits)
 {
-    const char *p = buf->c_str();
-    parseCMap1(&getCharFromString, &p, nBits);
+    const char *p = buf.c_str();
+    parseCMap1(&getCharFromString, static_cast<void *>(&p), nBits);
 }
 
 bool CharCodeToUnicode::parseCMap1(int (*getCharFunc)(void *), void *data, int nBits)
@@ -209,7 +205,6 @@ bool CharCodeToUnicode::parseCMap1(int (*getCharFunc)(void *), void *data, int n
     int n1, n2, n3;
     CharCode i;
     CharCode maxCode, code1, code2;
-    GooString *name;
     FILE *f;
 
     bool ok = false;
@@ -219,16 +214,15 @@ bool CharCodeToUnicode::parseCMap1(int (*getCharFunc)(void *), void *data, int n
     while (pst->getToken(tok2, sizeof(tok2), &n2)) {
         if (!strcmp(tok2, "usecmap")) {
             if (tok1[0] == '/') {
-                name = new GooString(tok1 + 1);
+                std::string name { tok1 + 1 };
                 if ((f = globalParams->findToUnicodeFile(name))) {
                     if (parseCMap1(&getCharFromFile, f, nBits)) {
                         ok = true;
                     }
                     fclose(f);
                 } else {
-                    error(errSyntaxError, -1, "Couldn't find ToUnicode CMap file for '{0:t}'", name);
+                    error(errSyntaxError, -1, "Couldn't find ToUnicode CMap file for '{0:s}'", name.c_str());
                 }
-                delete name;
             }
             pst->getToken(tok1, sizeof(tok1), &n1);
         } else if (!strcmp(tok2, "beginbfchar")) {
@@ -447,41 +441,26 @@ void CharCodeToUnicode::addMappingInt(CharCode code, Unicode u)
     map[code] = u;
 }
 
-CharCodeToUnicode::CharCodeToUnicode()
+CharCodeToUnicode::CharCodeToUnicode(PrivateTag)
 {
-    refCnt = 1;
     isIdentity = false;
 }
 
-CharCodeToUnicode::CharCodeToUnicode(const std::optional<std::string> &tagA) : tag(tagA)
+CharCodeToUnicode::CharCodeToUnicode(const std::optional<std::string> &tagA, PrivateTag) : tag(tagA)
 {
     map.resize(256, 0);
-    refCnt = 1;
     isIdentity = false;
 }
-CharCodeToUnicode::CharCodeToUnicode(const std::optional<std::string> &tagA, std::vector<Unicode> &&mapA, std::vector<CharCodeToUnicodeString> &&sMapA) : tag(tagA)
+CharCodeToUnicode::CharCodeToUnicode(const std::optional<std::string> &tagA, std::vector<Unicode> &&mapA, std::vector<CharCodeToUnicodeString> &&sMapA, PrivateTag) : tag(tagA)
 {
     map = std::move(mapA);
     sMap = std::move(sMapA);
-    refCnt = 1;
     isIdentity = false;
 }
 
-void CharCodeToUnicode::incRefCnt()
+bool CharCodeToUnicode::match(const std::string &tagA)
 {
-    ++refCnt;
-}
-
-void CharCodeToUnicode::decRefCnt()
-{
-    if (--refCnt == 0) {
-        delete this;
-    }
-}
-
-bool CharCodeToUnicode::match(const GooString *tagA)
-{
-    return tag && tag == tagA->toStr();
+    return tag && tag == tagA;
 }
 
 void CharCodeToUnicode::setMapping(CharCode c, Unicode *u, int len)
@@ -587,62 +566,29 @@ int CharCodeToUnicode::mapToCharCode(const Unicode *u, CharCode *c, int usize) c
 
 //------------------------------------------------------------------------
 
-CharCodeToUnicodeCache::CharCodeToUnicodeCache(int sizeA)
+CharCodeToUnicodeCache::CharCodeToUnicodeCache(int sizeA) : size(sizeA) { }
+
+CharCodeToUnicodeCache::~CharCodeToUnicodeCache() = default;
+
+std::shared_ptr<CharCodeToUnicode> CharCodeToUnicodeCache::getCharCodeToUnicode(const std::string &tag)
 {
-    int i;
-
-    size = sizeA;
-    cache = (CharCodeToUnicode **)gmallocn(size, sizeof(CharCodeToUnicode *));
-    for (i = 0; i < size; ++i) {
-        cache[i] = nullptr;
-    }
-}
-
-CharCodeToUnicodeCache::~CharCodeToUnicodeCache()
-{
-    int i;
-
-    for (i = 0; i < size; ++i) {
-        if (cache[i]) {
-            cache[i]->decRefCnt();
-        }
-    }
-    gfree(cache);
-}
-
-CharCodeToUnicode *CharCodeToUnicodeCache::getCharCodeToUnicode(const GooString *tag)
-{
-    CharCodeToUnicode *ctu;
-    int i, j;
-
-    if (cache[0] && cache[0]->match(tag)) {
-        cache[0]->incRefCnt();
-        return cache[0];
-    }
-    for (i = 1; i < size; ++i) {
-        if (cache[i] && cache[i]->match(tag)) {
-            ctu = cache[i];
-            for (j = i; j >= 1; --j) {
-                cache[j] = cache[j - 1];
+    for (auto it = cache.begin(); it != cache.end(); ++it) {
+        if ((*it)->match(tag)) {
+            if (it != cache.begin()) {
+                std::shared_ptr<CharCodeToUnicode> item = std::move(*it);
+                cache.erase(it);
+                cache.push_front(std::move(item));
             }
-            cache[0] = ctu;
-            ctu->incRefCnt();
-            return ctu;
+            return cache[0];
         }
     }
     return nullptr;
 }
 
-void CharCodeToUnicodeCache::add(CharCodeToUnicode *ctu)
+void CharCodeToUnicodeCache::add(std::shared_ptr<CharCodeToUnicode> ctu)
 {
-    int i;
-
-    if (cache[size - 1]) {
-        cache[size - 1]->decRefCnt();
+    if (size == cache.size()) {
+        cache.pop_back();
     }
-    for (i = size - 1; i >= 1; --i) {
-        cache[i] = cache[i - 1];
-    }
-    cache[0] = ctu;
-    ctu->incRefCnt();
+    cache.push_front(std::move(ctu));
 }

@@ -61,7 +61,7 @@ static std::unique_ptr<Poppler::Page> loadRandomPage(Poppler::Document *document
     return loadPage(document, QRandomGenerator::global()->bounded(document->numPages()));
 }
 
-SillyThread::SillyThread(Poppler::Document *document, QObject *parent) : QThread(parent), m_document(document), m_pages()
+SillyThread::SillyThread(Poppler::Document *document, QObject *parent) : QThread(parent), m_document(document)
 {
     m_pages.reserve(m_document->numPages());
 
@@ -72,7 +72,7 @@ SillyThread::SillyThread(Poppler::Document *document, QObject *parent) : QThread
 
 void SillyThread::run()
 {
-    forever {
+    Q_FOREVER {
         for (std::unique_ptr<Poppler::Page> &page : m_pages) {
             QImage image = page->renderToImage();
 
@@ -91,7 +91,7 @@ void CrazyThread::run()
 {
     typedef std::unique_ptr<Poppler::Page> PagePointer;
 
-    forever {
+    Q_FOREVER {
         if (QRandomGenerator::global()->bounded(2) == 0) {
             qDebug() << "search...";
 

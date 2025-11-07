@@ -17,14 +17,14 @@
 // Copyright (C) 2007 Iñigo Martínez <inigomartinez@gmail.com>
 // Copyright (C) 2008 Brad Hards <bradh@kde.org>
 // Copyright (C) 2008, 2010 Carlos Garcia Campos <carlosgc@gnome.org>
-// Copyright (C) 2009-2013, 2017, 2018, 2021, 2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2009-2013, 2017, 2018, 2021, 2024, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2009, 2010, 2012, 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2010 David Benjamin <davidben@mit.edu>
 // Copyright (C) 2010 Christian Feuersänger <cfeuersaenger@googlemail.com>
 // Copyright (C) 2013 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
-// Copyright (C) 2019, 2022 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2019, 2022, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2019 Volker Krause <vkrause@kde.org>
 //
 // To see a description of the changes please see the Changelog file that
@@ -41,6 +41,7 @@
 #include "Object.h"
 #include "PopplerCache.h"
 
+#include <stack>
 #include <vector>
 
 class GooString;
@@ -133,7 +134,7 @@ public:
 private:
     std::shared_ptr<GfxFont> doLookupFont(const char *name) const;
 
-    GfxFontDict *fonts;
+    std::unique_ptr<GfxFontDict> fonts;
     Object xObjDict;
     Object colorSpaceDict;
     Object patternDict;
@@ -169,7 +170,13 @@ public:
     XRef *getXRef() { return xref; }
 
     // Interpret a stream or array of streams.
-    void display(Object *obj, bool topLevel = true);
+    enum class DisplayType
+    {
+        TopLevel,
+        Type3Font,
+        Form
+    };
+    void display(Object *obj, DisplayType displayType = DisplayType::TopLevel);
 
     // Display an annotation, given its appearance (a Form XObject),
     // border style, and bounding box (in default user space).
@@ -192,8 +199,8 @@ public:
 
     bool checkTransparencyGroup(Dict *resDict);
 
-    void drawForm(Object *str, Dict *resDict, const double *matrix, const double *bbox, bool transpGroup = false, bool softMask = false, GfxColorSpace *blendingColorSpace = nullptr, bool isolated = false, bool knockout = false,
-                  bool alpha = false, Function *transferFunc = nullptr, GfxColor *backdropColor = nullptr);
+    void drawForm(Object *str, Dict *resDict, const std::array<double, 6> &matrix, const std::array<double, 4> &bbox, bool transpGroup = false, bool softMask = false, GfxColorSpace *blendingColorSpace = nullptr, bool isolated = false,
+                  bool knockout = false, bool alpha = false, Function *transferFunc = nullptr, GfxColor *backdropColor = nullptr);
 
     void pushResources(Dict *resDict);
     void popResources();
@@ -209,6 +216,9 @@ private:
     bool commandAborted; // did the previous command abort the drawing?
     GfxResources *res; // resource stack
     int updateLevel;
+
+    std::stack<DisplayType> displayTypes;
+    std::stack<bool> type3FontIsD1;
 
     GfxState *state; // current graphics state
     int stackHeight; // the height of the current graphics stack
@@ -235,7 +245,7 @@ private:
 
     static const Operator opTab[]; // table of operators
 
-    void go(bool topLevel);
+    void go(DisplayType displayType);
     void execOp(Object *cmd, Object args[], int numArgs);
     const Operator *findOp(const char *name);
     bool checkArg(Object *arg, TchkType type);

@@ -69,7 +69,7 @@ void PDFDisplay::display()
                 QPainter painter(&image);
                 painter.setPen(Qt::red);
                 textRects = page->textList();
-                foreach (Poppler::TextBox *tb, textRects) {
+                Q_FOREACH (Poppler::TextBox *tb, textRects) {
                     painter.drawRect(tb->boundingBox());
                 }
             } else {
@@ -119,7 +119,7 @@ void PDFDisplay::keyPressEvent(QKeyEvent *e)
 void PDFDisplay::mousePressEvent(QMouseEvent *e)
 {
     int i = 0;
-    foreach (Poppler::TextBox *tb, textRects) {
+    Q_FOREACH (Poppler::TextBox *tb, textRects) {
         if (tb->boundingBox().contains(e->pos())) {
             const QString tt = QStringLiteral("Text: \"%1\"\nIndex in text list: %2").arg(tb->text()).arg(i);
             QToolTip::showText(e->globalPos(), tt, this);
@@ -173,7 +173,7 @@ int main(int argc, char **argv)
 
     if (doc->hasEmbeddedFiles()) {
         qDebug() << "Embedded files:";
-        foreach (Poppler::EmbeddedFile *file, doc->embeddedFiles()) {
+        Q_FOREACH (Poppler::EmbeddedFile *file, doc->embeddedFiles()) {
             qDebug() << "   " << file->name();
         }
         qDebug();
@@ -203,7 +203,7 @@ int main(int argc, char **argv)
         test.display();
         test.show(); // show it
 
-        return a.exec(); // start event loop
+        return QApplication::exec(); // start event loop
     } else {
         Poppler::Page *page = doc->page(0);
 
@@ -211,7 +211,7 @@ int main(int argc, char **argv)
         l->show();
         delete page;
         delete doc;
-        return a.exec();
+        return QApplication::exec();
     }
 }
 

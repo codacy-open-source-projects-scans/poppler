@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2022-2023 Jan-Michael Brummer <jan.brummer@tabos.org>
+ * Copyright (C) 2025 Marco Trevisan <mail@3v1n0.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -336,6 +337,7 @@ static gboolean pgd_signature_drawing_area_button_release(GtkWidget *area, GdkEv
         g_free(signature_left);
 
         poppler_document_sign(demo->doc, data, NULL, on_signing_done, NULL);
+        poppler_signing_data_free(data);
     }
 
     return TRUE;
@@ -419,11 +421,7 @@ GtkWidget *pgd_signature_create_widget(PopplerDocument *document)
     g_signal_connect(demo->darea, "button_release_event", G_CALLBACK(pgd_signature_drawing_area_button_release), (gpointer)demo);
 
     swindow = gtk_scrolled_window_new(NULL, NULL);
-#if GTK_CHECK_VERSION(3, 7, 8)
     gtk_container_add(GTK_CONTAINER(swindow), demo->darea);
-#else
-    gtk_scrolled_window_add_with_viewport(GTK_SCROLLED_WINDOW(swindow), demo->darea);
-#endif
     gtk_widget_show(demo->darea);
 
     gtk_widget_show(swindow);

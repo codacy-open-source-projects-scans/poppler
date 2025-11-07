@@ -17,7 +17,7 @@
 //
 // Copyright (C) 2006 Kristian Høgsberg <krh@redhat.com>
 // Copyright (C) 2006 Krzysztof Kowalczyk <kkowalczyk@gmail.com>
-// Copyright (C) 2008-2010, 2012, 2014, 2017-2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2008-2010, 2012, 2014, 2017-2022, 2024, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2012-2014 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2013 Jason Crain <jason@aquaticape.us>
 // Copyright (C) 2015, 2018 Adam Reichold <adam.reichold@t-online.de>
@@ -30,6 +30,7 @@
 // Copyright (C) 2019 Hans-Ulrich Jüttner <huj@froreich-bioscientia.de>
 // Copyright (C) 2020 Thorsten Behrens <Thorsten.Behrens@CIB.de>
 // Copyright (C) 2022 Even Rouault <even.rouault@spatialys.com>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -69,6 +70,12 @@ public:
     // Create a string from a C string.
     explicit GooString(const char *sA) : std::string(sA ? sA : "") { }
 
+    // disallow explicit creation from nullptr
+    // (c++23 also disallows it for std::string)
+    // note, this only prevents GooString(nullptr),
+    // not const char*s = nullptr; GooString(s).
+    explicit GooString(std::nullptr_t) = delete;
+
     // Zero-cost conversion from and to std::string
     explicit GooString(const std::string &str) : std::string(str) { }
     explicit GooString(std::string &&str) : std::string(std::move(str)) { }
@@ -102,16 +109,7 @@ public:
     }
 
     // Copy a string.
-    explicit GooString(const GooString *str) : std::string(str ? static_cast<const std::string &>(*str) : std::string {}) { }
-    GooString *copy() const { return new GooString(this); }
-
-    // Concatenate two strings.
-    GooString(const GooString *str1, const GooString *str2)
-    {
-        reserve(str1->size() + str2->size());
-        static_cast<std::string &>(*this).append(*str1);
-        static_cast<std::string &>(*this).append(*str2);
-    }
+    std::unique_ptr<GooString> copy() const { return std::make_unique<GooString>(this->toStr()); }
 
     // Create a formatted string.  Similar to printf, but without the
     // string overflow issues.  Formatting elements consist of:
@@ -143,8 +141,11 @@ public:
     POPPLER_PRIVATE_EXPORT static std::string format(const char *fmt, ...) GOOSTRING_FORMAT;
     POPPLER_PRIVATE_EXPORT static std::string formatv(const char *fmt, va_list argList);
 
+    POPPLER_PRIVATE_EXPORT static std::string formatLongLong(long long x, int width);
+
     // Get length.
-    int getLength() const { return size(); }
+    using std::string::empty;
+    using std::string::size;
 
     // Get C string.
     using std::string::c_str;
@@ -153,17 +154,13 @@ public:
     char getChar(size_t i) const { return (*this)[i]; }
 
     // Change <i>th character.
-    void setChar(int i, char c) { (*this)[i] = c; }
+    void setChar(size_t i, char c) { (*this)[i] = c; }
 
     // Clear string to zero length.
     using std::string::clear;
 
     // Append a character or string.
-    GooString *append(char c)
-    {
-        push_back(c);
-        return this;
-    }
+    void append(char c) { push_back(c); }
     GooString *append(const GooString *str)
     {
         static_cast<std::string &>(*this).append(*str);
@@ -190,9 +187,9 @@ public:
     POPPLER_PRIVATE_EXPORT GooString *appendfv(const char *fmt, va_list argList);
 
     // Insert a character or string.
-    GooString *insert(int i, char c)
+    GooString *insert(int i, int count, char c)
     {
-        static_cast<std::string &>(*this).insert(i, 1, c);
+        static_cast<std::string &>(*this).insert(i, count, c);
         return this;
     }
     GooString *insert(int i, const GooString *str)
@@ -217,11 +214,7 @@ public:
     }
 
     // Delete a character or range of characters.
-    GooString *del(int i, int n = 1)
-    {
-        erase(i, n);
-        return this;
-    }
+    using std::string::erase;
 
     // Convert string to all-lower case.
     POPPLER_PRIVATE_EXPORT GooString *lowerCase();
@@ -233,9 +226,7 @@ public:
     // Compare two strings:  -1:<  0:=  +1:>
     int cmp(const GooString *str) const { return compare(*str); }
     int cmp(const std::string &str) const { return compare(str); }
-    int cmpN(GooString *str, int n) const { return compare(0, n, *str); }
     int cmp(const char *sA) const { return compare(sA); }
-    int cmpN(const char *sA, int n) const { return compare(0, n, sA); }
 
     // Return true if strings starts with prefix
     using std::string::starts_with;

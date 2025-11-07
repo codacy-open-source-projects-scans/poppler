@@ -14,7 +14,7 @@
 // Copyright 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
 // Copyright 2021 Theofilos Intzoglou <int.teo@gmail.com>
 // Copyright 2021 Marek Kasik <mkasik@redhat.com>
-// Copyright 2023, 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2023-2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -72,7 +72,7 @@ private:
 class NSSSignatureVerification final : public CryptoSign::VerificationInterface
 {
 public:
-    explicit NSSSignatureVerification(std::vector<unsigned char> &&p7data);
+    explicit NSSSignatureVerification(std::vector<unsigned char> &&p7data, CryptoSign::SignatureType);
     ~NSSSignatureVerification() final;
     SignatureValidationStatus validateSignature() final;
     std::chrono::system_clock::time_point getSigningTime() const final;
@@ -91,11 +91,13 @@ public:
 
 private:
     std::vector<unsigned char> p7;
+    CryptoSign::SignatureType type;
     NSSCMSMessage *CMSMessage;
     NSSCMSSignedData *CMSSignedData;
     NSSCMSSignerInfo *CMSSignerInfo;
     SECItem CMSitem;
     std::unique_ptr<HashContext> hashContext;
+    HashAlgorithm innerHashAlgorithm;
     std::future<CertificateValidationStatus> validationStatus;
     std::optional<CertificateValidationStatus> cachedValidationStatus;
 };
@@ -107,7 +109,8 @@ public:
     ~NSSSignatureCreation() final;
     std::unique_ptr<X509CertificateInfo> getCertificateInfo() const final;
     void addData(unsigned char *data_block, int data_len) final;
-    std::optional<GooString> signDetached(const std::string &password) final;
+    std::variant<std::vector<unsigned char>, CryptoSign::SigningErrorMessage> signDetached(const std::string &password) final;
+    CryptoSign::SignatureType signatureType() const final { return CryptoSign::SignatureType::adbe_pkcs7_detached; }
 
     NSSSignatureCreation(const NSSSignatureCreation &) = delete;
     NSSSignatureCreation &operator=(const NSSSignatureCreation &) = delete;
@@ -140,7 +143,7 @@ private:
 class NSSCryptoSignBackend final : public CryptoSign::Backend
 {
 public:
-    std::unique_ptr<CryptoSign::VerificationInterface> createVerificationHandler(std::vector<unsigned char> &&pkcs7) final;
+    std::unique_ptr<CryptoSign::VerificationInterface> createVerificationHandler(std::vector<unsigned char> &&pkcs7, CryptoSign::SignatureType) final;
     std::unique_ptr<CryptoSign::SigningInterface> createSigningHandler(const std::string &certID, HashAlgorithm digestAlgTag) final;
     std::vector<std::unique_ptr<X509CertificateInfo>> getAvailableSigningCertificates() final;
     ~NSSCryptoSignBackend() final;

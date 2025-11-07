@@ -3,7 +3,7 @@
  * Copyright (C) 2005, Brad Hards <bradh@frogmouth.net>
  * Copyright (C) 2008, 2011, Pino Toscano <pino@kde.org>
  * Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
- * Copyright (C) 2023 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+ * Copyright (C) 2023, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -85,13 +85,13 @@ QDateTime EmbeddedFile::createDate() const
 QByteArray EmbeddedFile::checksum() const
 {
     const GooString *goo = m_embeddedFile->embFile() ? m_embeddedFile->embFile()->checksum() : nullptr;
-    return goo ? QByteArray::fromRawData(goo->c_str(), goo->getLength()) : QByteArray();
+    return goo ? QByteArray::fromRawData(goo->c_str(), goo->size()) : QByteArray();
 }
 
 QString EmbeddedFile::mimeType() const
 {
     const GooString *goo = m_embeddedFile->embFile() ? m_embeddedFile->embFile()->mimeType() : nullptr;
-    return goo ? QString(goo->c_str()) : QString();
+    return goo ? QString::fromStdString(goo->toStr()) : QString();
 }
 
 QByteArray EmbeddedFile::data()
@@ -104,7 +104,9 @@ QByteArray EmbeddedFile::data()
         return QByteArray();
     }
 
-    stream->reset();
+    if (!stream->reset()) {
+        return QByteArray();
+    }
     auto data = stream->toUnsignedChars();
     return QByteArray(reinterpret_cast<const char *>(data.data()), data.size());
 }

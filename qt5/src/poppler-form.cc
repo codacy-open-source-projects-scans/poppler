@@ -1,6 +1,6 @@
 /* poppler-form.h: qt interface to poppler
  * Copyright (C) 2007-2008, 2011, Pino Toscano <pino@kde.org>
- * Copyright (C) 2008, 2011, 2012, 2015-2023 Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2008, 2011, 2012, 2015-2024 Albert Astals Cid <aacid@kde.org>
  * Copyright (C) 2011 Carlos Garcia Campos <carlosgc@gnome.org>
  * Copyright (C) 2012, Adam Reichold <adamreichold@myopera.com>
  * Copyright (C) 2016, Hanno Meyer-Thurow <h.mth@web.de>
@@ -16,8 +16,10 @@
  * Copyright (C) 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
  * Copyright (C) 2021 Theofilos Intzoglou <int.teo@gmail.com>
  * Copyright (C) 2022 Alexander Sulfrian <asulfrian@zedat.fu-berlin.de>
- * Copyright (C) 2023, 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+ * Copyright (C) 2023-2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  * Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
+ * Copyright (C) 2024 Stefan Brüns <stefan.bruens@rwth-aachen.de>
+ * Copyright (C) 2025 Blair Bonnett <blair.bonnett@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,6 +41,7 @@
 #include <config.h>
 
 #include <QtCore/QSizeF>
+#include <QTimeZone>
 #include <QUrl>
 
 #include <Form.h>
@@ -49,6 +52,9 @@
 #include <CryptoSignBackend.h>
 #ifdef ENABLE_NSS3
 #    include <NSSCryptoSignBackend.h>
+#endif
+#ifdef ENABLE_GPGME
+#    include <GPGMECryptoSignBackendConfiguration.h>
 #endif
 
 #include "poppler-page-private.h"
@@ -158,15 +164,14 @@ QString FormField::name() const
 
 void FormField::setName(const QString &name) const
 {
-    GooString *goo = QStringToGooString(name);
+    const std::unique_ptr<GooString> goo = QStringToGooString(name);
     m_formData->fm->setPartialName(*goo);
-    delete goo;
 }
 
 QString FormField::fullyQualifiedName() const
 {
     QString name;
-    if (GooString *goo = m_formData->fm->getFullyQualifiedName()) {
+    if (const GooString *goo = m_formData->fm->getFullyQualifiedName()) {
         name = UnicodeParsedString(goo);
     }
     return name;
@@ -267,7 +272,7 @@ Link *FormField::additionalAction(AdditionalActionType type) const
 
 Link *FormField::additionalAction(Annotation::AdditionalActionType type) const
 {
-    ::AnnotWidget *w = m_formData->fm->getWidgetAnnotation();
+    std::shared_ptr<AnnotWidget> w = m_formData->fm->getWidgetAnnotation();
     if (!w) {
         return nullptr;
     }
@@ -283,7 +288,7 @@ Link *FormField::additionalAction(Annotation::AdditionalActionType type) const
 
 FormFieldButton::FormFieldButton(DocumentData *doc, ::Page *p, ::FormWidgetButton *w) : FormField(std::make_unique<FormFieldData>(doc, p, w)) { }
 
-FormFieldButton::~FormFieldButton() { }
+FormFieldButton::~FormFieldButton() = default;
 
 FormFieldButton::FormType FormFieldButton::type() const
 {
@@ -348,7 +353,7 @@ void FormFieldButton::setIcon(const FormFieldIcon &icon)
 
     FormWidgetButton *fwb = static_cast<FormWidgetButton *>(m_formData->fm);
     if (fwb->getButtonType() == formButtonPush) {
-        ::AnnotWidget *w = m_formData->fm->getWidgetAnnotation();
+        ::AnnotWidget *w = m_formData->fm->getWidgetAnnotation().get();
         FormFieldIconData *data = FormFieldIconData::getData(icon);
         if (data->icon != nullptr) {
             w->setNewAppearance(data->icon->lookup("AP"));
@@ -392,7 +397,7 @@ QList<int> FormFieldButton::siblings() const
 
 FormFieldText::FormFieldText(DocumentData *doc, ::Page *p, ::FormWidgetText *w) : FormField(std::make_unique<FormFieldData>(doc, p, w)) { }
 
-FormFieldText::~FormFieldText() { }
+FormFieldText::~FormFieldText() = default;
 
 FormField::FormType FormFieldText::type() const
 {
@@ -419,17 +424,15 @@ QString FormFieldText::text() const
 void FormFieldText::setText(const QString &text)
 {
     FormWidgetText *fwt = static_cast<FormWidgetText *>(m_formData->fm);
-    GooString *goo = QStringToUnicodeGooString(text);
-    fwt->setContent(goo);
-    delete goo;
+    std::unique_ptr<GooString> goo = QStringToUnicodeGooString(text);
+    fwt->setContent(std::move(goo));
 }
 
 void FormFieldText::setAppearanceText(const QString &text)
 {
     FormWidgetText *fwt = static_cast<FormWidgetText *>(m_formData->fm);
-    GooString *goo = QStringToUnicodeGooString(text);
-    fwt->setAppearanceContent(goo);
-    delete goo;
+    std::unique_ptr<GooString> goo = QStringToUnicodeGooString(text);
+    fwt->setAppearanceContent(std::move(goo));
 }
 
 bool FormFieldText::isPassword() const
@@ -476,7 +479,7 @@ void FormFieldText::setFontSize(int fontSize)
 
 FormFieldChoice::FormFieldChoice(DocumentData *doc, ::Page *p, ::FormWidgetChoice *w) : FormField(std::make_unique<FormFieldData>(doc, p, w)) { }
 
-FormFieldChoice::~FormFieldChoice() { }
+FormFieldChoice::~FormFieldChoice() = default;
 
 FormFieldChoice::FormType FormFieldChoice::type() const
 {
@@ -569,9 +572,8 @@ void FormFieldChoice::setEditChoice(const QString &text)
     FormWidgetChoice *fwc = static_cast<FormWidgetChoice *>(m_formData->fm);
 
     if (fwc->isCombo() && fwc->hasEdit()) {
-        GooString *goo = QStringToUnicodeGooString(text);
-        fwc->setEditChoice(goo);
-        delete goo;
+        std::unique_ptr<GooString> goo = QStringToUnicodeGooString(text);
+        fwc->setEditChoice(std::move(goo));
     }
 }
 
@@ -589,9 +591,8 @@ bool FormFieldChoice::canBeSpellChecked() const
 void FormFieldChoice::setAppearanceChoiceText(const QString &text)
 {
     FormWidgetChoice *fwc = static_cast<FormWidgetChoice *>(m_formData->fm);
-    GooString *goo = QStringToUnicodeGooString(text);
-    fwc->setAppearanceChoiceContent(goo);
-    delete goo;
+    std::unique_ptr<GooString> goo = QStringToUnicodeGooString(text);
+    fwc->setAppearanceChoiceContent(std::move(goo));
 }
 
 class CertificateInfoPrivate
@@ -620,6 +621,7 @@ public:
     bool is_self_signed;
     bool is_null;
     CertificateInfo::KeyLocation keyLocation;
+    CertificateInfo::CertificateType certificateType;
 };
 
 CertificateInfo::CertificateInfo() : d_ptr(new CertificateInfoPrivate())
@@ -629,7 +631,7 @@ CertificateInfo::CertificateInfo() : d_ptr(new CertificateInfoPrivate())
 
 CertificateInfo::CertificateInfo(CertificateInfoPrivate *priv) : d_ptr(priv) { }
 
-CertificateInfo::CertificateInfo(const CertificateInfo &other) : d_ptr(other.d_ptr) { }
+CertificateInfo::CertificateInfo(const CertificateInfo &other) = default;
 
 CertificateInfo::~CertificateInfo() = default;
 
@@ -658,6 +660,12 @@ QByteArray CertificateInfo::serialNumber() const
 {
     Q_D(const CertificateInfo);
     return d->serial_number;
+}
+
+CertificateInfo::CertificateType CertificateInfo::certificateType() const
+{
+    Q_D(const CertificateInfo);
+    return d->certificateType;
 }
 
 QString CertificateInfo::issuerInfo(EntityInfoKey key) const
@@ -802,8 +810,8 @@ bool CertificateInfo::checkPassword(const QString &password) const
     unsigned char buffer[5];
     memcpy(buffer, "test", 5);
     sigHandler->addData(buffer, 5);
-    std::optional<GooString> tmpSignature = sigHandler->signDetached(password.toStdString());
-    return tmpSignature.has_value();
+    std::variant<std::vector<unsigned char>, CryptoSign::SigningErrorMessage> tmpSignature = sigHandler->signDetached(password.toStdString());
+    return std::holds_alternative<std::vector<unsigned char>>(tmpSignature);
 #else
     return false;
 #endif
@@ -831,9 +839,9 @@ public:
 
 SignatureValidationInfo::SignatureValidationInfo(SignatureValidationInfoPrivate *priv) : d_ptr(priv) { }
 
-SignatureValidationInfo::SignatureValidationInfo(const SignatureValidationInfo &other) : d_ptr(other.d_ptr) { }
+SignatureValidationInfo::SignatureValidationInfo(const SignatureValidationInfo &other) = default;
 
-SignatureValidationInfo::~SignatureValidationInfo() { }
+SignatureValidationInfo::~SignatureValidationInfo() = default;
 
 SignatureValidationInfo::SignatureStatus SignatureValidationInfo::signatureStatus() const
 {
@@ -951,7 +959,7 @@ SignatureValidationInfo &SignatureValidationInfo::operator=(const SignatureValid
 
 FormFieldSignature::FormFieldSignature(DocumentData *doc, ::Page *p, ::FormWidgetSignature *w) : FormField(std::make_unique<FormFieldData>(doc, p, w)) { }
 
-FormFieldSignature::~FormFieldSignature() { }
+FormFieldSignature::~FormFieldSignature() = default;
 
 FormField::FormType FormFieldSignature::type() const
 {
@@ -963,20 +971,23 @@ FormFieldSignature::SignatureType FormFieldSignature::signatureType() const
     SignatureType sigType = AdbePkcs7detached;
     FormWidgetSignature *fws = static_cast<FormWidgetSignature *>(m_formData->fm);
     switch (fws->signatureType()) {
-    case adbe_pkcs7_sha1:
+    case CryptoSign::SignatureType::adbe_pkcs7_sha1:
         sigType = AdbePkcs7sha1;
         break;
-    case adbe_pkcs7_detached:
+    case CryptoSign::SignatureType::adbe_pkcs7_detached:
         sigType = AdbePkcs7detached;
         break;
-    case ETSI_CAdES_detached:
+    case CryptoSign::SignatureType::ETSI_CAdES_detached:
         sigType = EtsiCAdESdetached;
         break;
-    case unknown_signature_type:
+    case CryptoSign::SignatureType::unknown_signature_type:
         sigType = UnknownSignatureType;
         break;
-    case unsigned_signature_field:
+    case CryptoSign::SignatureType::unsigned_signature_field:
         sigType = UnsignedSignature;
+        break;
+    case CryptoSign::SignatureType::g10c_pgp_signature_detached:
+        sigType = G10cPgpSignatureDetached;
         break;
     }
     return sigType;
@@ -1004,6 +1015,17 @@ static CertificateInfo::KeyLocation fromPopplerCore(KeyLocation location)
     return CertificateInfo::KeyLocation::Unknown;
 }
 
+static CertificateInfo::CertificateType fromPopplerCore(CertificateType type)
+{
+    switch (type) {
+    case CertificateType::PGP:
+        return CertificateInfo::CertificateType::PGP;
+    case CertificateType::X509:
+        return CertificateInfo::CertificateType::X509;
+    }
+    return CertificateInfo::CertificateType::X509; // fallback
+}
+
 static CertificateInfoPrivate *createCertificateInfoPrivate(const X509CertificateInfo *ci)
 {
     CertificateInfoPrivate *certPriv = new CertificateInfoPrivate;
@@ -1012,35 +1034,36 @@ static CertificateInfoPrivate *createCertificateInfoPrivate(const X509Certificat
         certPriv->version = ci->getVersion();
         certPriv->ku_extensions = ci->getKeyUsageExtensions();
         certPriv->keyLocation = fromPopplerCore(ci->getKeyLocation());
+        certPriv->certificateType = fromPopplerCore(ci->getCertificateType());
 
         const GooString &certSerial = ci->getSerialNumber();
-        certPriv->serial_number = QByteArray(certSerial.c_str(), certSerial.getLength());
+        certPriv->serial_number = QByteArray(certSerial.c_str(), certSerial.size());
 
         const X509CertificateInfo::EntityInfo &issuerInfo = ci->getIssuerInfo();
-        certPriv->issuer_info.common_name = issuerInfo.commonName.c_str();
-        certPriv->issuer_info.distinguished_name = issuerInfo.distinguishedName.c_str();
-        certPriv->issuer_info.email_address = issuerInfo.email.c_str();
-        certPriv->issuer_info.org_name = issuerInfo.organization.c_str();
+        certPriv->issuer_info.common_name = QString::fromStdString(issuerInfo.commonName);
+        certPriv->issuer_info.distinguished_name = QString::fromStdString(issuerInfo.distinguishedName);
+        certPriv->issuer_info.email_address = QString::fromStdString(issuerInfo.email);
+        certPriv->issuer_info.org_name = QString::fromStdString(issuerInfo.organization);
 
         const X509CertificateInfo::EntityInfo &subjectInfo = ci->getSubjectInfo();
-        certPriv->subject_info.common_name = subjectInfo.commonName.c_str();
-        certPriv->subject_info.distinguished_name = subjectInfo.distinguishedName.c_str();
-        certPriv->subject_info.email_address = subjectInfo.email.c_str();
-        certPriv->subject_info.org_name = subjectInfo.organization.c_str();
+        certPriv->subject_info.common_name = QString::fromStdString(subjectInfo.commonName);
+        certPriv->subject_info.distinguished_name = QString::fromStdString(subjectInfo.distinguishedName);
+        certPriv->subject_info.email_address = QString::fromStdString(subjectInfo.email);
+        certPriv->subject_info.org_name = QString::fromStdString(subjectInfo.organization);
 
-        certPriv->nick_name = ci->getNickName().c_str();
+        certPriv->nick_name = QString::fromStdString(ci->getNickName().toStr());
 
         X509CertificateInfo::Validity certValidity = ci->getValidity();
-        certPriv->validity_start = QDateTime::fromSecsSinceEpoch(certValidity.notBefore, Qt::UTC);
-        certPriv->validity_end = QDateTime::fromSecsSinceEpoch(certValidity.notAfter, Qt::UTC);
+        certPriv->validity_start = QDateTime::fromSecsSinceEpoch(certValidity.notBefore, QTimeZone::utc());
+        certPriv->validity_end = QDateTime::fromSecsSinceEpoch(certValidity.notAfter, QTimeZone::utc());
 
         const X509CertificateInfo::PublicKeyInfo &pkInfo = ci->getPublicKeyInfo();
-        certPriv->public_key = QByteArray(pkInfo.publicKey.c_str(), pkInfo.publicKey.getLength());
+        certPriv->public_key = QByteArray(pkInfo.publicKey.c_str(), pkInfo.publicKey.size());
         certPriv->public_key_type = static_cast<int>(pkInfo.publicKeyType);
         certPriv->public_key_strength = pkInfo.publicKeyStrength;
 
         const GooString &certDer = ci->getCertificateDER();
-        certPriv->certificate_der = QByteArray(certDer.c_str(), certDer.getLength());
+        certPriv->certificate_der = QByteArray(certDer.c_str(), certDer.size());
 
         certPriv->is_null = false;
     }
@@ -1114,9 +1137,10 @@ static SignatureValidationInfo fromInternal(SignatureInfo *si, FormWidgetSignatu
             priv->range_bounds.append(bound);
         }
     }
-    const std::optional<GooString> checkedSignature = fws->getCheckedSignature(&priv->docLength);
+    std::optional<std::vector<unsigned char>> checkedSignature;
+    std::tie(checkedSignature, priv->docLength) = fws->getCheckedSignature();
     if (priv->range_bounds.size() == 4 && checkedSignature) {
-        priv->signature = QByteArray::fromHex(checkedSignature->c_str());
+        priv->signature = QByteArray::fromRawData(reinterpret_cast<const char *>(checkedSignature->data()), checkedSignature->size());
     }
 
     return SignatureValidationInfo(priv);
@@ -1133,7 +1157,7 @@ class AsyncObjectPrivate
 { /*Currently unused. Created for abi future proofing*/
 };
 
-AsyncObject::AsyncObject() : QObject(nullptr), d {} { }
+AsyncObject::AsyncObject() : QObject(nullptr) { }
 
 AsyncObject::~AsyncObject() = default;
 
@@ -1151,7 +1175,7 @@ std::pair<SignatureValidationInfo, std::shared_ptr<Poppler::AsyncObject>> FormFi
                                                                     l.get(),
                                                                     [innerObj = std::weak_ptr<AsyncObject>(l)]() {
                                                                         if (auto innerLocked = innerObj.lock()) {
-                                                                            emit innerLocked->done();
+                                                                            Q_EMIT innerLocked->done();
                                                                         }
                                                                     },
                                                                     Qt::QueuedConnection);
@@ -1166,15 +1190,19 @@ SignatureValidationInfo::CertificateStatus FormFieldSignature::validateResult() 
     return fromInternal(static_cast<FormWidgetSignature *>(m_formData->fm)->validateSignatureResult());
 }
 
+ErrorString FormFieldSignature::lastSigningErrorDetails() const
+{
+    return m_formData->lastSigningErrorDetails;
+}
+
 FormFieldSignature::SigningResult FormFieldSignature::sign(const QString &outputFileName, const PDFConverter::NewSignatureData &data) const
 {
     FormWidgetSignature *fws = static_cast<FormWidgetSignature *>(m_formData->fm);
-    if (fws->signatureType() != unsigned_signature_field) {
+    if (fws->signatureType() != CryptoSign::SignatureType::unsigned_signature_field) {
         return FieldAlreadySigned;
     }
 
-    Goffset file_size = 0;
-    const std::optional<GooString> sig = fws->getCheckedSignature(&file_size);
+    const auto [sig, file_size] = fws->getCheckedSignature();
     if (sig) {
         // the above unsigned_signature_field check
         // should already catch this, but double check
@@ -1187,10 +1215,29 @@ FormFieldSignature::SigningResult FormFieldSignature::sign(const QString &output
     const auto gSignatureText = std::unique_ptr<GooString>(QStringToUnicodeGooString(data.signatureText()));
     const auto gSignatureLeftText = std::unique_ptr<GooString>(QStringToUnicodeGooString(data.signatureLeftText()));
 
-    const bool success = fws->signDocumentWithAppearance(outputFileName.toStdString(), data.certNickname().toStdString(), data.password().toStdString(), reason.get(), location.get(), ownerPwd, userPwd, *gSignatureText, *gSignatureLeftText,
-                                                         data.fontSize(), data.leftFontSize(), convertQColor(data.fontColor()), data.borderWidth(), convertQColor(data.borderColor()), convertQColor(data.backgroundColor()));
-
-    return success ? SigningSuccess : GenericSigningError;
+    auto failure = fws->signDocumentWithAppearance(outputFileName.toStdString(), data.certNickname().toStdString(), data.password().toStdString(), reason.get(), location.get(), ownerPwd, userPwd, *gSignatureText, *gSignatureLeftText,
+                                                   data.fontSize(), data.leftFontSize(), convertQColor(data.fontColor()), data.borderWidth(), convertQColor(data.borderColor()), convertQColor(data.backgroundColor()));
+    if (failure) {
+        m_formData->lastSigningErrorDetails = fromPopplerCore(failure.value().message);
+        switch (failure.value().type) {
+        case CryptoSign::SigningError::GenericError:
+            return GenericSigningError;
+        case CryptoSign::SigningError::InternalError:
+            return InternalError;
+        case CryptoSign::SigningError::KeyMissing:
+            return KeyMissing;
+        case CryptoSign::SigningError::UserCancelled:
+            return UserCancelled;
+        case CryptoSign::SigningError::WriteFailed:
+            return WriteFailed;
+        case CryptoSign::SigningError::BadPassphrase:
+            return BadPassphrase;
+        }
+        return GenericSigningError; // catch all
+    } else {
+        m_formData->lastSigningErrorDetails = {};
+        return SigningSuccess;
+    }
 }
 
 bool hasNSSSupport()
@@ -1323,9 +1370,8 @@ void setNSSDir(const QString &path)
         return;
     }
 
-    GooString *goo = QStringToGooString(path);
+    const std::unique_ptr<GooString> goo = QStringToGooString(path);
     NSSSignatureConfiguration::setNSSDir(*goo);
-    delete goo;
 #else
     (void)path;
 #endif
@@ -1345,4 +1391,22 @@ void setNSSPasswordCallback(const std::function<char *(const char *)> &f)
 #endif
 }
 
+void setPgpSignaturesAllowed(bool allowed)
+{
+#ifdef ENABLE_GPGME
+    GpgSignatureConfiguration::setPgpSignaturesAllowed(allowed);
+#else
+    qWarning() << "Trying to enable pgp signatures, but pgp not enabled in this build";
+    (void)allowed;
+#endif
+}
+
+bool arePgpSignaturesAllowed()
+{
+#ifdef ENABLE_GPGME
+    return GpgSignatureConfiguration::arePgpSignaturesAllowed();
+#else
+    return false;
+#endif
+}
 }

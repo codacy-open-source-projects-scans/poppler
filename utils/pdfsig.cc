@@ -6,7 +6,7 @@
 //
 // Copyright 2015 André Guerreiro <aguerreiro1985@gmail.com>
 // Copyright 2015 André Esser <bepandre@hotmail.com>
-// Copyright 2015, 2017-2023 Albert Astals Cid <aacid@kde.org>
+// Copyright 2015, 2017-2025 Albert Astals Cid <aacid@kde.org>
 // Copyright 2016 Markus Kilås <digital@markuspage.com>
 // Copyright 2017, 2019 Hans-Ulrich Jüttner <huj@froreich-bioscientia.de>
 // Copyright 2017, 2019 Adrian Johnson <ajohnson@redneon.com>
@@ -18,7 +18,8 @@
 // Copyright 2021 Theofilos Intzoglou <int.teo@gmail.com>
 // Copyright 2022 Felix Jung <fxjung@posteo.de>
 // Copyright 2022, 2024 Erich E. Hoover <erich.e.hoover@gmail.com>
-// Copyright 2023, 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2023-2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2025 Blair Bonnett <blair.bonnett@gmail.com>
 //
 //========================================================================
 
@@ -31,6 +32,7 @@
 #include <ctime>
 #include <fstream>
 #include <random>
+#include <filesystem>
 #include "parseargs.h"
 #include "Object.h"
 #include "Array.h"
@@ -43,6 +45,9 @@
 #include "GlobalParams.h"
 #ifdef ENABLE_NSS3
 #    include "NSSCryptoSignBackend.h"
+#endif
+#ifdef ENABLE_GPGME
+#    include "GPGMECryptoSignBackendConfiguration.h"
 #endif
 #include "CryptoSignBackend.h"
 #include "SignatureInfo.h"
@@ -78,6 +83,9 @@ static const char *getReadableSigState(SignatureValidationStatus sig_vs)
 
     case SIGNATURE_NOT_VERIFIED:
         return "Signature has not yet been verified.";
+
+    case SIGNATURE_NOT_FOUND:
+        return "Signature not found.";
 
     default:
         return "Unknown Validation Failure.";
@@ -117,23 +125,58 @@ static char *getReadableTime(time_t unix_time)
     return time_str;
 }
 
+static std::string_view trim(std::string_view input)
+{
+    size_t first = input.find_first_not_of(" \t");
+    if (first == std::string_view::npos) {
+        return {};
+    }
+    size_t last = input.find_last_not_of(" \t");
+    return input.substr(first, last - first + 1);
+}
+
+static std::vector<std::string> parseAssertSignerFile(std::string_view input)
+{
+    std::fstream file(std::string { input });
+    std::vector<std::string> lines;
+    std::string line;
+    while (std::getline(file, line)) {
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+
+        std::string_view trimmedLine = trim(line);
+
+        if (!trimmedLine.empty()) {
+            lines.emplace_back(trimmedLine);
+        }
+    }
+    return lines;
+}
+
+static std::vector<std::string> parseAssertSigner(std::string_view input)
+{
+    if (std::filesystem::exists(input)) {
+        return parseAssertSignerFile(input);
+    }
+    return std::vector<std::string> { std::string { input } };
+}
+
 static bool dumpSignature(int sig_num, int sigCount, FormFieldSignature *s, const char *filename)
 {
-    const GooString *signature = s->getSignature();
-    if (!signature) {
+    const std::vector<unsigned char> &signature = s->getSignature();
+    if (signature.empty()) {
         printf("Cannot dump signature #%d\n", sig_num);
         return false;
     }
 
-    const int sigCountLength = numberOfCharacters(sigCount);
-    // We want format to be {0:s}.sig{1:Xd} where X is sigCountLength
-    // since { is the magic character to replace things we need to put it twice where
-    // we don't want it to be replaced
-    const std::string format = GooString::format("{{0:s}}.sig{{1:{0:d}d}}", sigCountLength);
-    const std::string path = GooString::format(format.c_str(), gbasename(filename).c_str(), sig_num);
-    printf("Signature #%d (%u bytes) => %s\n", sig_num, signature->getLength(), path.c_str());
+    const int sigCountWidth = numberOfCharacters(sigCount);
+    const std::string filenameWithExtension = GooString::format("{0:s}.sig", gbasename(filename).c_str());
+    const std::string sig_numString = GooString::formatLongLong(sig_num, sigCountWidth);
+    const std::string path = filenameWithExtension + sig_numString;
+    printf("Signature #%d (%lu bytes) => %s\n", sig_num, signature.size(), path.c_str());
     std::ofstream outfile(path.c_str(), std::ofstream::binary);
-    outfile.write(signature->c_str(), signature->getLength());
+    outfile.write(reinterpret_cast<const char *>(signature.data()), signature.size());
     outfile.close();
 
     return true;
@@ -147,6 +190,11 @@ static bool printVersion = false;
 static bool printHelp = false;
 static bool printCryptoSignBackends = false;
 static bool dontVerifyCert = false;
+#ifdef ENABLE_GPGME
+static bool allowPgp = GpgSignatureConfiguration::arePgpSignaturesAllowed();
+#else
+static bool allowPgp = false;
+#endif
 static bool noOCSPRevocationCheck = false;
 static bool noAppearance = false;
 static bool dumpSignatures = false;
@@ -161,33 +209,40 @@ static bool listNicknames = false;
 static bool addNewSignature = false;
 static bool useAIACertFetch = false;
 static GooString newSignatureFieldName;
+static char assertSigner[256] = "";
 
-static const ArgDesc argDesc[] = { { "-nssdir", argGooString, &nssDir, 0, "path to directory of libnss3 database" },
-                                   { "-nss-pwd", argGooString, &nssPassword, 0, "password to access the NSS database (if any)" },
-                                   { "-nocert", argFlag, &dontVerifyCert, 0, "don't perform certificate validation" },
-                                   { "-no-ocsp", argFlag, &noOCSPRevocationCheck, 0, "don't perform online OCSP certificate revocation check" },
-                                   { "-no-appearance", argFlag, &noAppearance, 0, "don't add appearance information when signing existing fields" },
-                                   { "-aia", argFlag, &useAIACertFetch, 0, "use Authority Information Access (AIA) extension for certificate fetching" },
-                                   { "-dump", argFlag, &dumpSignatures, 0, "dump all signatures into current directory" },
-                                   { "-add-signature", argFlag, &addNewSignature, 0, "adds a new signature to the document" },
-                                   { "-new-signature-field-name", argGooString, &newSignatureFieldName, 0, "field name used for the newly added signature. A random ID will be used if empty" },
-                                   { "-sign", argString, &signatureName, 256, "sign the document in the given signature field (by name or number)" },
-                                   { "-etsi", argFlag, &etsiCAdESdetached, 0, "create a signature of type ETSI.CAdES.detached instead of adbe.pkcs7.detached" },
-                                   { "-backend", argString, &backendString, 256, "use given backend for signing/verification" },
-                                   { "-nick", argString, &certNickname, 256, "use the certificate with the given nickname/fingerprint for signing" },
-                                   { "-kpw", argString, &password, 256, "password for the signing key (might be missing if the key isn't password protected)" },
-                                   { "-digest", argString, &digestName, 256, "name of the digest algorithm (default: SHA256)" },
-                                   { "-reason", argGooString, &reason, 0, "reason for signing (default: no reason given)" },
-                                   { "-list-nicks", argFlag, &listNicknames, 0, "list available nicknames in the NSS database" },
-                                   { "-list-backends", argFlag, &printCryptoSignBackends, 0, "print cryptographic signature backends" },
-                                   { "-opw", argString, ownerPassword, sizeof(ownerPassword), "owner password (for encrypted files)" },
-                                   { "-upw", argString, userPassword, sizeof(userPassword), "user password (for encrypted files)" },
-                                   { "-v", argFlag, &printVersion, 0, "print copyright and version info" },
-                                   { "-h", argFlag, &printHelp, 0, "print usage information" },
-                                   { "-help", argFlag, &printHelp, 0, "print usage information" },
-                                   { "--help", argFlag, &printHelp, 0, "print usage information" },
-                                   { "-?", argFlag, &printHelp, 0, "print usage information" },
-                                   {} };
+static const ArgDesc argDesc[] = {
+    { "-nssdir", argGooString, &nssDir, 0, "path to directory of libnss3 database" },
+    { "-nss-pwd", argGooString, &nssPassword, 0, "password to access the NSS database (if any)" },
+    { "-nocert", argFlag, &dontVerifyCert, 0, "don't perform certificate validation" },
+    { "-no-ocsp", argFlag, &noOCSPRevocationCheck, 0, "don't perform online OCSP certificate revocation check" },
+    { "-no-appearance", argFlag, &noAppearance, 0, "don't add appearance information when signing existing fields" },
+    { "-aia", argFlag, &useAIACertFetch, 0, "use Authority Information Access (AIA) extension for certificate fetching" },
+    { "-assert-signer", argString, &assertSigner, 256,
+      "This option checks whether the signature covering the full document been made with the specified key. The key is either specified as a fingerprint or a file listing fingerprints. The fingerprint must "
+      "be given or listed in compact format (no colons or spaces in between). If fpr_or_file specifies a file, empty lines are ignored as well as all lines starting with a hash sign. Only available for GnuPG backend." },
+    { "-dump", argFlag, &dumpSignatures, 0, "dump all signatures into current directory" },
+    { "-add-signature", argFlag, &addNewSignature, 0, "adds a new signature to the document" },
+    { "-new-signature-field-name", argGooString, &newSignatureFieldName, 0, "field name used for the newly added signature. A random ID will be used if empty" },
+    { "-sign", argString, &signatureName, 256, "sign the document in the given signature field (by name or number)" },
+    { "-etsi", argFlag, &etsiCAdESdetached, 0, "create a signature of type ETSI.CAdES.detached instead of adbe.pkcs7.detached" },
+    { "-backend", argString, &backendString, 256, "use given backend for signing/verification" },
+    { "-enable-pgp", argFlag, &allowPgp, 0, "Enable pgp signatures in the GnuPG backend. Only available for GnuPG backend" },
+    { "-nick", argString, &certNickname, 256, "use the certificate with the given nickname/fingerprint for signing" },
+    { "-kpw", argString, &password, 256, "password for the signing key (might be missing if the key isn't password protected)" },
+    { "-digest", argString, &digestName, 256, "name of the digest algorithm (default: SHA256)" },
+    { "-reason", argGooString, &reason, 0, "reason for signing (default: no reason given)" },
+    { "-list-nicks", argFlag, &listNicknames, 0, "list available nicknames in the NSS database" },
+    { "-list-backends", argFlag, &printCryptoSignBackends, 0, "print cryptographic signature backends" },
+    { "-opw", argString, ownerPassword, sizeof(ownerPassword), "owner password (for encrypted files)" },
+    { "-upw", argString, userPassword, sizeof(userPassword), "user password (for encrypted files)" },
+    { "-v", argFlag, &printVersion, 0, "print copyright and version info" },
+    { "-h", argFlag, &printHelp, 0, "print usage information" },
+    { "-help", argFlag, &printHelp, 0, "print usage information" },
+    { "--help", argFlag, &printHelp, 0, "print usage information" },
+    { "-?", argFlag, &printHelp, 0, "print usage information" },
+    {}
+};
 
 static void print_version_usage(bool usage)
 {
@@ -231,7 +286,7 @@ static std::vector<std::unique_ptr<X509CertificateInfo>> getAvailableSigningCert
             return nullptr;
         }
         firstTime = false;
-        if (nssPassword.getLength() > 0) {
+        if (!nssPassword.empty()) {
             return strdup(nssPassword.c_str());
         } else {
             passwordNeeded = true;
@@ -280,6 +335,17 @@ static std::string locationToString(KeyLocation location)
         return "(Hardware Token)";
     }
     return {};
+}
+
+static const char *typeToString(CertificateType type)
+{
+    switch (type) {
+    case CertificateType::PGP:
+        return "PGP";
+    case CertificateType::X509:
+        return "S/Mime";
+    }
+    return "";
 }
 
 static std::string TextStringToUTF8(const std::string &str)
@@ -340,6 +406,14 @@ int main(int argc, char *argv[])
 #ifdef ENABLE_NSS3
     NSSSignatureConfiguration::setNSSDir(nssDir);
 #endif
+#ifdef ENABLE_GPGME
+    GpgSignatureConfiguration::setPgpSignaturesAllowed(allowPgp);
+#else
+    if (allowPgp) {
+        printf("Pgp support not enabled in this build.\n");
+        return 99;
+    }
+#endif
 
     if (listNicknames) {
         bool getCertsError;
@@ -354,7 +428,7 @@ int main(int argc, char *argv[])
                 for (auto &cert : vCerts) {
                     const GooString &nick = cert->getNickName();
                     const auto location = locationToString(cert->getKeyLocation());
-                    printf("%s %s\n", nick.c_str(), location.c_str());
+                    printf("%s %s %s %s\n", nick.c_str(), (cert->isQualified() ? "(*)" : "   "), location.c_str(), allowPgp ? typeToString(cert->getCertificateType()) : "");
                 }
             }
         }
@@ -436,7 +510,7 @@ int main(int argc, char *argv[])
 
         const auto rs = std::unique_ptr<GooString>(reason.toStr().empty() ? nullptr : std::make_unique<GooString>(utf8ToUtf16WithBom(reason.toStr())));
 
-        if (newSignatureFieldName.getLength() == 0) {
+        if (newSignatureFieldName.empty()) {
             // Create a random field name, it could be anything but 32 hex numbers should
             // hopefully give us something that is not already in the document
             std::random_device rd;
@@ -449,10 +523,10 @@ int main(int argc, char *argv[])
         }
 
         // We don't provide a way to customize the UI from pdfsig for now
-        const bool success = doc->sign(std::string { argv[2] }, std::string { certNickname }, std::string { password }, newSignatureFieldName.copy(), /*page*/ 1,
+        const auto failure = doc->sign(std::string { argv[2] }, std::string { certNickname }, std::string { password }, newSignatureFieldName.copy(), /*page*/ 1,
                                        /*rect */ { 0, 0, 0, 0 }, /*signatureText*/ {}, /*signatureTextLeft*/ {}, /*fontSize */ 0, /*leftFontSize*/ 0,
                                        /*fontColor*/ {}, /*borderWidth*/ 0, /*borderColor*/ {}, /*backgroundColor*/ {}, rs.get(), /* location */ nullptr, /* image path */ "", ownerPW, userPW);
-        return success ? 0 : 3;
+        return !failure.has_value() ? 0 : 3;
     }
 
     const std::vector<FormFieldSignature *> signatures = doc->getSignatureFields();
@@ -509,14 +583,13 @@ int main(int argc, char *argv[])
         }
 
         FormFieldSignature *ffs = signatures.at(signatureNumber - 1);
-        Goffset file_size = 0;
-        const std::optional<GooString> sig = ffs->getCheckedSignature(&file_size);
+        auto [sig, file_size] = ffs->getCheckedSignature();
         if (sig) {
             printf("Signature number %d is already signed\n", signatureNumber);
             return 2;
         }
         if (etsiCAdESdetached) {
-            ffs->setSignatureType(ETSI_CAdES_detached);
+            ffs->setSignatureType(CryptoSign::SignatureType::ETSI_CAdES_detached);
         }
         const auto rs = std::unique_ptr<GooString>(reason.toStr().empty() ? nullptr : std::make_unique<GooString>(utf8ToUtf16WithBom(reason.toStr())));
         if (ffs->getNumWidgets() != 1) {
@@ -544,8 +617,8 @@ int main(int argc, char *argv[])
         const std::string signatureText(GooString::format(_("Digitally signed by {0:s}"), signerName.c_str()) + "\n" + GooString::format(_("Date: {0:s}"), timestamp.c_str()));
         const auto gSignatureText = std::make_unique<GooString>((signatureText.empty() || noAppearance) ? "" : utf8ToUtf16WithBom(signatureText));
         const auto gSignatureLeftText = std::make_unique<GooString>((signerName.empty() || noAppearance) ? "" : utf8ToUtf16WithBom(signerName));
-        const bool success = fws->signDocumentWithAppearance(argv[2], std::string { certNickname }, std::string { password }, rs.get(), nullptr, {}, {}, *gSignatureText, *gSignatureLeftText, 0, 0, std::make_unique<AnnotColor>(blackColor));
-        return success ? 0 : 3;
+        const auto failure = fws->signDocumentWithAppearance(argv[2], std::string { certNickname }, std::string { password }, rs.get(), nullptr, {}, {}, *gSignatureText, *gSignatureLeftText, 0, 0, std::make_unique<AnnotColor>(blackColor));
+        return !failure.has_value() ? 0 : 3;
     }
 
     if (argc > 2) {
@@ -579,11 +652,14 @@ int main(int argc, char *argv[])
         // Let's start the signature check first for signatures.
         // we can always wait for completion later
         FormFieldSignature *ffs = signatures.at(i);
-        if (ffs->getSignatureType() == unsigned_signature_field) {
+        if (ffs->getSignatureType() == CryptoSign::SignatureType::unsigned_signature_field) {
             continue;
         }
         signatureInfos[i] = ffs->validateSignatureAsync(!dontVerifyCert, false, -1 /* now */, !noOCSPRevocationCheck, useAIACertFetch, {});
     }
+    bool totalDocumentSigned = false;
+    bool oneSignatureInvalid = false;
+    std::string totalDocumentNick;
 
     for (unsigned int i = 0; i < sigCount; i++) {
         FormFieldSignature *ffs = signatures.at(i);
@@ -594,14 +670,22 @@ int main(int argc, char *argv[])
             printf("  - Signature Field Name: %s\n", name.c_str());
         }
 
-        if (ffs->getSignatureType() == unsigned_signature_field) {
+        if (ffs->getSignatureType() == CryptoSign::SignatureType::unsigned_signature_field) {
             printf("  The signature form field is not signed.\n");
             continue;
         }
 
         const SignatureInfo *sig_info = signatureInfos[i];
         CertificateValidationStatus certificateStatus = ffs->validateSignatureResult();
+        if (sig_info->getSignatureValStatus() == SIGNATURE_DECODING_ERROR) {
+            printf("  - Decoding failed\n");
+            oneSignatureInvalid = true;
+            continue;
+        }
         printf("  - Signer Certificate Common Name: %s\n", sig_info->getSignerName().c_str());
+        if (CryptoSign::Factory::getActive() == CryptoSign::Backend::Type::GPGME) {
+            printf("  - Signer fingerprint: %s\n", sig_info->getCertificateInfo()->getNickName().c_str());
+        }
         printf("  - Signer full Distinguished Name: %s\n", sig_info->getSubjectDN().c_str());
         printf("  - Signing Time: %s\n", time_str = getReadableTime(sig_info->getSigningTime()));
         printf("  - Signing Hash Algorithm: ");
@@ -632,24 +716,35 @@ int main(int argc, char *argv[])
         }
         printf("  - Signature Type: ");
         switch (ffs->getSignatureType()) {
-        case adbe_pkcs7_sha1:
+        case CryptoSign::SignatureType::adbe_pkcs7_sha1:
             printf("adbe.pkcs7.sha1\n");
             break;
-        case adbe_pkcs7_detached:
+        case CryptoSign::SignatureType::adbe_pkcs7_detached:
             printf("adbe.pkcs7.detached\n");
             break;
-        case ETSI_CAdES_detached:
+        case CryptoSign::SignatureType::ETSI_CAdES_detached:
             printf("ETSI.CAdES.detached\n");
             break;
-        default:
+        case CryptoSign::SignatureType::g10c_pgp_signature_detached:
+            printf("g10c.pgp.signature.detached\n");
+            break;
+        case CryptoSign::SignatureType::unknown_signature_type:
+        case CryptoSign::SignatureType::unsigned_signature_field: /*shouldn't happen*/
             printf("unknown\n");
         }
         const std::vector<Goffset> ranges = ffs->getSignedRangeBounds();
         if (ranges.size() == 4) {
             printf("  - Signed Ranges: [%lld - %lld], [%lld - %lld]\n", ranges[0], ranges[1], ranges[2], ranges[3]);
-            Goffset checked_file_size;
-            const std::optional<GooString> signature = signatures.at(i)->getCheckedSignature(&checked_file_size);
+            auto [signature, checked_file_size] = signatures.at(i)->getCheckedSignature();
             if (signature && checked_file_size == ranges[3]) {
+                if (totalDocumentSigned) {
+                    printf("multiple signatures is covering entire document. Impossible");
+                    return 2;
+                }
+                if (sig_info->getCertificateInfo()) {
+                    totalDocumentSigned = true;
+                    totalDocumentNick = sig_info->getCertificateInfo()->getNickName().toStr();
+                }
                 printf("  - Total document signed\n");
             } else {
                 printf("  - Not total document signed\n");
@@ -657,11 +752,31 @@ int main(int argc, char *argv[])
         }
         printf("  - Signature Validation: %s\n", getReadableSigState(sig_info->getSignatureValStatus()));
         gfree(time_str);
-        if (sig_info->getSignatureValStatus() != SIGNATURE_VALID || dontVerifyCert) {
+        if (sig_info->getSignatureValStatus() != SIGNATURE_VALID) {
+            oneSignatureInvalid = true;
+            continue;
+        }
+        if (dontVerifyCert) {
             continue;
         }
         printf("  - Certificate Validation: %s\n", getReadableCertState(certificateStatus));
     }
 
-    return 0;
+    if (!oneSignatureInvalid) {
+        if (strlen(assertSigner) > 1 && CryptoSign::Factory::getActive() == CryptoSign::Backend::Type::GPGME) {
+            if (!totalDocumentSigned) {
+                printf("  - Assert signer: Total document not signed\n");
+                return 1;
+            }
+            std::vector<std::string> assertKeys = parseAssertSigner(assertSigner);
+            if (std::ranges::find(assertKeys, totalDocumentNick) == std::end(assertKeys)) {
+                printf("  - Assert signer: Key not in list\n");
+                // we do't have the key in the assert list, so error out
+                return 1;
+            }
+        }
+        return 0;
+    } else {
+        return 1;
+    }
 }

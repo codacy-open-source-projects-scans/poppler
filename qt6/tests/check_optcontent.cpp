@@ -11,7 +11,7 @@ class TestOptionalContent : public QObject
     Q_OBJECT
 public:
     explicit TestOptionalContent(QObject *parent = nullptr) : QObject(parent) { }
-private slots:
+private Q_SLOTS:
     void checkVisPolicy();
     void checkNestedLayers();
     void checkNoOptionalContent();
@@ -22,7 +22,7 @@ private slots:
 
 void TestOptionalContent::checkVisPolicy()
 {
-    std::unique_ptr<Poppler::Document> doc = Poppler::Document::load(TESTDATADIR "/unittestcases/vis_policy_test.pdf");
+    std::unique_ptr<Poppler::Document> doc = Poppler::Document::load(QStringLiteral(TESTDATADIR "/unittestcases/vis_policy_test.pdf"));
     QVERIFY(doc);
 
     QVERIFY(doc->hasOptionalContent());
@@ -39,7 +39,7 @@ void TestOptionalContent::checkVisPolicy()
 
 void TestOptionalContent::checkNestedLayers()
 {
-    std::unique_ptr<Poppler::Document> doc = Poppler::Document::load(TESTDATADIR "/unittestcases/NestedLayers.pdf");
+    std::unique_ptr<Poppler::Document> doc = Poppler::Document::load(QStringLiteral(TESTDATADIR "/unittestcases/NestedLayers.pdf"));
     QVERIFY(doc);
 
     QVERIFY(doc->hasOptionalContent());
@@ -71,7 +71,7 @@ void TestOptionalContent::checkNestedLayers()
 
 void TestOptionalContent::checkNoOptionalContent()
 {
-    std::unique_ptr<Poppler::Document> doc = Poppler::Document::load(TESTDATADIR "/unittestcases/orientation.pdf");
+    std::unique_ptr<Poppler::Document> doc = Poppler::Document::load(QStringLiteral(TESTDATADIR "/unittestcases/orientation.pdf"));
     QVERIFY(doc);
 
     QCOMPARE(doc->hasOptionalContent(), false);
@@ -83,7 +83,7 @@ void TestOptionalContent::checkIsVisible()
     PDFDoc *doc = new PDFDoc(std::make_unique<GooString>(TESTDATADIR "/unittestcases/vis_policy_test.pdf"));
     QVERIFY(doc);
 
-    OCGs *ocgs = doc->getOptContentConfig();
+    const OCGs *ocgs = doc->getOptContentConfig();
     QVERIFY(ocgs);
 
     XRef *xref = doc->getXRef();
@@ -155,7 +155,7 @@ void TestOptionalContent::checkVisibilitySetting()
     PDFDoc *doc = new PDFDoc(std::make_unique<GooString>(TESTDATADIR "/unittestcases/vis_policy_test.pdf"));
     QVERIFY(doc);
 
-    OCGs *ocgs = doc->getOptContentConfig();
+    const OCGs *ocgs = doc->getOptContentConfig();
     QVERIFY(ocgs);
 
     XRef *xref = doc->getXRef();
@@ -354,7 +354,7 @@ void TestOptionalContent::checkVisibilitySetting()
 
 void TestOptionalContent::checkRadioButtons()
 {
-    std::unique_ptr<Poppler::Document> doc = Poppler::Document::load(TESTDATADIR "/unittestcases/ClarityOCGs.pdf");
+    std::unique_ptr<Poppler::Document> doc = Poppler::Document::load(QStringLiteral(TESTDATADIR "/unittestcases/ClarityOCGs.pdf"));
     QVERIFY(doc);
 
     QVERIFY(doc->hasOptionalContent());

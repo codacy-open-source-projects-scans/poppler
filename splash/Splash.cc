@@ -11,7 +11,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2005-2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005-2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2005 Marco Pesenti Gritti <mpg@redhat.com>
 // Copyright (C) 2010-2016 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2010 Christian Feuersänger <cfeuersaenger@googlemail.com>
@@ -19,7 +19,7 @@
 // Copyright (C) 2012 Markus Trippelsdorf <markus@trippelsdorf.de>
 // Copyright (C) 2012, 2017 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2012 Matthias Kramm <kramm@quiss.org>
-// Copyright (C) 2018, 2019 Stefan Brüns <stefan.bruens@rwth-aachen.de>
+// Copyright (C) 2018, 2019, 2025 Stefan Brüns <stefan.bruens@rwth-aachen.de>
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019, 2020 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2019 Marek Kasik <mkasik@redhat.com>
@@ -193,17 +193,6 @@ SplashPipeResultColorCtrl Splash::pipeResultColorAlphaNoBlend[] = { splashPipeRe
 
 SplashPipeResultColorCtrl Splash::pipeResultColorAlphaBlend[] = { splashPipeResultColorAlphaBlendMono, splashPipeResultColorAlphaBlendMono, splashPipeResultColorAlphaBlendRGB,    splashPipeResultColorAlphaBlendRGB,
                                                                   splashPipeResultColorAlphaBlendRGB,  splashPipeResultColorAlphaBlendCMYK, splashPipeResultColorAlphaBlendDeviceN };
-
-//------------------------------------------------------------------------
-
-static void blendXor(SplashColorPtr src, SplashColorPtr dest, SplashColorPtr blend, SplashColorMode cm)
-{
-    int i;
-
-    for (i = 0; i < splashColorModeNComps[cm]; ++i) {
-        blend[i] = src[i] ^ dest[i];
-    }
-}
 
 //------------------------------------------------------------------------
 // pipeline
@@ -1701,7 +1690,7 @@ SplashError Splash::clipToRect(SplashCoord x0, SplashCoord y0, SplashCoord x1, S
     return state->clip->clipToRect(x0, y0, x1, y1);
 }
 
-SplashError Splash::clipToPath(SplashPath *path, bool eo)
+SplashError Splash::clipToPath(const SplashPath &path, bool eo)
 {
     return state->clip->clipToPath(path, state->matrix, state->flatness, eo);
 }
@@ -1883,9 +1872,8 @@ void Splash::clear(SplashColorPtr color, unsigned char alpha)
     }
 }
 
-SplashError Splash::stroke(SplashPath *path)
+SplashError Splash::stroke(const SplashPath &path)
 {
-    SplashPath *path2, *dPath;
     SplashCoord d1, d2, t1, t2, w;
 
     if (debugMode) {
@@ -1893,16 +1881,14 @@ SplashError Splash::stroke(SplashPath *path)
         dumpPath(path);
     }
     opClipRes = splashClipAllOutside;
-    if (path->length == 0) {
+    if (path.length == 0) {
         return splashErrEmptyPath;
     }
-    path2 = flattenPath(path, state->matrix, state->flatness);
+    std::unique_ptr<SplashPath> path2 = flattenPath(path, state->matrix, state->flatness);
     if (!state->lineDash.empty()) {
-        dPath = makeDashedPath(path2);
-        delete path2;
-        path2 = dPath;
+        std::unique_ptr<SplashPath> dPath = makeDashedPath(*path2);
+        path2 = std::move(dPath);
         if (path2->length == 0) {
-            delete path2;
             return splashErrEmptyPath;
         }
     }
@@ -1922,27 +1908,26 @@ SplashError Splash::stroke(SplashPath *path)
     d1 *= 0.5;
     if (d1 > 0 && d1 * state->lineWidth * state->lineWidth < minLineWidth * minLineWidth) {
         w = minLineWidth / splashSqrt(d1);
-        strokeWide(path2, w);
+        strokeWide(*path2, w);
     } else if (bitmap->mode == splashModeMono1) {
         // this gets close to Adobe's behavior in mono mode
         if (d1 * state->lineWidth <= 2) {
-            strokeNarrow(path2);
+            strokeNarrow(*path2);
         } else {
-            strokeWide(path2, state->lineWidth);
+            strokeWide(*path2, state->lineWidth);
         }
     } else {
         if (state->lineWidth == 0) {
-            strokeNarrow(path2);
+            strokeNarrow(*path2);
         } else {
-            strokeWide(path2, state->lineWidth);
+            strokeWide(*path2, state->lineWidth);
         }
     }
 
-    delete path2;
     return splashOk;
 }
 
-void Splash::strokeNarrow(SplashPath *path)
+void Splash::strokeNarrow(const SplashPath &path)
 {
     SplashPipe pipe;
     SplashXPathSeg *seg;
@@ -2031,39 +2016,38 @@ void Splash::strokeNarrow(SplashPath *path)
     }
 }
 
-void Splash::strokeWide(SplashPath *path, SplashCoord w)
+void Splash::strokeWide(const SplashPath &path, SplashCoord w)
 {
-    SplashPath *path2;
-
-    path2 = makeStrokePath(path, w, false);
-    fillWithPattern(path2, false, state->strokePattern, state->strokeAlpha);
-    delete path2;
+    const std::unique_ptr<SplashPath> path2 = makeStrokePath(path, w, false);
+    fillWithPattern(path2.get(), false, state->strokePattern, state->strokeAlpha);
 }
 
-SplashPath *Splash::flattenPath(SplashPath *path, SplashCoord *matrix, SplashCoord flatness)
+std::unique_ptr<SplashPath> Splash::flattenPath(const SplashPath &path, SplashCoord *matrix, SplashCoord flatness)
 {
-    SplashPath *fPath;
     SplashCoord flatness2;
     unsigned char flag;
     int i;
 
-    fPath = new SplashPath();
+    auto fPath = std::make_unique<SplashPath>();
+    // Estimate size, reserve
+    fPath->reserve(path.length * 2 + 2);
+
     flatness2 = flatness * flatness;
     i = 0;
-    while (i < path->length) {
-        flag = path->flags[i];
+    while (i < path.length) {
+        flag = path.flags[i];
         if (flag & splashPathFirst) {
-            fPath->moveTo(path->pts[i].x, path->pts[i].y);
+            fPath->moveTo(path.pts[i].x, path.pts[i].y);
             ++i;
         } else {
             if (flag & splashPathCurve) {
-                flattenCurve(path->pts[i - 1].x, path->pts[i - 1].y, path->pts[i].x, path->pts[i].y, path->pts[i + 1].x, path->pts[i + 1].y, path->pts[i + 2].x, path->pts[i + 2].y, matrix, flatness2, fPath);
+                flattenCurve(path.pts[i - 1].x, path.pts[i - 1].y, path.pts[i].x, path.pts[i].y, path.pts[i + 1].x, path.pts[i + 1].y, path.pts[i + 2].x, path.pts[i + 2].y, matrix, flatness2, fPath.get());
                 i += 3;
             } else {
-                fPath->lineTo(path->pts[i].x, path->pts[i].y);
+                fPath->lineTo(path.pts[i].x, path.pts[i].y);
                 ++i;
             }
-            if (path->flags[i - 1] & splashPathClosed) {
+            if (path.flags[i - 1] & splashPathClosed) {
                 fPath->close();
             }
         }
@@ -2159,9 +2143,8 @@ void Splash::flattenCurve(SplashCoord x0, SplashCoord y0, SplashCoord x1, Splash
     }
 }
 
-SplashPath *Splash::makeDashedPath(SplashPath *path)
+std::unique_ptr<SplashPath> Splash::makeDashedPath(const SplashPath &path)
 {
-    SplashPath *dPath;
     SplashCoord lineDashTotal;
     SplashCoord lineDashStartPhase, lineDashDist, segLen;
     SplashCoord x0, y0, x1, y1, xa, ya;
@@ -2174,7 +2157,7 @@ SplashPath *Splash::makeDashedPath(SplashPath *path)
     }
     // Acrobat simply draws nothing if the dash array is [0]
     if (lineDashTotal == 0) {
-        return new SplashPath();
+        return std::make_unique<SplashPath>();
     }
     lineDashStartPhase = state->lineDashPhase;
     i = splashFloor(lineDashStartPhase / lineDashTotal);
@@ -2188,18 +2171,18 @@ SplashPath *Splash::makeDashedPath(SplashPath *path)
             ++lineDashStartIdx;
         }
         if (unlikely(lineDashStartIdx == state->lineDash.size())) {
-            return new SplashPath();
+            return std::make_unique<SplashPath>();
         }
     }
 
-    dPath = new SplashPath();
+    auto dPath = std::make_unique<SplashPath>();
 
     // process each subpath
     i = 0;
-    while (i < path->length) {
+    while (i < path.length) {
 
         // find the end of the subpath
-        for (j = i; j < path->length - 1 && !(path->flags[j] & splashPathLast); ++j) {
+        for (j = i; j < path.length - 1 && !(path.flags[j] & splashPathLast); ++j) {
             ;
         }
 
@@ -2213,10 +2196,10 @@ SplashPath *Splash::makeDashedPath(SplashPath *path)
         for (k = i; k < j; ++k) {
 
             // grab the segment
-            x0 = path->pts[k].x;
-            y0 = path->pts[k].y;
-            x1 = path->pts[k + 1].x;
-            y1 = path->pts[k + 1].y;
+            x0 = path.pts[k].x;
+            y0 = path.pts[k].y;
+            x1 = path.pts[k + 1].x;
+            y1 = path.pts[k + 1].y;
             segLen = splashDist(x0, y0, x1, y1);
 
             // process the segment
@@ -2265,12 +2248,12 @@ SplashPath *Splash::makeDashedPath(SplashPath *path)
 
     if (dPath->length == 0) {
         bool allSame = true;
-        for (i = 0; allSame && i < path->length - 1; ++i) {
-            allSame = path->pts[i].x == path->pts[i + 1].x && path->pts[i].y == path->pts[i + 1].y;
+        for (i = 0; allSame && i < path.length - 1; ++i) {
+            allSame = path.pts[i].x == path.pts[i + 1].x && path.pts[i].y == path.pts[i + 1].y;
         }
         if (allSame) {
-            x0 = path->pts[0].x;
-            y0 = path->pts[0].y;
+            x0 = path.pts[0].x;
+            y0 = path.pts[0].y;
             dPath->moveTo(x0, y0);
             dPath->lineTo(x0, y0);
         }
@@ -2283,19 +2266,19 @@ SplashError Splash::fill(SplashPath *path, bool eo)
 {
     if (debugMode) {
         printf("fill [eo:%d]:\n", eo);
-        dumpPath(path);
+        dumpPath(*path);
     }
     return fillWithPattern(path, eo, state->fillPattern, state->fillAlpha);
 }
 
-inline void Splash::getBBoxFP(SplashPath *path, SplashCoord *xMinA, SplashCoord *yMinA, SplashCoord *xMaxA, SplashCoord *yMaxA)
+inline void Splash::getBBoxFP(const SplashPath &path, SplashCoord *xMinA, SplashCoord *yMinA, SplashCoord *xMaxA, SplashCoord *yMaxA)
 {
     SplashCoord xMinFP, yMinFP, xMaxFP, yMaxFP, tx, ty;
 
     // make compiler happy:
     xMinFP = xMaxFP = yMinFP = yMaxFP = 0;
-    for (int i = 0; i < path->length; ++i) {
-        transform(state->matrix, path->pts[i].x, path->pts[i].y, &tx, &ty);
+    for (int i = 0; i < path.length; ++i) {
+        transform(state->matrix, path.pts[i].x, path.pts[i].y, &tx, &ty);
         if (i == 0) {
             xMinFP = xMaxFP = tx;
             yMinFP = yMaxFP = ty;
@@ -2332,7 +2315,7 @@ SplashError Splash::fillWithPattern(SplashPath *path, bool eo, SplashPattern *pa
     if (path->length == 0) {
         return splashErrEmptyPath;
     }
-    if (pathAllOutside(path)) {
+    if (pathAllOutside(*path)) {
         opClipRes = splashClipAllOutside;
         return splashOk;
     }
@@ -2369,7 +2352,7 @@ SplashError Splash::fillWithPattern(SplashPath *path, bool eo, SplashPattern *pa
         }
     }
 
-    SplashXPath xPath(path, state->matrix, state->flatness, true, adjustLine, linePosI);
+    SplashXPath xPath(*path, state->matrix, state->flatness, true, adjustLine, linePosI);
     if (vectorAntialias && !inShading) {
         xPath.aaScale();
     }
@@ -2391,7 +2374,7 @@ SplashError Splash::fillWithPattern(SplashPath *path, bool eo, SplashPattern *pa
 
     if (eo && (yMinI == yMaxI || xMinI == xMaxI) && thinLineMode != splashThinLineDefault) {
         SplashCoord delta, xMinFP, yMinFP, xMaxFP, yMaxFP;
-        getBBoxFP(path, &xMinFP, &yMinFP, &xMaxFP, &yMaxFP);
+        getBBoxFP(*path, &xMinFP, &yMinFP, &xMaxFP, &yMaxFP);
         delta = (yMinI == yMaxI) ? yMaxFP - yMinFP : xMaxFP - xMinFP;
         if (delta < 0.2) {
             opClipRes = splashClipAllOutside;
@@ -2401,10 +2384,6 @@ SplashError Splash::fillWithPattern(SplashPath *path, bool eo, SplashPattern *pa
 
     // check clipping
     if ((clipRes = state->clip->testRect(xMinI, yMinI, xMaxI, yMaxI)) != splashClipAllOutside) {
-        if (scanner.hasPartialClip()) {
-            clipRes = splashClipPartial;
-        }
-
         pipeInit(&pipe, 0, yMinI, pattern, nullptr, (unsigned char)splashRound(alpha * 255), vectorAntialias && !inShading, false);
 
         // draw the spans
@@ -2452,124 +2431,94 @@ SplashError Splash::fillWithPattern(SplashPath *path, bool eo, SplashPattern *pa
     return splashOk;
 }
 
-bool Splash::pathAllOutside(SplashPath *path)
+bool Splash::pathAllOutside(const SplashPath &path)
 {
     SplashCoord xMin1, yMin1, xMax1, yMax1;
-    SplashCoord xMin2, yMin2, xMax2, yMax2;
-    SplashCoord x, y;
     int xMinI, yMinI, xMaxI, yMaxI;
-    int i;
 
-    xMin1 = xMax1 = path->pts[0].x;
-    yMin1 = yMax1 = path->pts[0].y;
-    for (i = 1; i < path->length; ++i) {
-        if (path->pts[i].x < xMin1) {
-            xMin1 = path->pts[i].x;
-        } else if (path->pts[i].x > xMax1) {
-            xMax1 = path->pts[i].x;
+    struct _SplashPoint
+    {
+        SplashCoord x;
+        SplashCoord y;
+    };
+    auto calcLowerLeft = [](_SplashPoint a, _SplashPoint b) -> _SplashPoint { //
+        return { std::min(a.x, b.x), std::min(a.y, b.y) };
+    };
+    auto calcUpperRight = [](_SplashPoint a, _SplashPoint b) -> _SplashPoint { //
+        return { std::max(a.x, b.x), std::max(a.y, b.y) };
+    };
+
+    SplashCoord x, y, x2, y2;
+    transform(state->matrix, path.pts[0].x, path.pts[0].y, &x, &y);
+    xMinI = splashFloor(x);
+    yMinI = splashFloor(y);
+
+    auto clipState = state->clip->testRect(xMinI, yMinI, xMinI, yMinI);
+    if (clipState != splashClipAllOutside) {
+        // If the first point is inside the clipping rectangle,
+        // the check is sufficient
+        return false;
+    } else if (path.length == 1) {
+        return true;
+    }
+
+    transform(state->matrix, path.pts[path.length / 2].x, path.pts[path.length / 2].y, &x2, &y2);
+    auto ll = calcLowerLeft({ x, y }, { x2, y2 });
+    auto ur = calcUpperRight({ x, y }, { x2, y2 });
+
+    xMinI = splashFloor(ll.x);
+    yMinI = splashFloor(ll.y);
+    xMaxI = splashFloor(ur.x);
+    yMaxI = splashFloor(ur.y);
+
+    clipState = state->clip->testRect(xMinI, yMinI, xMaxI, yMaxI);
+    if (clipState != splashClipAllOutside) {
+        // If the bounding box of two points intersects with the
+        // clipping rectangle, the check is finished. Otherwise,
+        // we have to check the remaining points.
+        return false;
+    } else if (path.length == 2) {
+        return true;
+    }
+
+    xMin1 = xMax1 = path.pts[0].x;
+    yMin1 = yMax1 = path.pts[0].y;
+
+    for (int i = 1; i < path.length; ++i) {
+        if (path.pts[i].x < xMin1) {
+            xMin1 = path.pts[i].x;
+        } else if (path.pts[i].x > xMax1) {
+            xMax1 = path.pts[i].x;
         }
-        if (path->pts[i].y < yMin1) {
-            yMin1 = path->pts[i].y;
-        } else if (path->pts[i].y > yMax1) {
-            yMax1 = path->pts[i].y;
+        if (path.pts[i].y < yMin1) {
+            yMin1 = path.pts[i].y;
+        } else if (path.pts[i].y > yMax1) {
+            yMax1 = path.pts[i].y;
         }
     }
 
     transform(state->matrix, xMin1, yMin1, &x, &y);
-    xMin2 = xMax2 = x;
-    yMin2 = yMax2 = y;
+    ll = { x, y };
+    ur = { x, y };
+
     transform(state->matrix, xMin1, yMax1, &x, &y);
-    if (x < xMin2) {
-        xMin2 = x;
-    } else if (x > xMax2) {
-        xMax2 = x;
-    }
-    if (y < yMin2) {
-        yMin2 = y;
-    } else if (y > yMax2) {
-        yMax2 = y;
-    }
+    ll = calcLowerLeft(ll, { x, y });
+    ur = calcUpperRight(ur, { x, y });
+
     transform(state->matrix, xMax1, yMin1, &x, &y);
-    if (x < xMin2) {
-        xMin2 = x;
-    } else if (x > xMax2) {
-        xMax2 = x;
-    }
-    if (y < yMin2) {
-        yMin2 = y;
-    } else if (y > yMax2) {
-        yMax2 = y;
-    }
+    ll = calcLowerLeft(ll, { x, y });
+    ur = calcUpperRight(ur, { x, y });
+
     transform(state->matrix, xMax1, yMax1, &x, &y);
-    if (x < xMin2) {
-        xMin2 = x;
-    } else if (x > xMax2) {
-        xMax2 = x;
-    }
-    if (y < yMin2) {
-        yMin2 = y;
-    } else if (y > yMax2) {
-        yMax2 = y;
-    }
-    xMinI = splashFloor(xMin2);
-    yMinI = splashFloor(yMin2);
-    xMaxI = splashFloor(xMax2);
-    yMaxI = splashFloor(yMax2);
+    ll = calcLowerLeft(ll, { x, y });
+    ur = calcUpperRight(ur, { x, y });
+
+    xMinI = splashFloor(ll.x);
+    yMinI = splashFloor(ll.y);
+    xMaxI = splashFloor(ur.x);
+    yMaxI = splashFloor(ur.y);
 
     return state->clip->testRect(xMinI, yMinI, xMaxI, yMaxI) == splashClipAllOutside;
-}
-
-SplashError Splash::xorFill(SplashPath *path, bool eo)
-{
-    SplashPipe pipe;
-    int xMinI, yMinI, xMaxI, yMaxI, x0, x1, y;
-    SplashClipResult clipRes, clipRes2;
-    SplashBlendFunc origBlendFunc;
-
-    if (path->length == 0) {
-        return splashErrEmptyPath;
-    }
-    SplashXPath xPath(path, state->matrix, state->flatness, true);
-    xPath.sort();
-    SplashXPathScanner scanner(xPath, eo, state->clip->getYMinI(), state->clip->getYMaxI());
-
-    // get the min and max x and y values
-    scanner.getBBox(&xMinI, &yMinI, &xMaxI, &yMaxI);
-
-    // check clipping
-    if ((clipRes = state->clip->testRect(xMinI, yMinI, xMaxI, yMaxI)) != splashClipAllOutside) {
-        if (scanner.hasPartialClip()) {
-            clipRes = splashClipPartial;
-        }
-
-        origBlendFunc = state->blendFunc;
-        state->blendFunc = &blendXor;
-        pipeInit(&pipe, 0, yMinI, state->fillPattern, nullptr, 255, false, false);
-
-        // draw the spans
-        for (y = yMinI; y <= yMaxI; ++y) {
-            SplashXPathScanIterator iterator(scanner, y);
-            while (iterator.getNextSpan(&x0, &x1)) {
-                if (clipRes == splashClipAllInside) {
-                    drawSpan(&pipe, x0, x1, y, true);
-                } else {
-                    // limit the x range
-                    if (x0 < state->clip->getXMinI()) {
-                        x0 = state->clip->getXMinI();
-                    }
-                    if (x1 > state->clip->getXMaxI()) {
-                        x1 = state->clip->getXMaxI();
-                    }
-                    clipRes2 = state->clip->testSpan(x0, x1, y);
-                    drawSpan(&pipe, x0, x1, y, clipRes2 == splashClipAllInside);
-                }
-            }
-        }
-        state->blendFunc = origBlendFunc;
-    }
-    opClipRes = clipRes;
-
-    return splashOk;
 }
 
 SplashError Splash::fillChar(SplashCoord x, SplashCoord y, int c, SplashFont *font)
@@ -5490,8 +5439,36 @@ bool Splash::gouraudTriangleShadedFill(SplashGouraudColor *shading)
 
             // this here is det( T ) == 0
             // where T is the matrix to map to barycentric coordinates.
-            if ((x[0] - x[2]) * (y[1] - y[2]) - (x[1] - x[2]) * (y[0] - y[2]) == 0) {
-                continue; // degenerate triangle.
+            {
+                int x02diff;
+                if (checkedSubtraction(x[0], x[2], &x02diff)) {
+                    continue;
+                }
+                int y12diff;
+                if (checkedSubtraction(y[1], y[2], &y12diff)) {
+                    continue;
+                }
+                int x12diff;
+                if (checkedSubtraction(x[1], x[2], &x12diff)) {
+                    continue;
+                }
+                int y02diff;
+                if (checkedSubtraction(y[0], y[2], &y02diff)) {
+                    continue;
+                }
+
+                int x02diffY12diff;
+                if (checkedMultiply(x02diff, y12diff, &x02diffY12diff)) {
+                    continue;
+                }
+                int x12diffY02diff;
+                if (checkedMultiply(x12diff, y02diff, &x12diffY02diff)) {
+                    continue;
+                }
+
+                if (x02diffY12diff - x12diffY02diff == 0) {
+                    continue; // degenerate triangle.
+                }
             }
 
             // this here initialises the scanline generation.
@@ -5960,9 +5937,9 @@ SplashError Splash::blitTransparent(SplashBitmap *src, int xSrc, int ySrc, int x
     return splashOk;
 }
 
-SplashPath *Splash::makeStrokePath(SplashPath *path, SplashCoord w, bool flatten)
+std::unique_ptr<SplashPath> Splash::makeStrokePath(const SplashPath &path, SplashCoord w, bool flatten)
 {
-    SplashPath *pathIn, *dashPath, *pathOut;
+    const SplashPath *pathIn;
     SplashCoord d, dx, dy, wdx, wdy, dxNext, dyNext, wdxNext, wdyNext;
     SplashCoord crossprod, dotprod, miter, m;
     bool first, last, closed, hasangle;
@@ -5970,25 +5947,25 @@ SplashPath *Splash::makeStrokePath(SplashPath *path, SplashCoord w, bool flatten
     int left0, left1, left2, right0, right1, right2, join0, join1, join2;
     int leftFirst, rightFirst, firstPt;
 
-    pathOut = new SplashPath();
+    auto pathOut = std::make_unique<SplashPath>();
 
-    if (path->length == 0) {
+    if (path.length == 0) {
         return pathOut;
     }
 
     if (flatten) {
-        pathIn = flattenPath(path, state->matrix, state->flatness);
+        pathIn = flattenPath(path, state->matrix, state->flatness).release();
         if (!state->lineDash.empty()) {
-            dashPath = makeDashedPath(pathIn);
+            std::unique_ptr<SplashPath> dashPath = makeDashedPath(*pathIn);
             delete pathIn;
-            pathIn = dashPath;
+            pathIn = dashPath.release();
             if (pathIn->length == 0) {
                 delete pathIn;
                 return pathOut;
             }
         }
     } else {
-        pathIn = path;
+        pathIn = &path;
     }
 
     subpathStart0 = subpathStart1 = 0; // make gcc happy
@@ -6001,6 +5978,9 @@ SplashPath *Splash::makeStrokePath(SplashPath *path, SplashCoord w, bool flatten
     for (i1 = i0; !(pathIn->flags[i1] & splashPathLast) && i1 + 1 < pathIn->length && pathIn->pts[i1 + 1].x == pathIn->pts[i1].x && pathIn->pts[i1 + 1].y == pathIn->pts[i1].y; ++i1) {
         ;
     }
+
+    // Estimate size, reserve
+    pathOut->reserve(pathIn->length * 4 + 4);
 
     while (i1 < pathIn->length) {
         if ((first = pathIn->flags[i0] & splashPathFirst)) {
@@ -6331,34 +6311,38 @@ SplashPath *Splash::makeStrokePath(SplashPath *path, SplashCoord w, bool flatten
         ++seg;
     }
 
-    if (pathIn != path) {
+    if (pathIn != &path) {
         delete pathIn;
     }
 
     return pathOut;
 }
 
-void Splash::dumpPath(SplashPath *path)
+void Splash::dumpPath(const SplashPath &path)
 {
     int i;
 
-    for (i = 0; i < path->length; ++i) {
-        printf("  %3d: x=%8.2f y=%8.2f%s%s%s%s\n", i, (double)path->pts[i].x, (double)path->pts[i].y, (path->flags[i] & splashPathFirst) ? " first" : "", (path->flags[i] & splashPathLast) ? " last" : "",
-               (path->flags[i] & splashPathClosed) ? " closed" : "", (path->flags[i] & splashPathCurve) ? " curve" : "");
+    for (i = 0; i < path.length; ++i) {
+        printf("  %3d: x=%8.2f y=%8.2f%s%s%s%s\n", i, (double)path.pts[i].x, (double)path.pts[i].y, (path.flags[i] & splashPathFirst) ? " first" : "", (path.flags[i] & splashPathLast) ? " last" : "",
+               (path.flags[i] & splashPathClosed) ? " closed" : "", (path.flags[i] & splashPathCurve) ? " curve" : "");
     }
 }
 
-void Splash::dumpXPath(SplashXPath *path)
+void Splash::dumpXPath(const SplashXPath &path)
 {
-    int i;
-
-    for (i = 0; i < path->length; ++i) {
-        printf("  %4d: x0=%8.2f y0=%8.2f x1=%8.2f y1=%8.2f %s%s%s\n", i, (double)path->segs[i].x0, (double)path->segs[i].y0, (double)path->segs[i].x1, (double)path->segs[i].y1, (path->segs[i].flags & splashXPathHoriz) ? "H" : " ",
-               (path->segs[i].flags & splashXPathVert) ? "V" : " ", (path->segs[i].flags & splashXPathFlip) ? "P" : " ");
+    for (int i = 0; i < path.length; ++i) {
+        const auto &seg = path.segs[i];
+        if (seg.flags & splashXPathFlipped) {
+            printf("  %4d: x0=%8.2f y0=%8.2f x1=%8.2f y1=%8.2f %s%sP\n", i, (double)seg.x1, (double)seg.y1, (double)seg.x0, (double)seg.y0, //
+                   (seg.flags & splashXPathHoriz) ? "H" : " ", (seg.flags & splashXPathVert) ? "V" : " ");
+        } else {
+            printf("  %4d: x0=%8.2f y0=%8.2f x1=%8.2f y1=%8.2f %s%s \n", i, (double)seg.x0, (double)seg.y0, (double)seg.x1, (double)seg.y1, //
+                   (seg.flags & splashXPathHoriz) ? "H" : " ", (seg.flags & splashXPathVert) ? "V" : " ");
+        }
     }
 }
 
-SplashError Splash::shadedFill(SplashPath *path, bool hasBBox, SplashPattern *pattern, bool clipToStrokePath)
+SplashError Splash::shadedFill(const SplashPath &path, bool hasBBox, SplashPattern *pattern, bool clipToStrokePath)
 {
     SplashPipe pipe;
     int xMinI, yMinI, xMaxI, yMaxI, x0, x1, y;
@@ -6367,7 +6351,7 @@ SplashError Splash::shadedFill(SplashPath *path, bool hasBBox, SplashPattern *pa
     if (vectorAntialias && aaBuf == nullptr) { // should not happen, but to be secure
         return splashErrGeneric;
     }
-    if (path->length == 0) {
+    if (path.length == 0) {
         return splashErrEmptyPath;
     }
     SplashXPath xPath(path, state->matrix, state->flatness, true);

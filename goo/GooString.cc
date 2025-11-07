@@ -18,7 +18,7 @@
 // Copyright (C) 2006 Kristian Høgsberg <krh@redhat.com>
 // Copyright (C) 2006 Krzysztof Kowalczyk <kkowalczyk@gmail.com>
 // Copyright (C) 2007 Jeff Muizelaar <jeff@infidigm.net>
-// Copyright (C) 2008-2011, 2016-2018, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2008-2011, 2016-2018, 2022, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2011 Kenji Uno <ku@digitaldolphins.jp>
 // Copyright (C) 2012, 2013 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2012, 2017 Adrian Johnson <ajohnson@redneon.com>
@@ -31,6 +31,7 @@
 // Copyright (C) 2018 Greg Knight <lyngvi@gmail.com>
 // Copyright (C) 2019, 2022-2024 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2023 Even Rouault <even.rouault@mines-paris.org>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -107,11 +108,13 @@ enum GooStringFormatType
     fmtChar,
     fmtString,
     fmtGooString,
-    fmtSpace
+    fmtSpace,
+    fmtInvalidFormat
 };
 
 const char *const formatStrings[] = { "d",   "x",   "X",   "o",   "b",   "ud",  "ux",   "uX",   "uo",   "ub",   "ld",   "lx", "lX", "lo", "lb", "uld", "ulx", "ulX", "ulo",
                                       "ulb", "lld", "llx", "llX", "llo", "llb", "ulld", "ullx", "ullX", "ullo", "ullb", "f",  "gs", "g",  "c",  "s",   "t",   "w",   nullptr };
+static_assert((fmtInvalidFormat + 1) == (sizeof(formatStrings) / sizeof(char *)));
 
 void formatInt(long long x, char *buf, int bufSize, bool zeroFill, int width, int base, const char **p, int *len, bool upperCase = false);
 
@@ -304,6 +307,8 @@ GooString *GooString::appendfv(const char *fmt, va_list argList)
                     case fmtGooString:
                         args[argsLen].gs = va_arg(argList, GooString *);
                         break;
+                    case fmtInvalidFormat:
+                        assert(false);
                     }
                     ++argsLen;
                 }
@@ -431,7 +436,7 @@ GooString *GooString::appendfv(const char *fmt, va_list argList)
                 case fmtGooString:
                     if (arg.gs) {
                         str = arg.gs->c_str();
-                        len = arg.gs->getLength();
+                        len = arg.gs->size();
                     } else {
                         str = "(null)";
                         len = 6;
@@ -443,6 +448,8 @@ GooString *GooString::appendfv(const char *fmt, va_list argList)
                     len = 0;
                     width = arg.i;
                     break;
+                case fmtInvalidFormat:
+                    assert(false);
                 }
 
                 // append the formatted arg, handling width and alignment
@@ -480,6 +487,17 @@ GooString *GooString::appendfv(const char *fmt, va_list argList)
     }
 
     return this;
+}
+
+std::string GooString::formatLongLong(long long x, int width)
+{
+    char buf[65];
+    const char *p;
+    int len;
+
+    formatInt(x, buf, sizeof(buf), true /*zeroFill*/, width, 10 /*base*/, &p, &len);
+
+    return { p, static_cast<size_t>(len) };
 }
 
 namespace {

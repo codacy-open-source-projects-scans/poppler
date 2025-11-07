@@ -6,7 +6,7 @@
 //
 // Copyright 2015, 2016 André Guerreiro <aguerreiro1985@gmail.com>
 // Copyright 2015 André Esser <bepandre@hotmail.com>
-// Copyright 2015, 2016, 2018, 2019, 2021-2023 Albert Astals Cid <aacid@kde.org>
+// Copyright 2015, 2016, 2018, 2019, 2021-2023, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright 2015 Markus Kilås <digital@markuspage.com>
 // Copyright 2017 Sebastian Rasmussen <sebras@gmail.com>
 // Copyright 2017 Hans-Ulrich Jüttner <huj@froreich-bioscientia.de>
@@ -15,22 +15,25 @@
 // Copyright 2020 Thorsten Behrens <Thorsten.Behrens@CIB.de>
 // Copyright 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
 // Copyright 2021 Theofilos Intzoglou <int.teo@gmail.com>
-// Copyright 2021 Marek Kasik <mkasik@redhat.com>
+// Copyright 2021, 2025 Marek Kasik <mkasik@redhat.com>
 // Copyright 2022 Erich E. Hoover <erich.e.hoover@gmail.com>
 // Copyright 2023 Tobias Deiminger <tobias.deiminger@posteo.de>
-// Copyright 2023, 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2023-2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright 2023 Ingo Klöcker <kloecker@kde.org>
+// Copyright 2025 Juraj Šarinay <juraj@sarinay.com>
 //
 //========================================================================
 
 #include <config.h>
 
+#include "CryptoSignBackend.h"
 #include "NSSCryptoSignBackend.h"
-#include "goo/gdir.h"
 #include "goo/gmem.h"
 
+#include <array>
 #include <optional>
 #include <vector>
+#include <filesystem>
 
 #include <Error.h>
 
@@ -214,106 +217,29 @@ static void shutdownNss()
     }
 }
 
-// SEC_StringToOID() and NSS_CMSSignerInfo_AddUnauthAttr() are
-// not exported from libsmime, so copy them here. Sigh.
-
-static SECStatus my_SEC_StringToOID(PLArenaPool *arena, SECItem *to, const char *from, PRUint32 len)
-{
-    PRUint32 decimal_numbers = 0;
-    PRUint32 result_bytes = 0;
-    SECStatus rv;
-    PRUint8 result[1024];
-
-    static const PRUint32 max_decimal = 0xffffffff / 10;
-    static const char OIDstring[] = { "OID." };
-
-    if (!from || !to) {
-        PORT_SetError(SEC_ERROR_INVALID_ARGS);
-        return SECFailure;
-    }
-    if (!len) {
-        len = PL_strlen(from);
-    }
-    if (len >= 4 && !PL_strncasecmp(from, OIDstring, 4)) {
-        from += 4; /* skip leading "OID." if present */
-        len -= 4;
-    }
-    if (!len) {
-    bad_data:
-        PORT_SetError(SEC_ERROR_BAD_DATA);
-        return SECFailure;
-    }
-    do {
-        PRUint32 decimal = 0;
-        while (len > 0 && (*from >= '0' && *from <= '9')) {
-            PRUint32 addend = *from++ - '0';
-            --len;
-            if (decimal > max_decimal) { /* overflow */
-                goto bad_data;
-            }
-            decimal = (decimal * 10) + addend;
-            if (decimal < addend) { /* overflow */
-                goto bad_data;
-            }
-        }
-        if (len != 0 && *from != '.') {
-            goto bad_data;
-        }
-        if (decimal_numbers == 0) {
-            if (decimal > 2) {
-                goto bad_data;
-            }
-            result[0] = decimal * 40;
-            result_bytes = 1;
-        } else if (decimal_numbers == 1) {
-            if (decimal > 40) {
-                goto bad_data;
-            }
-            result[0] += decimal;
-        } else {
-            /* encode the decimal number,  */
-            PRUint8 *rp;
-            PRUint32 num_bytes = 0;
-            PRUint32 tmp = decimal;
-            while (tmp) {
-                num_bytes++;
-                tmp >>= 7;
-            }
-            if (!num_bytes) {
-                ++num_bytes; /* use one byte for a zero value */
-            }
-            if (num_bytes + result_bytes > sizeof result) {
-                goto bad_data;
-            }
-            tmp = num_bytes;
-            rp = result + result_bytes - 1;
-            rp[tmp] = static_cast<PRUint8>(decimal & 0x7f);
-            decimal >>= 7;
-            while (--tmp > 0) {
-                rp[tmp] = static_cast<PRUint8>(decimal | 0x80);
-                decimal >>= 7;
-            }
-            result_bytes += num_bytes;
-        }
-        ++decimal_numbers;
-        if (len > 0) { /* skip trailing '.' */
-            ++from;
-            --len;
-        }
-    } while (len > 0);
-    /* now result contains result_bytes of data */
-    if (to->data && to->len >= result_bytes) {
-        to->len = result_bytes;
-        PORT_Memcpy(to->data, result, to->len);
-        rv = SECSuccess;
-    } else {
-        SECItem result_item = { siBuffer, nullptr, 0 };
-        result_item.data = result;
-        result_item.len = result_bytes;
-        rv = SECITEM_CopyItem(arena, to, &result_item);
-    }
-    return rv;
-}
+// An ASN.1 object identifier (OID) is typically written as a dot-separated sequence of integers
+// and encoded as a sequence of bytes. Because we only ever need to handle BER encoded OIDs, keep
+// them encoded from the beginning to avoid conversions at run time.
+//
+// The mapping from the sequence of integers to an array of bytes follows ITU-T X.690 clause 8.19.
+// The first two components are encoded in a single output byte: out[0] = 40 * in[0] + in[1]
+//
+// EXAMPLE: 1.2 -> 40 * 1 + 2 = 0x2a
+//
+// From the third component onwards:
+//     1. interpret the integer in base 128
+//     2. map the 7-bit digits to bytes
+//     3. set the most significant bit in all but the least signigicant byte to 1
+//     4. output the bytes from left to right
+//
+// EXAMPLE: 840 = 110 1001000 -> 10000110 01001000 = 0x86 0x48
+//          113549 = 110 1110111 0001101 -> 10000110 11110111 00001101 = 0x86 0xf7 0x0d
+//
+// As a consequence, a component that fits within 7 bits can be output unchanged as a single byte.
+// EXAMPLE: .1.9.16.2.47 -> ... 0x01 0x09 0x10 0x02 0x2f
+//
+// 1.2.840.113549.1.9.16.2.47
+constexpr unsigned char OID_SIGNINGCERTIFICATEV2[] { 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x09, 0x10, 0x02, 0x2f };
 
 static NSSCMSAttribute *my_NSS_CMSAttributeArray_FindAttrByOidTag(NSSCMSAttribute **attrs, SECOidTag oidtag, PRBool only)
 {
@@ -373,7 +299,7 @@ static SECStatus my_NSS_CMSArray_Add(PLArenaPool *poolp, void ***array, void *ob
         while (*p++) {
             n++;
         }
-        dest = static_cast<void **>(PORT_ArenaGrow(poolp, *array, (n + 1) * sizeof(void *), (n + 2) * sizeof(void *)));
+        dest = static_cast<void **>(PORT_ArenaGrow(poolp, static_cast<void *>(*array), (n + 1) * sizeof(void *), (n + 2) * sizeof(void *)));
     }
 
     if (dest == nullptr) {
@@ -692,14 +618,22 @@ static std::optional<std::string> getDefaultFirefoxCertDB()
     const std::string firefoxPath = std::string(env) + "/.mozilla/firefox/";
 #endif
 
-    GDir firefoxDir(firefoxPath.c_str());
-    std::unique_ptr<GDirEntry> entry;
-    while (entry = firefoxDir.getNextEntry(), entry != nullptr) {
-        if (entry->isDir() && entry->getName()->toStr().find("default") != std::string::npos) {
-            return entry->getFullPath()->toStr();
+    std::error_code ec; // ensures directory_iterator doesn't throw exceptions
+    std::optional<std::string> latestDir;
+    std::filesystem::file_time_type latestWriteTime;
+    for (const auto &entry : std::filesystem::directory_iterator { firefoxPath, ec }) {
+        if (entry.is_directory() && entry.path().string().find("default") != std::string::npos) {
+            const auto certPath = entry.path() / "cert9.db";
+            if (std::filesystem::exists(certPath, ec) && std::filesystem::is_regular_file(certPath, ec)) {
+                const auto writeTime = std::filesystem::last_write_time(certPath, ec);
+                if (!latestDir.has_value() || writeTime > latestWriteTime) {
+                    latestWriteTime = writeTime;
+                    latestDir = entry.path().string();
+                }
+            }
         }
     }
-    return {};
+    return latestDir;
 }
 
 std::string NSSSignatureConfiguration::sNssDir;
@@ -711,7 +645,7 @@ void NSSSignatureConfiguration::setNSSDir(const GooString &nssDir)
 {
     static bool setNssDirCalled = false;
 
-    if (NSS_IsInitialized() && nssDir.getLength() > 0) {
+    if (NSS_IsInitialized() && !nssDir.empty()) {
         error(errInternal, 0, "You need to call setNSSDir before signature validation related operations happen");
         return;
     }
@@ -725,7 +659,7 @@ void NSSSignatureConfiguration::setNSSDir(const GooString &nssDir)
     atexit(shutdownNss);
 
     bool initSuccess = false;
-    if (nssDir.getLength() > 0) {
+    if (!nssDir.empty()) {
         initSuccess = (NSS_Init(nssDir.c_str()) == SECSuccess);
         sNssDir = nssDir.toStr();
     } else {
@@ -766,7 +700,7 @@ void NSSSignatureConfiguration::setNSSPasswordCallback(const std::function<char 
     PasswordFunction = f;
 }
 
-NSSSignatureVerification::NSSSignatureVerification(std::vector<unsigned char> &&p7data) : p7(std::move(p7data)), CMSMessage(nullptr), CMSSignedData(nullptr), CMSSignerInfo(nullptr)
+NSSSignatureVerification::NSSSignatureVerification(std::vector<unsigned char> &&p7data, CryptoSign::SignatureType subfilter) : p7(std::move(p7data)), type(subfilter), CMSMessage(nullptr), CMSSignedData(nullptr), CMSSignerInfo(nullptr)
 {
     NSSSignatureConfiguration::setNSSDir({});
     CMSitem.data = p7.data();
@@ -780,7 +714,9 @@ NSSSignatureVerification::NSSSignatureVerification(std::vector<unsigned char> &&
             SECItem usedAlgorithm = (*algs)->algorithm;
             auto hashAlgorithm = SECOID_FindOIDTag(&usedAlgorithm);
             HASH_HashType hashType = HASH_GetHashTypeByOidTag(hashAlgorithm);
-            hashContext = HashContext::create(ConvertHashTypeFromNss(hashType));
+            innerHashAlgorithm = ConvertHashTypeFromNss(hashType);
+            auto outerHashAlgorithm = (type == CryptoSign::SignatureType::adbe_pkcs7_sha1) ? HashAlgorithm::Sha1 : innerHashAlgorithm;
+            hashContext = HashContext::create(outerHashAlgorithm);
 
             if (hashContext) {
                 break;
@@ -838,7 +774,7 @@ NSSSignatureVerification::~NSSSignatureVerification()
             toFree = CMSSignedData->tempCerts;
         }
         NSS_CMSMessage_Destroy(CMSMessage);
-        free(toFree);
+        free(static_cast<void *>(toFree));
     }
 }
 
@@ -880,7 +816,7 @@ static NSSCMSSignedData *CMS_SignedDataCreate(NSSCMSMessage *cms_msg)
 
         // tempCerts field needs to be filled for complete memory release by NSSCMSSignedData_Destroy
         signedData->tempCerts = (CERTCertificate **)gmallocn(i + 1, sizeof(CERTCertificate *));
-        memset(signedData->tempCerts, 0, (i + 1) * sizeof(CERTCertificate *));
+        memset(static_cast<void *>(signedData->tempCerts), 0, (i + 1) * sizeof(CERTCertificate *));
         // store the addresses of these temporary certificates for future release
         for (i = 0; signedData->rawCerts[i]; ++i) {
             signedData->tempCerts[i] = CERT_NewTempCertificate(CERT_GetDefaultCertDB(), signedData->rawCerts[i], nullptr, 0, 0);
@@ -947,18 +883,29 @@ SignatureValidationStatus NSSSignatureVerification::validateSignature()
     }
 
     SECItem *content_info_data = CMSSignedData->contentInfo.content.data;
-    if (content_info_data != nullptr && content_info_data->data != nullptr) {
+    const bool econtent_present = content_info_data && content_info_data->data;
+    const bool signature_type_requires_econtent = type == CryptoSign::SignatureType::adbe_pkcs7_sha1;
+    if (signature_type_requires_econtent != econtent_present) {
+        return SIGNATURE_INVALID;
+    }
+
+    if (type == CryptoSign::SignatureType::adbe_pkcs7_sha1) {
         /*
           This means it's not a detached type signature
           so the digest is contained in SignedData->contentInfo
         */
-        if (digest.len == content_info_data->len && memcmp(digest.data, content_info_data->data, digest.len) == 0) {
-            return SIGNATURE_VALID;
-        } else {
+        if (digest.len != content_info_data->len || memcmp(digest.data, content_info_data->data, digest.len) != 0) {
             return SIGNATURE_DIGEST_MISMATCH;
         }
 
-    } else if (NSS_CMSSignerInfo_Verify(CMSSignerInfo, &digest, nullptr) != SECSuccess) {
+        auto innerHashContext = HashContext::create(innerHashAlgorithm);
+        innerHashContext->updateHash(content_info_data->data, content_info_data->len);
+        digest_buffer = innerHashContext->endHash();
+        digest.data = digest_buffer.data();
+        digest.len = digest_buffer.size();
+    }
+
+    if (NSS_CMSSignerInfo_Verify(CMSSignerInfo, &digest, nullptr) != SECSuccess) {
         return NSS_SigTranslate(CMSSignerInfo->verificationStatus);
     } else {
         return SIGNATURE_VALID;
@@ -1005,14 +952,17 @@ void NSSSignatureVerification::validateCertificateAsync(std::chrono::system_cloc
         inParams[2].type = cert_pi_end;
     }
 
-    CERT_PKIXVerifyCert(cert, certificateUsageEmailSigner, inParams, nullptr, CMSSignerInfo->cmsg->pwfn_arg);
+    int result = 0;
+    if (CERT_PKIXVerifyCert(cert, certificateUsageEmailSigner, inParams, nullptr, CMSSignerInfo->cmsg->pwfn_arg) != SECSuccess) {
+        result = PORT_GetError();
+    }
 
     // Here we are just faking the asynchronousness. It should
     // somehow be the call to CERT_PXIXVerifyCert that would
     // be put in the thread, but I'm not sure about all of the
     // thread safety of nss.
 
-    validationStatus = std::async([result = PORT_GetError(), doneCallback]() {
+    validationStatus = std::async([result, doneCallback]() {
         if (doneCallback) {
             doneCallback();
         }
@@ -1052,10 +1002,10 @@ CertificateValidationStatus NSSSignatureVerification::validateCertificateResult(
     return cachedValidationStatus.value();
 }
 
-std::optional<GooString> NSSSignatureCreation::signDetached(const std::string &password)
+std::variant<std::vector<unsigned char>, CryptoSign::SigningErrorMessage> NSSSignatureCreation::signDetached(const std::string &password)
 {
     if (!hashContext) {
-        return {};
+        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::InternalError, ERROR_IN_CODE_LOCATION };
     }
     std::vector<unsigned char> digest_buffer = hashContext->endHash();
     SECItem digest;
@@ -1071,47 +1021,43 @@ std::optional<GooString> NSSSignatureCreation::signDetached(const std::string &p
     };
     std::unique_ptr<NSSCMSMessage, NSSCMSMessageDestroyer> cms_msg { NSS_CMSMessage_Create(nullptr) };
     if (!cms_msg) {
-        return {};
+        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::GenericError, ERROR_IN_CODE_LOCATION };
     }
 
     NSSCMSSignedData *cms_sd = NSS_CMSSignedData_Create(cms_msg.get());
     if (!cms_sd) {
-        return {};
+        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::GenericError, ERROR_IN_CODE_LOCATION };
     }
 
     NSSCMSContentInfo *cms_cinfo = NSS_CMSMessage_GetContentInfo(cms_msg.get());
 
     if (NSS_CMSContentInfo_SetContent_SignedData(cms_msg.get(), cms_cinfo, cms_sd) != SECSuccess) {
-        return {};
+        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::GenericError, ERROR_IN_CODE_LOCATION };
     }
 
     cms_cinfo = NSS_CMSSignedData_GetContentInfo(cms_sd);
 
     // Attach NULL data as detached data
     if (NSS_CMSContentInfo_SetContent_Data(cms_msg.get(), cms_cinfo, nullptr, PR_TRUE) != SECSuccess) {
-        return {};
+        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::GenericError, ERROR_IN_CODE_LOCATION };
     }
 
     // hardcode SHA256 these days...
     NSSCMSSignerInfo *cms_signer = NSS_CMSSignerInfo_Create(cms_msg.get(), signing_cert, SEC_OID_SHA256);
     if (!cms_signer) {
-        return {};
+        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::GenericError, ERROR_IN_CODE_LOCATION };
     }
 
     if (NSS_CMSSignerInfo_IncludeCerts(cms_signer, NSSCMSCM_CertChain, certUsageEmailSigner) != SECSuccess) {
-        return {};
-    }
-
-    if (NSS_CMSSignedData_AddCertificate(cms_sd, signing_cert) != SECSuccess) {
-        return {};
+        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::GenericError, ERROR_IN_CODE_LOCATION };
     }
 
     if (NSS_CMSSignedData_AddSignerInfo(cms_sd, cms_signer) != SECSuccess) {
-        return {};
+        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::GenericError, ERROR_IN_CODE_LOCATION };
     }
 
     if (NSS_CMSSignedData_SetDigestValue(cms_sd, SEC_OID_SHA256, &digest) != SECSuccess) {
-        return {};
+        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::GenericError, ERROR_IN_CODE_LOCATION };
     }
 
     struct PLArenaFreeFalse
@@ -1133,7 +1079,7 @@ std::optional<GooString> NSSSignatureCreation::signDetached(const std::string &p
     unsigned char certhash[32];
     SECStatus rv = PK11_HashBuf(SEC_OID_SHA256, certhash, signing_cert->derCert.data, signing_cert->derCert.len);
     if (rv != SECSuccess) {
-        return {};
+        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::GenericError, ERROR_IN_CODE_LOCATION };
     }
 
     aCertHashItem.type = siBuffer;
@@ -1156,7 +1102,7 @@ std::optional<GooString> NSSSignatureCreation::signDetached(const std::string &p
 
     SECItem *pEncodedCertificate = SEC_ASN1EncodeItem(nullptr, nullptr, &aCertificate, SigningCertificateV2Template);
     if (!pEncodedCertificate) {
-        return {};
+        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::GenericError, ERROR_IN_CODE_LOCATION };
     }
 
     NSSCMSAttribute aAttribute;
@@ -1171,15 +1117,15 @@ std::optional<GooString> NSSSignatureCreation::signDetached(const std::string &p
     aAttribute.values = pAttributeValues;
 
     SECOidData aOidData;
-    aOidData.oid.data = nullptr;
     /*
      * id-aa-signingCertificateV2 OBJECT IDENTIFIER ::=
      * { iso(1) member-body(2) us(840) rsadsi(113549) pkcs(1) pkcs9(9)
      *   smime(16) id-aa(2) 47 }
      */
-    if (my_SEC_StringToOID(arena.get(), &aOidData.oid, "1.2.840.113549.1.9.16.2.47", 0) != SECSuccess) {
-        return {};
-    }
+    auto cert_oid_buffer = std::to_array(OID_SIGNINGCERTIFICATEV2);
+    aOidData.oid.type = siBuffer;
+    aOidData.oid.data = cert_oid_buffer.data();
+    aOidData.oid.len = cert_oid_buffer.size();
 
     aOidData.offset = SEC_OID_UNKNOWN;
     aOidData.desc = "id-aa-signingCertificateV2";
@@ -1190,7 +1136,7 @@ std::optional<GooString> NSSSignatureCreation::signDetached(const std::string &p
     aAttribute.encoded = PR_TRUE;
 
     if (my_NSS_CMSSignerInfo_AddAuthAttr(cms_signer, &aAttribute) != SECSuccess) {
-        return {};
+        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::GenericError, ERROR_IN_CODE_LOCATION };
     }
 
     SECItem cms_output;
@@ -1199,14 +1145,14 @@ std::optional<GooString> NSSSignatureCreation::signDetached(const std::string &p
 
     NSSCMSEncoderContext *cms_ecx = NSS_CMSEncoder_Start(cms_msg.get(), nullptr, nullptr, &cms_output, arena.get(), passwordCallback, password.empty() ? nullptr : const_cast<char *>(password.c_str()), nullptr, nullptr, nullptr, nullptr);
     if (!cms_ecx) {
-        return {};
+        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::GenericError, ERROR_IN_CODE_LOCATION };
     }
 
     if (NSS_CMSEncoder_Finish(cms_ecx) != SECSuccess) {
-        return {};
+        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::GenericError, ERROR_IN_CODE_LOCATION };
     }
 
-    auto signature = GooString(reinterpret_cast<const char *>(cms_output.data), cms_output.len);
+    auto signature = std::vector<unsigned char>(cms_output.data, cms_output.data + cms_output.len);
 
     SECITEM_FreeItem(pEncodedCertificate, PR_TRUE);
 
@@ -1222,9 +1168,19 @@ static char *GetPasswordFunction(PK11SlotInfo *slot, PRBool /*retry*/, void * /*
     return nullptr;
 }
 
-std::unique_ptr<CryptoSign::VerificationInterface> NSSCryptoSignBackend::createVerificationHandler(std::vector<unsigned char> &&pkcs7)
+std::unique_ptr<CryptoSign::VerificationInterface> NSSCryptoSignBackend::createVerificationHandler(std::vector<unsigned char> &&pkcs7, CryptoSign::SignatureType type)
 {
-    return std::make_unique<NSSSignatureVerification>(std::move(pkcs7));
+    switch (type) {
+    case CryptoSign::SignatureType::unknown_signature_type:
+    case CryptoSign::SignatureType::unsigned_signature_field:
+    case CryptoSign::SignatureType::g10c_pgp_signature_detached:
+        return {};
+    case CryptoSign::SignatureType::ETSI_CAdES_detached:
+    case CryptoSign::SignatureType::adbe_pkcs7_detached:
+    case CryptoSign::SignatureType::adbe_pkcs7_sha1:
+        return std::make_unique<NSSSignatureVerification>(std::move(pkcs7), type);
+    }
+    return {};
 }
 
 std::unique_ptr<CryptoSign::SigningInterface> NSSCryptoSignBackend::createSigningHandler(const std::string &certID, HashAlgorithm digestAlgTag)

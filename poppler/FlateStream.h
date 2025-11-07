@@ -4,6 +4,8 @@
 //
 // Copyright (C) 2005, Jeff Muizelaar <jeff@infidigm.net>
 // Copyright (C) 2010, 2011, 2019, 2021, Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2025 Nelson Benítez León <nbenitezl@gmail.com>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // This file is under the GPLv2 or later license
 //
@@ -38,12 +40,12 @@ public:
     FlateStream(Stream *strA, int predictor, int columns, int colors, int bits);
     virtual ~FlateStream();
     StreamKind getKind() const override { return strFlate; }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     int getChar() override;
     int lookChar() override;
     int getRawChar() override;
     void getRawChars(int nChars, int *buffer) override;
-    GooString *getPSFilter(int psLevel, const char *indent) override;
+    std::optional<std::string> getPSFilter(int psLevel, const char *indent) override;
     bool isBinary(bool last = true) const override;
 
 private:

@@ -13,7 +13,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2005, 2007, 2011, 2018, 2019, 2021, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005, 2007, 2011, 2018, 2019, 2021, 2022, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2006 Rainer Keller <class321@gmx.de>
 // Copyright (C) 2008 Timothy Lee <timothy.lee@siriushk.com>
 // Copyright (C) 2008 Vasile Gaburici <gaburici@cs.umd.edu>
@@ -28,6 +28,7 @@
 // Copyright (C) 2020 mrbax <12640-mrbax@users.noreply.gitlab.freedesktop.org>
 // Copyright (C) 2024 Fernando Herrera <fherrera@onirica.com>
 // Copyright (C) 2024 Sebastian J. Bronner <waschtl@sbronner.com>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -303,16 +304,20 @@ long ImageOutputDev::getInlineImageLength(Stream *str, int width, int height, Gf
     long len;
 
     if (colorMap) {
-        ImageStream *imgStr = new ImageStream(str, width, colorMap->getNumPixelComps(), colorMap->getBits());
-        imgStr->reset();
+        ImageStream imgStr(str, width, colorMap->getNumPixelComps(), colorMap->getBits());
+        if (!imgStr.reset()) {
+            imgStr.close();
+            return 0;
+        }
         for (int y = 0; y < height; y++) {
-            imgStr->getLine();
+            imgStr.getLine();
         }
 
-        imgStr->close();
-        delete imgStr;
+        imgStr.close();
     } else {
-        str->reset();
+        if (!str->reset()) {
+            return 0;
+        }
         for (int y = 0; y < height; y++) {
             int size = (width + 7) / 8;
             for (int x = 0; x < size; x++) {
@@ -349,7 +354,12 @@ void ImageOutputDev::writeRawImage(Stream *str, const char *ext)
 
     // initialize stream
     str = str->getNextStream();
-    str->reset();
+    if (!str->reset()) {
+        fclose(f);
+        error(errIO, -1, "Couldn't reset stream");
+        errorCode = 2;
+        return;
+    }
 
     // copy the stream
     while ((c = str->getChar()) != EOF) {
@@ -364,7 +374,6 @@ void ImageOutputDev::writeImageFile(ImgWriter *writer, ImageFormat format, const
 {
     FILE *f = nullptr; /* squelch bogus compiler warning */
     ImageStream *imgStr = nullptr;
-    unsigned char *row;
     unsigned char *rowp;
     unsigned char *p;
     GfxRGB rgb;
@@ -394,20 +403,28 @@ void ImageOutputDev::writeImageFile(ImgWriter *writer, ImageFormat format, const
         pixelSize = 2 * sizeof(unsigned int);
     }
 
-    row = (unsigned char *)gmallocn_checkoverflow(width, pixelSize);
+    if (format != imgMonochrome) {
+        // initialize stream
+        imgStr = new ImageStream(str, width, colorMap->getNumPixelComps(), colorMap->getBits());
+        if (!imgStr->reset()) {
+            error(errIO, -1, "Stream reset failed");
+            errorCode = 3;
+            return;
+        }
+    } else {
+        // initialize stream
+        if (!str->reset()) {
+            errorCode = 3;
+            error(errIO, -1, "Stream reset failed");
+            return;
+        }
+    }
+
+    unsigned char *row = (unsigned char *)gmallocn_checkoverflow(width, pixelSize);
     if (!row) {
         error(errIO, -1, "Image data for '{0:s}' is too big. {1:d} width with {2:d} bytes per pixel", fileName, width, pixelSize);
         errorCode = 99;
         return;
-    }
-
-    if (format != imgMonochrome) {
-        // initialize stream
-        imgStr = new ImageStream(str, width, colorMap->getNumPixelComps(), colorMap->getBits());
-        imgStr->reset();
-    } else {
-        // initialize stream
-        str->reset();
     }
 
     // PDF masks use 0 = draw current color, 1 = leave unchanged.
@@ -569,11 +586,12 @@ void ImageOutputDev::writeImage(GfxState *state, Object *ref, Stream *str, int w
                 errorCode = 2;
                 return;
             }
-            globalsStr->reset();
-            while ((c = globalsStr->getChar()) != EOF) {
-                fputc(c, f);
+            if (globalsStr->reset()) {
+                while ((c = globalsStr->getChar()) != EOF) {
+                    fputc(c, f);
+                }
+                globalsStr->close();
             }
-            globalsStr->close();
             fclose(f);
         }
 
@@ -698,7 +716,7 @@ void ImageOutputDev::writeImage(GfxState *state, Object *ref, Stream *str, int w
     }
 }
 
-bool ImageOutputDev::tilingPatternFill(GfxState *state, Gfx *gfx, Catalog *cat, GfxTilingPattern *tPat, const double *mat, int x0, int y0, int x1, int y1, double xStep, double yStep)
+bool ImageOutputDev::tilingPatternFill(GfxState *state, Gfx *gfx, Catalog *cat, GfxTilingPattern *tPat, const std::array<double, 6> &mat, int x0, int y0, int x1, int y1, double xStep, double yStep)
 {
     return true;
     // do nothing -- this avoids the potentially slow loop in Gfx.cc

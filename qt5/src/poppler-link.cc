@@ -300,7 +300,7 @@ LinkDestination::LinkDestination(const LinkDestinationData &data) : d(new LinkDe
 
 LinkDestination::LinkDestination(const QString &description) : d(new LinkDestinationPrivate)
 {
-    const QStringList tokens = description.split(';');
+    const QStringList tokens = description.split(QChar::fromLatin1(';'));
     if (tokens.size() >= 10) {
         d->kind = static_cast<Kind>(tokens.at(0).toInt());
         d->pageNum = tokens.at(1).toInt();
@@ -315,9 +315,9 @@ LinkDestination::LinkDestination(const QString &description) : d(new LinkDestina
     }
 }
 
-LinkDestination::LinkDestination(const LinkDestination &other) : d(other.d) { }
+LinkDestination::LinkDestination(const LinkDestination &other) = default;
 
-LinkDestination::~LinkDestination() { }
+LinkDestination::~LinkDestination() = default;
 
 LinkDestination::Kind LinkDestination::kind() const
 {
@@ -371,16 +371,17 @@ bool LinkDestination::isChangeZoom() const
 
 QString LinkDestination::toString() const
 {
+    const QChar semicolon = QChar::fromLatin1(';');
     QString s = QString::number((qint8)d->kind);
-    s += ";" + QString::number(d->pageNum);
-    s += ";" + QString::number(d->left);
-    s += ";" + QString::number(d->bottom);
-    s += ";" + QString::number(d->right);
-    s += ";" + QString::number(d->top);
-    s += ";" + QString::number(d->zoom);
-    s += ";" + QString::number((qint8)d->changeLeft);
-    s += ";" + QString::number((qint8)d->changeTop);
-    s += ";" + QString::number((qint8)d->changeZoom);
+    s += semicolon + QString::number(d->pageNum);
+    s += semicolon + QString::number(d->left);
+    s += semicolon + QString::number(d->bottom);
+    s += semicolon + QString::number(d->right);
+    s += semicolon + QString::number(d->top);
+    s += semicolon + QString::number(d->zoom);
+    s += semicolon + QString::number((qint8)d->changeLeft);
+    s += semicolon + QString::number((qint8)d->changeTop);
+    s += semicolon + QString::number((qint8)d->changeZoom);
     return s;
 }
 
@@ -433,7 +434,7 @@ LinkGoto::LinkGoto(const QRectF &linkArea, QString extFileName, const LinkDestin
     d->extFileName = std::move(extFileName); // TODO remove when extFileName moves to be a const &
 }
 
-LinkGoto::~LinkGoto() { }
+LinkGoto::~LinkGoto() = default;
 
 bool LinkGoto::isExternal() const
 {
@@ -466,7 +467,7 @@ LinkExecute::LinkExecute(const QRectF &linkArea, const QString &file, const QStr
     d->parameters = params;
 }
 
-LinkExecute::~LinkExecute() { }
+LinkExecute::~LinkExecute() = default;
 
 QString LinkExecute::fileName() const
 {
@@ -491,7 +492,7 @@ LinkBrowse::LinkBrowse(const QRectF &linkArea, const QString &url) : Link(*new L
     d->url = url;
 }
 
-LinkBrowse::~LinkBrowse() { }
+LinkBrowse::~LinkBrowse() = default;
 
 QString LinkBrowse::url() const
 {
@@ -511,7 +512,7 @@ LinkAction::LinkAction(const QRectF &linkArea, ActionType actionType) : Link(*ne
     d->type = actionType;
 }
 
-LinkAction::~LinkAction() { }
+LinkAction::~LinkAction() = default;
 
 LinkAction::ActionType LinkAction::actionType() const
 {
@@ -535,7 +536,7 @@ LinkSound::LinkSound(const QRectF &linkArea, double volume, bool sync, bool repe
     d->sound = sound;
 }
 
-LinkSound::~LinkSound() { }
+LinkSound::~LinkSound() = default;
 
 Link::LinkType LinkSound::linkType() const
 {
@@ -583,7 +584,7 @@ LinkRendition::LinkRendition(const QRectF &linkArea, std::unique_ptr<::MediaRend
 {
 }
 
-LinkRendition::~LinkRendition() { }
+LinkRendition::~LinkRendition() = default;
 
 Link::LinkType LinkRendition::linkType() const
 {
@@ -625,7 +626,7 @@ LinkJavaScript::LinkJavaScript(const QRectF &linkArea, const QString &js) : Link
     d->js = js;
 }
 
-LinkJavaScript::~LinkJavaScript() { }
+LinkJavaScript::~LinkJavaScript() = default;
 
 Link::LinkType LinkJavaScript::linkType() const
 {
@@ -644,7 +645,7 @@ LinkMovie::LinkMovie(const QRectF &linkArea, Operation operation, const QString 
 {
 }
 
-LinkMovie::~LinkMovie() { }
+LinkMovie::~LinkMovie() = default;
 
 Link::LinkType LinkMovie::linkType() const
 {
@@ -671,7 +672,7 @@ bool LinkMovie::isReferencedAnnotation(const MovieAnnotation *annotation) const
 
 LinkOCGState::LinkOCGState(LinkOCGStatePrivate *ocgp) : Link(*ocgp) { }
 
-LinkOCGState::~LinkOCGState() { }
+LinkOCGState::~LinkOCGState() = default;
 
 Link::LinkType LinkOCGState::linkType() const
 {
@@ -681,7 +682,7 @@ Link::LinkType LinkOCGState::linkType() const
 // LinkHide
 LinkHide::LinkHide(LinkHidePrivate *lhidep) : Link(*lhidep) { }
 
-LinkHide::~LinkHide() { }
+LinkHide::~LinkHide() = default;
 
 Link::LinkType LinkHide::linkType() const
 {
@@ -703,7 +704,7 @@ bool LinkHide::isShowAction() const
 // LinkResetForm
 LinkResetForm::LinkResetForm(LinkResetFormPrivate *lrfp) : Link(*lrfp) { }
 
-LinkResetForm::~LinkResetForm() { }
+LinkResetForm::~LinkResetForm() = default;
 
 Link::LinkType LinkResetForm::linkType() const
 {
@@ -729,7 +730,7 @@ static_assert(static_cast<int>(LinkSubmitForm::EmbedFormFlag) == static_cast<int
 
 LinkSubmitForm::LinkSubmitForm(LinkSubmitFormPrivate *lsfp) : Link(*lsfp) { }
 
-LinkSubmitForm::~LinkSubmitForm() { }
+LinkSubmitForm::~LinkSubmitForm() = default;
 
 Link::LinkType LinkSubmitForm::linkType() const
 {

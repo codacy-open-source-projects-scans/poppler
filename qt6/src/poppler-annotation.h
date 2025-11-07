@@ -12,6 +12,7 @@
  * Copyright (C) 2020, 2024, Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
  * Copyright (C) 2021, Oliver Sander <oliver.sander@tu-dresden.de>
  * Copyright (C) 2021, Mahmoud Ahmed Khalil <mahmoudkhalil11@gmail.com>
+ * Copyright (C) 2024, 2025, g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  * Adapting code from
  *   Copyright (C) 2004 by Enrico Ros <eros.kde@email.it>
  *
@@ -793,9 +794,14 @@ public:
      */
     enum SigningResult
     {
-        SigningSuccess,
+        SigningSuccess, ///< No error
         FieldAlreadySigned, ///< Trying to sign a field that is already signed
-        GenericSigningError,
+        GenericSigningError, ///< Unclassified error
+        InternalError, ///< Unexpected error, likely a bug in poppler \since 24.12
+        KeyMissing, ///< Key not found (Either the input key is not from the list or the available keys has changed underneath) \since 24.12
+        WriteFailed, ///< Write failed (permissions, faulty disk, ...) \since 24.12
+        UserCancelled, ///< User cancelled the process \since 24.12
+        BadPassphrase, ///< User entered bad passphrase \since 25.03
     };
 
     SignatureAnnotation();
@@ -850,6 +856,13 @@ public:
     void setFieldPartialName(const QString &fieldPartialName);
 
     [[nodiscard]] SigningResult sign(const QString &outputFileName, const PDFConverter::NewSignatureData &data);
+
+    /**
+     * A string with a string that might offer more details of the signing result failure
+     * \note the string here is likely not super useful for end users, but might give more details to a trained supporter / bug triager
+     * \since 25.07
+     */
+    ErrorString lastSigningErrorDetails() const;
 
 private:
     explicit SignatureAnnotation(SignatureAnnotationPrivate &dd);

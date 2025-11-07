@@ -4,7 +4,8 @@
 //
 // Copyright 2007 Julien Rebetez
 // Copyright 2012 Fabio D'Urso
-// Copyright 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright 2022, 2025 Albert Astals Cid <aacid@kde.org>
+// Copyright 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -70,7 +71,7 @@ int main(int argc, char *argv[])
     }
 
     // save it back (in rewrite or incremental update mode)
-    if (doc->saveAs(*doc->getFileName(), forceIncremental ? writeForceIncremental : writeForceRewrite) != 0) {
+    if (doc->saveAs(argv[2], forceIncremental ? writeForceIncremental : writeForceRewrite) != 0) {
         fprintf(stderr, "Error saving document\n");
         res = 1;
         goto done;
@@ -203,8 +204,8 @@ static bool compareObjects(const Object *objA, const Object *objB)
                 return false;
             } else {
                 int c;
-                streamA->reset();
-                streamB->reset();
+                (void)streamA->reset();
+                (void)streamB->reset();
                 do {
                     c = streamA->getChar();
                     if (c != streamB->getChar()) {

@@ -4,8 +4,9 @@
 //
 // This file is licensed under the GPLv2 or later
 //
-// Copyright (C) 2019-2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2019-2022, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2019, 2023 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -14,7 +15,7 @@
 
 #include "config.h"
 #include <poppler-config.h>
-#include "gbasename.h"
+#include "goo/gbasename.h"
 #include "parseargs.h"
 #include "GlobalParams.h"
 #include "PDFDoc.h"
@@ -95,7 +96,7 @@ int main(int argc, char *argv[])
 
     doc->getCatalog()->addEmbeddedFile(attachFile.get(), attachFileName);
 
-    const GooString outputPdfFilePath(argv[3]);
+    const std::string outputPdfFilePath(argv[3]);
     const int saveResult = doc->saveAs(outputPdfFilePath);
     if (saveResult != errNone) {
         fprintf(stderr, "Couldn't save the file properly.\n");
