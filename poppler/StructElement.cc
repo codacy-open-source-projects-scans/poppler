@@ -876,24 +876,31 @@ const TextSpanArray &StructElement::getTextSpansInternal(MarkedContentOutputDev 
     treeRoot->getDoc()->displayPages(&mcdev, startPage, endPage, 72.0, 72.0, 0, true, false, false);
     return mcdev.getTextSpans();
 }
-
-static StructElement::Type roleMapResolve(Dict *roleMap, const char *name, const char *curName)
+static StructElement::Type roleMapResolve(Dict *roleMap, const char *name)
 {
-    // Circular reference
-    if (curName && !strcmp(name, curName)) {
+    Object resolved = roleMap->lookup(name);
+    std::set<std::string> recursion;
+    while (true) {
+        if (resolved.isName()) {
+            if (!recursion.insert(resolved.getName()).second) {
+                // circular reference
+                error(errSyntaxWarning, -1, "RoleMap entries contains circular references");
+                return StructElement::Unknown;
+            }
+
+            StructElement::Type type = nameToType(resolved.getName());
+            if (type != StructElement::Unknown) {
+                return type;
+            }
+            resolved = roleMap->lookup(resolved.getName());
+            continue;
+        }
+
+        if (!resolved.isNull()) {
+            error(errSyntaxWarning, -1, "RoleMap entry is wrong type ({0:s})", resolved.getTypeName());
+        }
         return StructElement::Unknown;
     }
-
-    Object resolved = roleMap->lookup(curName ? curName : name);
-    if (resolved.isName()) {
-        StructElement::Type type = nameToType(resolved.getName());
-        return type == StructElement::Unknown ? roleMapResolve(roleMap, name, resolved.getName()) : type;
-    }
-
-    if (!resolved.isNull()) {
-        error(errSyntaxWarning, -1, "RoleMap entry is wrong type ({0:s})", resolved.getTypeName());
-    }
-    return StructElement::Unknown;
 }
 
 void StructElement::parse(Dict *element)
@@ -925,7 +932,7 @@ void StructElement::parse(Dict *element)
 
     // Type name may not be standard, resolve through RoleMap first.
     if (treeRoot->getRoleMap()) {
-        type = roleMapResolve(treeRoot->getRoleMap(), obj.getName(), nullptr);
+        type = roleMapResolve(treeRoot->getRoleMap(), obj.getName());
     }
 
     // Resolving through RoleMap may leave type as Unknown, e.g. for types
