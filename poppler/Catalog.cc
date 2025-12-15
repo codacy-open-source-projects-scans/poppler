@@ -966,15 +966,19 @@ unsigned int Catalog::getMarkInfo()
                 }
 
                 value = markInfoDict.dictLookup("Suspects");
-                if (value.isBool() && value.getBool()) {
-                    markInfo |= markInfoSuspects;
+                if (value.isBool()) {
+                    if (value.getBool()) {
+                        markInfo |= markInfoSuspects;
+                    }
                 } else if (!value.isNull()) {
                     error(errSyntaxError, -1, "Suspects object is wrong type ({0:s})", value.getTypeName());
                 }
 
                 value = markInfoDict.dictLookup("UserProperties");
-                if (value.isBool() && value.getBool()) {
-                    markInfo |= markInfoUserProperties;
+                if (value.isBool()) {
+                    if (value.getBool()) {
+                        markInfo |= markInfoUserProperties;
+                    }
                 } else if (!value.isNull()) {
                     error(errSyntaxError, -1, "UserProperties object is wrong type ({0:s})", value.getTypeName());
                 }
@@ -1274,7 +1278,7 @@ std::unique_ptr<LinkAction> Catalog::getOpenAction() const
     return {};
 }
 
-#ifdef USE_CMS
+#if USE_CMS
 
 #    include <lcms2.h>
 

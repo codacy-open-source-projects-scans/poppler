@@ -14,7 +14,7 @@
 // Copyright (C) 2006 Takashi Iwai <tiwai@suse.de>
 // Copyright (C) 2009 Petr Gajdos <pgajdos@novell.com>
 // Copyright (C) 2009 Kovid Goyal <kovid@kovidgoyal.net>
-// Copyright (C) 2009, 2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2009, 2024, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2011 Andreas Hartmetz <ahartmetz@gmail.com>
 // Copyright (C) 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2015 Dmytro Morgun <lztoad@gmail.com>
@@ -32,9 +32,6 @@
 
 #include <cstdlib>
 #include <cstdio>
-#ifdef HAVE_UNISTD_H
-#    include <unistd.h>
-#endif
 #include <algorithm>
 
 #include "goo/gmem.h"
@@ -209,9 +206,9 @@ void SplashFontEngine::setAA(bool aa)
     }
 }
 
-SplashFont *SplashFontEngine::getFont(SplashFontFile *fontFile, const SplashCoord *textMat, const SplashCoord *ctm)
+SplashFont *SplashFontEngine::getFont(SplashFontFile *fontFile, const std::array<SplashCoord, 4> &textMat, const std::array<SplashCoord, 6> &ctm)
 {
-    SplashCoord mat[4];
+    std::array<SplashCoord, 4> mat;
 
     mat[0] = textMat[0] * ctm[0] + textMat[1] * ctm[2];
     mat[1] = -(textMat[0] * ctm[1] + textMat[1] * ctm[3]);

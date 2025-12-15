@@ -47,6 +47,7 @@
 // Copyright (C) 2024 Adam Sampson <ats@offog.org>
 // Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2024, 2025 Stefan Brüns <stefan.bruens@rwth-aachen.de>
+// Copyright (C) 2025 Hagen Möbius <hagen.moebius@googlemail.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -368,7 +369,6 @@ public:
 TextFontInfo::TextFontInfo(const GfxState *state)
 {
     gfxFont = state->getFont();
-#ifdef TEXTOUT_WORD_LIST
     if (gfxFont) {
         const std::optional<std::string> &gfxFontName = gfxFont->getName();
         if (gfxFontName) {
@@ -380,14 +380,11 @@ TextFontInfo::TextFontInfo(const GfxState *state)
         fontName = nullptr;
     }
     flags = gfxFont ? gfxFont->getFlags() : 0;
-#endif
 }
 
 TextFontInfo::~TextFontInfo()
 {
-#ifdef TEXTOUT_WORD_LIST
     delete fontName;
-#endif
 }
 
 bool TextFontInfo::matches(const GfxState *state) const
@@ -432,7 +429,6 @@ TextWord::TextWord(const GfxState *state, int rotA, double fontSizeA)
     next = nullptr;
     invisible = state->getRender() == 3;
 
-#ifdef TEXTOUT_WORD_LIST
     GfxRGB rgb;
 
     if ((state->getRender() & 3) == 1) {
@@ -443,7 +439,6 @@ TextWord::TextWord(const GfxState *state, int rotA, double fontSizeA)
     colorR = colToDbl(rgb.r);
     colorG = colToDbl(rgb.g);
     colorB = colToDbl(rgb.b);
-#endif
 
     underlined = false;
     link = nullptr;
@@ -821,8 +816,6 @@ bool TextWord::cmpYX(const TextWord *const word1, const TextWord *const word2)
     return cmp < 0;
 }
 
-#ifdef TEXTOUT_WORD_LIST
-
 GooString *TextWord::getText() const
 {
     GooString *s;
@@ -879,8 +872,6 @@ void TextWord::getCharBBox(int charIdx, double *xMinA, double *yMinA, double *xM
     }
 }
 
-#endif // TEXTOUT_WORD_LIST
-
 //------------------------------------------------------------------------
 // TextPool
 //------------------------------------------------------------------------
@@ -931,7 +922,19 @@ void TextPool::sort()
         return back;
     };
 
-    const auto SortedMerge = [](TextWord *a, TextWord *b) {
+    const auto PosCmp = [](const TextWord &a, const TextWord &b) -> bool {
+        if (a.rot == 0) {
+            return ((a.xMin + a.xMax) <= (b.xMin + b.xMax));
+        } else if (a.rot == 1) {
+            return ((a.yMin + a.yMax) <= (b.yMin + b.yMax));
+        } else if (a.rot == 2) {
+            return ((b.xMin + b.xMax) <= (a.xMin + a.xMax));
+        } else {
+            return ((b.yMin + b.yMax) <= (a.yMin + a.yMax));
+        }
+    };
+
+    const auto SortedMerge = [PosCmp](TextWord *a, TextWord *b) {
         if (!a) {
             return b;
         } else if (!b) {
@@ -941,7 +944,7 @@ void TextPool::sort()
         TextWord *head = nullptr;
         TextWord *cursor = nullptr;
 
-        if (a->primaryCmp(b) <= 0) {
+        if (PosCmp(*a, *b)) {
             head = cursor = a;
             a = a->next;
         } else {
@@ -950,7 +953,7 @@ void TextPool::sort()
         }
 
         while (a && b) {
-            if (a->primaryCmp(b) <= 0) {
+            if (PosCmp(*a, *b)) {
                 cursor->next = a;
                 cursor = cursor->next;
                 a = a->next;
@@ -2378,8 +2381,6 @@ bool TextFlow::blockFits(const TextBlock *blk, const TextBlock *prevBlk) const
     return fits;
 }
 
-#ifdef TEXTOUT_WORD_LIST
-
 //------------------------------------------------------------------------
 // TextWordList
 //------------------------------------------------------------------------
@@ -2435,8 +2436,6 @@ TextWordList::TextWordList(const TextPage *text, bool physLayout)
 }
 
 TextWordList::~TextWordList() = default;
-
-#endif // TEXTOUT_WORD_LIST
 
 //------------------------------------------------------------------------
 // TextPage
@@ -5591,12 +5590,10 @@ int TextPage::dumpFragment(const Unicode *text, int len, const UnicodeMap *uMap,
     }
 }
 
-#ifdef TEXTOUT_WORD_LIST
 std::unique_ptr<TextWordList> TextPage::makeWordList(bool physLayout)
 {
     return std::make_unique<TextWordList>(this, physLayout);
 }
-#endif
 
 //------------------------------------------------------------------------
 // ActualText
@@ -5960,12 +5957,10 @@ void TextOutputDev::setMergeCombining(bool merge)
     text->setMergeCombining(merge);
 }
 
-#ifdef TEXTOUT_WORD_LIST
 std::unique_ptr<TextWordList> TextOutputDev::makeWordList()
 {
     return text->makeWordList(physLayout);
 }
-#endif
 
 TextPage *TextOutputDev::takeText()
 {

@@ -33,7 +33,7 @@
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019 Umang Malik <umang99m@gmail.com>
 // Copyright (C) 2019 João Netto <joaonetto901@gmail.com>
-// Copyright (C) 2020 Nelson Benítez León <nbenitezl@gmail.com>
+// Copyright (C) 2020, 2025 Nelson Benítez León <nbenitezl@gmail.com>
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
 // Copyright (C) 2020 Katarina Behrens <Katarina.Behrens@cib.de>
 // Copyright (C) 2020 Thorsten Behrens <Thorsten.Behrens@CIB.de>
@@ -606,6 +606,7 @@ public:
     void appendf(const char *fmt, ...) GOOSTRING_FORMAT;
 
     const GooString *buffer() const;
+    bool getAddedDingbatsResource() const { return addedDingbatsResource; }
 
 private:
     enum DrawTextFlags
@@ -633,6 +634,7 @@ private:
     void drawArrowPath(double x, double y, const Matrix &m, int orientation = 1);
 
     std::unique_ptr<GooString> appearBuf;
+    bool addedDingbatsResource;
 };
 
 //------------------------------------------------------------------------
@@ -1466,7 +1468,7 @@ public:
 
     void draw(Gfx *gfx, bool printing) override;
 
-    void generateFieldAppearance();
+    void generateFieldAppearance(bool *addedDingbatsResource = nullptr);
     void updateAppearanceStream();
 
     AnnotWidgetHighlightMode getMode() { return mode; }
@@ -1627,8 +1629,7 @@ public:
 
         Type getType() const;
         const GooString *getName() const;
-        int getInstancesCount() const;
-        Instance *getInstance(int index) const;
+        const std::vector<std::unique_ptr<Instance>> &getInstances() const { return instances; }
 
     private:
         // optional
@@ -1667,11 +1668,9 @@ public:
         Content(const Content &) = delete;
         Content &operator=(const Content &) = delete;
 
-        int getConfigurationsCount() const;
-        Configuration *getConfiguration(int index) const;
+        const std::vector<std::unique_ptr<Configuration>> &getConfigurations() const { return configurations; }
 
-        int getAssetsCount() const;
-        Asset *getAsset(int index) const;
+        const std::vector<std::unique_ptr<Asset>> &getAssets() const { return assets; }
 
     private:
         // optional

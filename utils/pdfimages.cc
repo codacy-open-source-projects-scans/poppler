@@ -15,7 +15,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2007-2008, 2010, 2018, 2022, 2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2007-2008, 2010, 2018, 2022, 2024, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2010 Hib Eris <hib@hiberis.nl>
 // Copyright (C) 2010 Jakob Voss <jakob.voss@gbv.de>
 // Copyright (C) 2012, 2013, 2017 Adrian Johnson <ajohnson@redneon.com>
@@ -74,10 +74,10 @@ static bool printHelp = false;
 
 static const ArgDesc argDesc[] = { { "-f", argInt, &firstPage, 0, "first page to convert" },
                                    { "-l", argInt, &lastPage, 0, "last page to convert" },
-#ifdef ENABLE_LIBPNG
+#if ENABLE_LIBPNG
                                    { "-png", argFlag, &enablePNG, 0, "change the default output format to PNG" },
 #endif
-#ifdef ENABLE_LIBTIFF
+#if ENABLE_LIBTIFF
                                    { "-tiff", argFlag, &enableTiff, 0, "change the default output format to TIFF" },
 #endif
                                    { "-j", argFlag, &dumpJPEG, 0, "write JPEG images as JPEG files" },

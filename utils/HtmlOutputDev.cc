@@ -17,7 +17,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2005-2013, 2016-2022, 2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005-2013, 2016-2022, 2024, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2008 Kjartan Maraas <kmaraas@gnome.org>
 // Copyright (C) 2008 Boris Toloknov <tlknv@yandex.ru>
 // Copyright (C) 2008 Haruyuki Kawabe <Haruyuki.Kawabe@unisys.co.jp>
@@ -1296,10 +1296,16 @@ void HtmlOutputDev::drawJpegImage(GfxState *state, Stream *str)
     pages->addImage(std::move(fName), state);
 }
 
+// We need this because fclose returns int and the custom deleter of unique_ptr expects void
+static void custom_fclose(FILE *ptr)
+{
+    fclose(ptr);
+}
+
 void HtmlOutputDev::drawPngImage(GfxState *state, Stream *str, int width, int height, GfxImageColorMap *colorMap, bool isMask)
 {
-#ifdef ENABLE_LIBPNG
-    std::unique_ptr<FILE, decltype(&fclose)> f1 { nullptr, &fclose };
+#if ENABLE_LIBPNG
+    std::unique_ptr<FILE, decltype(&custom_fclose)> f1 { nullptr, &custom_fclose };
     InMemoryFile ims;
 
     if (!colorMap && !isMask) {
@@ -1431,7 +1437,7 @@ void HtmlOutputDev::drawImageMask(GfxState *state, Object *ref, Stream *str, int
     if (dumpJPEG && str->getKind() == strDCT) {
         drawJpegImage(state, str);
     } else {
-#ifdef ENABLE_LIBPNG
+#if ENABLE_LIBPNG
         drawPngImage(state, str, width, height, nullptr, true);
 #else
         OutputDev::drawImageMask(state, ref, str, width, height, invert, interpolate, inlineImg);
@@ -1453,7 +1459,7 @@ void HtmlOutputDev::drawImage(GfxState *state, Object *ref, Stream *str, int wid
     if (dumpJPEG && str->getKind() == strDCT && (colorMap->getNumPixelComps() == 1 || colorMap->getNumPixelComps() == 3) && !inlineImg) {
         drawJpegImage(state, str);
     } else {
-#ifdef ENABLE_LIBPNG
+#if ENABLE_LIBPNG
         drawPngImage(state, str, width, height, colorMap);
 #else
         OutputDev::drawImage(state, ref, str, width, height, colorMap, interpolate, maskColors, inlineImg);

@@ -5,6 +5,7 @@
 // This file is licensed under the GPLv2 or later
 //
 // Copyright (C) 2020 Philipp Knechtges <philipp-dev@knechtges.com>
+// Copyright (C) 2025 Albert Astals Cid <aacid@kde.org>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -18,7 +19,7 @@
 #include <cctype>
 #include "sanitychecks.h"
 
-#ifdef USE_CMS
+#if USE_CMS
 bool checkICCProfile(const GfxLCMSProfilePtr &profile, const char *filename, cmsUInt32Number UsedDirection, cmsColorSpaceSignature expectedColorSpace)
 {
     if (!profile) {

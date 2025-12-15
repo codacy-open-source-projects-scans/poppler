@@ -16,7 +16,7 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2006 Kristian Høgsberg <krh@redhat.com>
-// Copyright (C) 2007-2008, 2010, 2015, 2017, 2018, 2020-2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2007-2008, 2010, 2015, 2017, 2018, 2020-2022, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2009 Till Kamppeter <till.kamppeter@gmail.com>
 // Copyright (C) 2009 Sanjoy Mahajan <sanjoy@mit.edu>
 // Copyright (C) 2009, 2011, 2012, 2014-2016, 2020 William Bader <williambader@hotmail.com>
@@ -59,7 +59,7 @@
 #include "Win32Console.h"
 #include "sanitychecks.h"
 
-#ifdef USE_CMS
+#if USE_CMS
 #    include <lcms2.h>
 #endif
 
@@ -96,9 +96,7 @@ static bool level3Sep = false;
 static bool origPageSizes = false;
 static bool doEPS = false;
 static bool doForm = false;
-#ifdef OPI_SUPPORT
 static bool doOPI = false;
-#endif
 static int splashResolution = 0;
 static bool psBinary = false;
 static bool noEmbedT1Fonts = false;
@@ -128,7 +126,7 @@ static bool overprint = false;
 static GooString processcolorformatname;
 static SplashColorMode processcolorformat;
 static bool processcolorformatspecified = false;
-#ifdef USE_CMS
+#if USE_CMS
 static GooString processcolorprofilename;
 static GfxLCMSProfilePtr processcolorprofile;
 static GooString defaultgrayprofilename;
@@ -150,9 +148,7 @@ static const ArgDesc argDesc[] = { { "-f", argInt, &firstPage, 0, "first page to
                                    { "-origpagesizes", argFlag, &origPageSizes, 0, "conserve original page sizes" },
                                    { "-eps", argFlag, &doEPS, 0, "generate Encapsulated PostScript (EPS)" },
                                    { "-form", argFlag, &doForm, 0, "generate a PostScript form" },
-#ifdef OPI_SUPPORT
                                    { "-opi", argFlag, &doOPI, 0, "generate OPI comments" },
-#endif
                                    { "-r", argInt, &splashResolution, 0, "resolution for rasterization, in DPI (default is 300)" },
                                    { "-binary", argFlag, &psBinary, 0, "write binary data in Level 1 PostScript" },
                                    { "-noembt1", argFlag, &noEmbedT1Fonts, 0, "don't embed Type 1 fonts" },
@@ -163,7 +159,7 @@ static const ArgDesc argDesc[] = { { "-f", argInt, &firstPage, 0, "first page to
                                    { "-aaRaster", argString, rasterAntialiasStr, sizeof(rasterAntialiasStr), "enable anti-aliasing on rasterization: yes, no" },
                                    { "-rasterize", argString, forceRasterizeStr, sizeof(forceRasterizeStr), "control rasterization: always, never, whenneeded" },
                                    { "-processcolorformat", argGooString, &processcolorformatname, 0, "color format that is used during rasterization and transparency reduction: MONO8, RGB8, CMYK8" },
-#ifdef USE_CMS
+#if USE_CMS
                                    { "-processcolorprofile", argGooString, &processcolorprofilename, 0, "ICC color profile to use as the process color profile during rasterization and transparency reduction" },
                                    { "-defaultgrayprofile", argGooString, &defaultgrayprofilename, 0, "ICC color profile to use as the DefaultGray color space" },
                                    { "-defaultrgbprofile", argGooString, &defaultrgbprofilename, 0, "ICC color profile to use as the DefaultRGB color space" },
@@ -204,7 +200,7 @@ int main(int argc, char *argv[])
     int exitCode;
     bool rasterAntialias = false;
     std::vector<int> pages;
-#ifdef USE_CMS
+#if USE_CMS
     cmsColorSpaceSignature profilecolorspace;
 #endif
 
@@ -290,7 +286,7 @@ int main(int argc, char *argv[])
         }
     }
 
-#ifdef USE_CMS
+#if USE_CMS
     if (!processcolorprofilename.toStr().empty()) {
         processcolorprofile = make_GfxLCMSProfilePtr(cmsOpenProfileFromFile(processcolorprofilename.c_str(), "r"));
         if (!processcolorprofile) {
@@ -341,7 +337,7 @@ int main(int argc, char *argv[])
         }
     }
 
-#ifdef USE_CMS
+#if USE_CMS
     if (!defaultgrayprofilename.toStr().empty()) {
         defaultgrayprofile = make_GfxLCMSProfilePtr(cmsOpenProfileFromFile(defaultgrayprofilename.c_str(), "r"));
         if (!checkICCProfile(defaultgrayprofile, defaultgrayprofilename.c_str(), LCMS_USED_AS_INPUT, cmsSigGrayData)) {
@@ -471,7 +467,7 @@ int main(int argc, char *argv[])
     if (processcolorformatspecified) {
         psOut->setProcessColorFormat(processcolorformat);
     }
-#ifdef USE_CMS
+#if USE_CMS
     psOut->setDisplayProfile(processcolorprofile);
     psOut->setDefaultGrayProfile(defaultgrayprofile);
     psOut->setDefaultRGBProfile(defaultrgbprofile);
@@ -485,9 +481,7 @@ int main(int argc, char *argv[])
     psOut->setPreloadImagesForms(preload);
     psOut->setOptimizeColorSpace(optimizeColorSpace);
     psOut->setPassLevel1CustomColor(passLevel1CustomColor);
-#ifdef OPI_SUPPORT
     psOut->setGenerateOPI(doOPI);
-#endif
     psOut->setUseBinary(psBinary);
 
     psOut->setRasterAntialias(rasterAntialias);

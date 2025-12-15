@@ -19,7 +19,7 @@
 // Copyright (C) 2017 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2018 Stefan Brüns <stefan.bruens@rwth-aachen.de>
-// Copyright (C) 2020 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2020, 2025 Albert Astals Cid <aacid@kde.org>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -29,88 +29,32 @@
 #ifndef POPPLER_CONFIG_H
 #define POPPLER_CONFIG_H
 
-// We duplicate some of the config.h #define's here since they are
-// used in some of the header files we install.  The #ifndef/#endif
-// around #undef look odd, but it's to silence warnings about
-// redefining those symbols.
-
 /* Defines the poppler version. */
-#ifndef POPPLER_VERSION
 #define POPPLER_VERSION "${POPPLER_VERSION}"
-#endif
 
 /* Use single precision arithmetic in the Splash backend */
-#ifndef USE_FLOAT
-#cmakedefine USE_FLOAT 1
-#endif
-
-/* Include support for OPI comments. */
-#ifndef OPI_SUPPORT
-#cmakedefine OPI_SUPPORT 1
-#endif
-
-/* Enable word list support. */
-#ifndef TEXTOUT_WORD_LIST
-#cmakedefine TEXTOUT_WORD_LIST 1
-#endif
+#cmakedefine01 USE_FLOAT
 
 /* Support for curl is compiled in. */
-#ifndef POPPLER_HAS_CURL_SUPPORT
-#cmakedefine POPPLER_HAS_CURL_SUPPORT 1
-#endif
+#cmakedefine01 POPPLER_HAS_CURL_SUPPORT
 
 /* Use libjpeg instead of builtin jpeg decoder. */
-#ifndef ENABLE_LIBJPEG
-#cmakedefine ENABLE_LIBJPEG 1
-#endif
+#cmakedefine01 ENABLE_LIBJPEG
 
 /* Build against libtiff. */
-#ifndef ENABLE_LIBTIFF
-#cmakedefine ENABLE_LIBTIFF 1
-#endif
+#cmakedefine01 ENABLE_LIBTIFF
 
 /* Build against libpng. */
-#ifndef ENABLE_LIBPNG
-#cmakedefine ENABLE_LIBPNG 1
-#endif
+#cmakedefine01 ENABLE_LIBPNG
 
-/* Define to 1 if you have the <dirent.h> header file, and it defines `DIR'.
-   */
-#ifndef HAVE_DIRENT_H
-#cmakedefine HAVE_DIRENT_H 1
-#endif
-
-/* Defines if gettimeofday is available on your system */
-#ifndef HAVE_GETTIMEOFDAY
-#cmakedefine HAVE_GETTIMEOFDAY 1
-#endif
-
-/* Define to 1 if you have the <ndir.h> header file, and it defines `DIR'. */
-#ifndef HAVE_NDIR_H
-#cmakedefine HAVE_NDIR_H 1
-#endif
-
-/* Define to 1 if you have the <sys/dir.h> header file, and it defines `DIR'.
-   */
-#ifndef HAVE_SYS_DIR_H
-#cmakedefine HAVE_SYS_DIR_H 1
-#endif
-
-/* Define to 1 if you have the <sys/ndir.h> header file, and it defines `DIR'.
-   */
-#ifndef HAVE_SYS_NDIR_H
-#cmakedefine HAVE_SYS_NDIR_H 1
-#endif
+/* Use zlib instead of builtin zlib decoder to uncompress flate streams. */
+#cmakedefine01 ENABLE_ZLIB_UNCOMPRESS
 
 /* Defines if use cms */
-#ifndef USE_CMS
-#cmakedefine USE_CMS 1
-#endif
+#cmakedefine01 USE_CMS
 
 /* Use header-only classes from Boost in the Splash backend */
-#ifndef USE_BOOST_HEADERS
-#cmakedefine USE_BOOST_HEADERS 1
-#endif
+#cmakedefine01 USE_BOOST_HEADERS
 
 //------------------------------------------------------------------------
 // version
@@ -134,15 +78,9 @@
 // Compiler
 //------------------------------------------------------------------------
 
-#if __GNUC__ > 2 || (__GNUC__ == 2 && __GNUC_MINOR__ > 4)
-#include <cstdio> // __MINGW_PRINTF_FORMAT is defined in the mingw stdio.h
-#ifdef __MINGW_PRINTF_FORMAT
+#ifdef __GNUC__
 #define GCC_PRINTF_FORMAT(fmt_index, va_index) \
-	__attribute__((__format__(__MINGW_PRINTF_FORMAT, fmt_index, va_index)))
-#else
-#define GCC_PRINTF_FORMAT(fmt_index, va_index) \
-	__attribute__((__format__(__printf__, fmt_index, va_index)))
-#endif
+	__attribute__((__format__(printf, fmt_index, va_index)))
 #else
 #define GCC_PRINTF_FORMAT(fmt_index, va_index)
 #endif

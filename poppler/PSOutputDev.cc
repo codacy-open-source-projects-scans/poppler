@@ -72,7 +72,7 @@
 #include "Page.h"
 #include "Stream.h"
 #include "FlateEncoder.h"
-#ifdef ENABLE_ZLIB_UNCOMPRESS
+#if ENABLE_ZLIB_UNCOMPRESS
 #    include "FlateStream.h"
 #endif
 #include "Annot.h"
@@ -87,7 +87,7 @@
 #include "PDFDoc.h"
 #include "UTF.h"
 
-#ifdef USE_CMS
+#if USE_CMS
 #    include <lcms2.h>
 #endif
 
@@ -1097,7 +1097,7 @@ PSOutputDev::PSOutputDev(const char *fileName, PDFDoc *docA, char *psTitleA, con
         f = stdout;
     } else if (fileName[0] == '|') {
         fileTypeA = psPipe;
-#ifdef HAVE_POPEN
+#if HAVE_POPEN
 #    ifndef _WIN32
         signal(SIGPIPE, (SignalFunc)SIG_IGN);
 #    endif
@@ -1265,11 +1265,9 @@ void PSOutputDev::init(FoFiOutputFunc outputFuncA, void *outputStreamA, PSFileTy
     inUncoloredPattern = false;
     t3FillColorOnly = false;
 
-#ifdef OPI_SUPPORT
     // initialize OPI nesting levels
     opi13Nest = 0;
     opi20Nest = 0;
-#endif
 
     tx0 = ty0 = -1;
     xScale0 = yScale0 = 0;
@@ -1406,7 +1404,7 @@ void PSOutputDev::postInit()
         } else if (level == psLevel1Sep || level == psLevel2Sep || level == psLevel3Sep || overprintPreview) {
             processColorFormat = splashModeCMYK8;
         }
-#ifdef USE_CMS
+#if USE_CMS
         else if (getDisplayProfile()) {
             auto processcolorspace = cmsGetColorSpace(getDisplayProfile().get());
             if (processcolorspace == cmsSigCmykData) {
@@ -1435,7 +1433,7 @@ void PSOutputDev::postInit()
               " Resetting processColorFormat to CMYK8.");
         processColorFormat = splashModeCMYK8;
     }
-#ifdef USE_CMS
+#if USE_CMS
     if (getDisplayProfile()) {
         auto processcolorspace = cmsGetColorSpace(getDisplayProfile().get());
         if (processColorFormat == splashModeCMYK8) {
@@ -1502,7 +1500,7 @@ PSOutputDev::~PSOutputDev()
         if (fileType == psFile) {
             fclose((FILE *)outputStream);
         }
-#ifdef HAVE_POPEN
+#if HAVE_POPEN
         else if (fileType == psPipe) {
             pclose((FILE *)outputStream);
 #    ifndef _WIN32
@@ -1729,11 +1727,9 @@ void PSOutputDev::writeDocSetup(Catalog *catalog, const std::vector<int> &pageLi
                 writePSFmt("{0:d} {1:d} pdfSetupPaper\n", paperWidth, paperHeight);
             }
         }
-#ifdef OPI_SUPPORT
         if (generateOPI) {
             writePS("/opiMatrix matrix currentmatrix def\n");
         }
-#endif
     }
     if (customCodeCbk) {
         if ((s = (*customCodeCbk)(this, psOutCustomDocSetup, 0, customCodeCbkData))) {
@@ -3102,7 +3098,7 @@ bool PSOutputDev::checkPageSlice(Page *page, double /*hDPI*/, double /*vDPI*/, i
     splashOut = new SplashOutputDev(internalColorFormat, 1, false, paperColor, false, splashThinLineDefault, overprint);
     splashOut->setFontAntialias(rasterAntialias);
     splashOut->setVectorAntialias(rasterAntialias);
-#ifdef USE_CMS
+#if USE_CMS
     splashOut->setDisplayProfile(getDisplayProfile());
     splashOut->setDefaultGrayProfile(getDefaultGrayProfile());
     splashOut->setDefaultRGBProfile(getDefaultRGBProfile());
@@ -5944,7 +5940,6 @@ void PSOutputDev::doImageL2(GfxState *state, Object *ref, GfxImageColorMap *colo
 
         // end of image dictionary
         writePS(">>\n");
-#ifdef OPI_SUPPORT
         if (opi13Nest) {
             if (inlineImg) {
                 // this can't happen -- OPI dictionaries are in XObjects
@@ -5966,7 +5961,6 @@ void PSOutputDev::doImageL2(GfxState *state, Object *ref, GfxImageColorMap *colo
             n += colorMap ? 14 : 15;
             writePSFmt("%%BeginData: {0:d} Hex Bytes\n", n);
         }
-#endif
         if ((level == psLevel2Sep || level == psLevel3Sep) && colorMap && colorMap->getColorSpace()->getMode() == csSeparation && colorMap->getBits() == 8) {
             color.c[0] = gfxColorComp1;
             sepCS = (GfxSeparationColorSpace *)colorMap->getColorSpace();
@@ -5995,11 +5989,9 @@ void PSOutputDev::doImageL2(GfxState *state, Object *ref, GfxImageColorMap *colo
         // add newline and trailer to the end
         writePSChar('\n');
         writePS("%-EOD-\n");
-#ifdef OPI_SUPPORT
         if (opi13Nest) {
             writePS("%%EndData\n");
         }
-#endif
 
         // delete encoders
         if (useLZW || useRLE || useASCII || inlineImg) {
@@ -6509,7 +6501,7 @@ void PSOutputDev::dumpColorSpaceL2(GfxState *state, GfxColorSpace *colorSpace, b
         break;
 
     case csICCBased:
-#ifdef USE_CMS
+#if USE_CMS
     {
         GfxICCBasedColorSpace *iccBasedCS;
         iccBasedCS = (GfxICCBasedColorSpace *)colorSpace;
@@ -6671,7 +6663,6 @@ void PSOutputDev::dumpColorSpaceL2(GfxState *state, GfxColorSpace *colorSpace, b
     }
 }
 
-#ifdef OPI_SUPPORT
 void PSOutputDev::opiBegin(GfxState *state, Dict *opiDict)
 {
     if (generateOPI) {
@@ -6988,7 +6979,6 @@ void PSOutputDev::opiEnd(GfxState *state, Dict *opiDict)
         }
     }
 }
-#endif // OPI_SUPPORT
 
 void PSOutputDev::type3D0(GfxState *state, double wx, double wy)
 {

@@ -86,7 +86,7 @@
 #include "ProfileData.h"
 #include "Catalog.h"
 #include "OptionalContent.h"
-#ifdef ENABLE_LIBOPENJPEG
+#if ENABLE_LIBOPENJPEG
 #    include "JPEG2000Stream.h"
 #endif
 
@@ -499,7 +499,7 @@ Gfx::Gfx(PDFDoc *docA, OutputDev *outA, int pageNum, Dict *resDict, double hDPI,
         out->clip(state);
         state->clearPath();
     }
-#ifdef USE_CMS
+#if USE_CMS
     initDisplayProfile();
 #endif
 }
@@ -559,12 +559,12 @@ Gfx::Gfx(PDFDoc *docA, OutputDev *outA, Dict *resDict, const PDFRectangle *box, 
         out->clip(state);
         state->clearPath();
     }
-#ifdef USE_CMS
+#if USE_CMS
     initDisplayProfile();
 #endif
 }
 
-#ifdef USE_CMS
+#if USE_CMS
 
 void Gfx::initDisplayProfile()
 {
@@ -4124,12 +4124,10 @@ void Gfx::opXObject(Object args[], int numArgs)
         return;
     }
 
-#ifdef OPI_SUPPORT
     Object opiDict = obj1.streamGetDict()->lookup("OPI");
     if (opiDict.isDict()) {
         out->opiBegin(state, opiDict.getDict());
     }
-#endif
     Object obj2 = obj1.streamGetDict()->lookup("Subtype");
     if (obj2.isName("Image")) {
         if (out->needNonText()) {
@@ -4169,11 +4167,9 @@ void Gfx::opXObject(Object args[], int numArgs)
     } else {
         error(errSyntaxError, getPos(), "XObject subtype is missing or wrong type");
     }
-#ifdef OPI_SUPPORT
     if (opiDict.isDict()) {
         out->opiEnd(state, opiDict.getDict());
     }
-#endif
 }
 
 void Gfx::doImage(Object *ref, Stream *str, bool inlineImg)
@@ -4197,7 +4193,7 @@ void Gfx::doImage(Object *ref, Stream *str, bool inlineImg)
     // get info from the stream
     bits = 0;
     csMode = streamCSNone;
-#ifdef ENABLE_LIBOPENJPEG
+#if ENABLE_LIBOPENJPEG
     if (str->getKind() == strJPX && out->supportJPXtransparency()) {
         JPXStream *jpxStream = dynamic_cast<JPXStream *>(str);
         jpxStream->setSupportJPXtransparency(true);

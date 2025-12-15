@@ -24,6 +24,7 @@
 // Copyright (C) 2023-2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2023 Even Rouault <even.rouault@spatialys.com>
 // Copyright (C) 2023, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2025 Jonathan Hähne <jonathan.haehne@hotmail.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -300,7 +301,7 @@ std::string utf8ToUtf16WithBom(std::string_view utf8)
     }
     std::u16string utf16 = utf8ToUtf16(utf8);
     char *tmp_str = (char *)utf16.data();
-#ifndef WORDS_BIGENDIAN
+#if !WORDS_BIGENDIAN
     for (size_t i = 0; i < utf16.size(); i++) {
         std::swap(tmp_str[i * 2], tmp_str[i * 2 + 1]);
     }

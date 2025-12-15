@@ -829,21 +829,27 @@ DefaultAppearance::DefaultAppearance(const GooString *da)
 
     if (da) {
         std::vector<std::string> daToks;
-        int i = FormFieldText::tokenizeDA(da->toStr(), &daToks, "Tf");
+        const std::optional<size_t> tfIndex = FormFieldText::tokenizeDA(da->toStr(), &daToks, "Tf");
 
-        if (i >= 1) {
-            fontPtSize = gatof(daToks[i - 1].c_str());
+        if (tfIndex && tfIndex >= 1) {
+            fontPtSize = gatof(daToks[*tfIndex - 1].c_str());
         }
-        if (i >= 2) {
+        if (tfIndex && tfIndex >= 2) {
             // We are expecting a name, therefore the first letter should be '/'.
-            const std::string &fontToken = daToks[i - 2];
+            const std::string &fontToken = daToks[*tfIndex - 2];
             if (fontToken.size() > 1 && fontToken[0] == '/') {
                 // The +1 is here to skip the leading '/'.
                 fontName = Object(objName, fontToken.c_str() + 1);
             }
         }
         // Scan backwards: we are looking for the last set value
-        for (i = daToks.size() - 1; i >= 0; --i) {
+        size_t i = daToks.size();
+        while (true) {
+            if (i == 0) {
+                break;
+            } else {
+                --i;
+            }
             if (!fontColor) {
                 if (daToks[i] == "g" && i >= 1) {
                     fontColor = std::make_unique<AnnotColor>(gatof(daToks[i - 1].c_str()));
@@ -4555,6 +4561,9 @@ bool AnnotAppearanceBuilder::drawText(const GooString *text, const Form *form, c
                     // (which is a std::unique_ptr) will delete the font object at the end of this method.
                     fontToFree = createAnnotDrawFont(xref, resourcesDict, tok.c_str() + 1, fallback);
                     font = fontToFree.get();
+                    if (font && forceZapfDingbats) {
+                        addedDingbatsResource = true;
+                    }
                 } else {
                     error(errSyntaxError, -1, "Unknown font in field's DA string");
                 }
@@ -5363,7 +5372,7 @@ static void recursiveMergeDicts(Dict *primary, const Dict *secondary)
     recursiveMergeDicts(primary, secondary, &alreadySeenDicts);
 }
 
-void AnnotWidget::generateFieldAppearance()
+void AnnotWidget::generateFieldAppearance(bool *addedDingbatsResource)
 {
     const GooString *da;
 
@@ -5424,6 +5433,10 @@ void AnnotWidget::generateFieldAppearance()
     if (!success && form && da != form->getDefaultAppearance()) {
         da = form->getDefaultAppearance();
         appearBuilder.drawFormField(field, form, resources, da, border.get(), appearCharacs.get(), rect.get(), appearState.get(), doc->getXRef(), resourcesDictObj.getDict());
+    }
+
+    if (addedDingbatsResource) {
+        *addedDingbatsResource = appearBuilder.getAddedDingbatsResource();
     }
 
     const GooString *appearBuf = appearBuilder.buffer();
@@ -5513,15 +5526,35 @@ void AnnotWidget::draw(Gfx *gfx, bool printing)
     // Only construct the appearance stream when
     // - annot doesn't have an AP or
     // - NeedAppearances is true and it isn't a Signature. There isn't enough data in our objects to generate it for signatures
+    bool addedDingbatsResource = false;
     if (field) {
         if (appearance.isNull() || (field->getType() != FormFieldType::formSignature && form && form->getNeedAppearances())) {
-            generateFieldAppearance();
+            generateFieldAppearance(&addedDingbatsResource);
         }
     }
 
     // draw the appearance stream
     Object obj = appearance.fetch(gfx->getXRef());
+    if (addedDingbatsResource) {
+        // We are forcing ZaDb but the font does not exist
+        // so create a fake one
+        // If refactoring this code remember to test issue #1642 afterwards
+        Dict *fontDict = new Dict(gfx->getXRef());
+        fontDict->add("BaseFont", Object(objName, "ZapfDingbats"));
+        fontDict->add("Subtype", Object(objName, "Type1"));
+
+        Dict *fontsDict = new Dict(gfx->getXRef());
+        fontsDict->add("ZaDb", Object(fontDict));
+
+        Dict *dict = new Dict(gfx->getXRef());
+        dict->add("Font", Object(fontsDict));
+        gfx->pushResources(dict);
+        delete dict;
+    }
     gfx->drawAnnot(&obj, nullptr, color.get(), rect->x1, rect->y1, rect->x2, rect->y2, getRotation());
+    if (addedDingbatsResource) {
+        gfx->popResources();
+    }
 }
 
 //------------------------------------------------------------------------
@@ -7280,34 +7313,6 @@ AnnotRichMedia::Content::Content(Dict *dict)
 
 AnnotRichMedia::Content::~Content() = default;
 
-int AnnotRichMedia::Content::getConfigurationsCount() const
-{
-    return configurations.size();
-}
-
-AnnotRichMedia::Configuration *AnnotRichMedia::Content::getConfiguration(int index) const
-{
-    if (index < 0 || index >= (int)configurations.size()) {
-        return nullptr;
-    }
-
-    return configurations[index].get();
-}
-
-int AnnotRichMedia::Content::getAssetsCount() const
-{
-    return assets.size();
-}
-
-AnnotRichMedia::Asset *AnnotRichMedia::Content::getAsset(int index) const
-{
-    if (index < 0 || index >= (int)assets.size()) {
-        return nullptr;
-    }
-
-    return assets[index].get();
-}
-
 AnnotRichMedia::Asset::Asset() = default;
 
 AnnotRichMedia::Asset::~Asset() = default;
@@ -7384,20 +7389,6 @@ AnnotRichMedia::Configuration::Configuration(Dict *dict)
 }
 
 AnnotRichMedia::Configuration::~Configuration() = default;
-
-int AnnotRichMedia::Configuration::getInstancesCount() const
-{
-    return instances.size();
-}
-
-AnnotRichMedia::Instance *AnnotRichMedia::Configuration::getInstance(int index) const
-{
-    if (index < 0 || index >= (int)instances.size()) {
-        return nullptr;
-    }
-
-    return instances[index].get();
-}
 
 const GooString *AnnotRichMedia::Configuration::getName() const
 {
@@ -7614,7 +7605,10 @@ Annots::~Annots() = default;
 // AnnotAppearanceBuilder
 //------------------------------------------------------------------------
 
-AnnotAppearanceBuilder::AnnotAppearanceBuilder() : appearBuf { std::make_unique<GooString>() } { }
+AnnotAppearanceBuilder::AnnotAppearanceBuilder() : appearBuf { std::make_unique<GooString>() }
+{
+    addedDingbatsResource = false;
+}
 
 AnnotAppearanceBuilder::~AnnotAppearanceBuilder() = default;
 

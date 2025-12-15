@@ -1,6 +1,6 @@
 /* Copyright Krzysztof Kowalczyk 2006-2007
    Copyright Hib Eris <hib@hiberis.nl> 2008, 2013
-   Copyright 2018, 2020, 2022 Albert Astals Cid <aacid@kde.org> 2018
+   Copyright 2018, 2020, 2022, 2025 Albert Astals Cid <aacid@kde.org> 2018
    Copyright 2019 Oliver Sander <oliver.sander@tu-dresden.de>
    Copyright 2020 Adam Reichold <adam.reichold@t-online.de>
    Copyright 2024 Vincent Lefevre <vincent@vinc17.net>
@@ -27,12 +27,6 @@
 
 #include <config.h>
 
-#ifdef _WIN32
-#    include <windows.h>
-#else
-#    include <strings.h>
-#endif
-
 // Define COPY_FILE if you want the file to be copied to a local disk first
 // before it's tested. This is desired if a file is on a slow drive.
 // Currently copying only works on Windows.
@@ -48,10 +42,6 @@
 #include <cerrno>
 #include <ctime>
 
-#ifdef HAVE_DIRENT_H
-#    include <dirent.h>
-#endif
-
 #include "Error.h"
 #include "ErrorCodes.h"
 #include "goo/GooString.h"
@@ -64,22 +54,9 @@
 #include "PDFDoc.h"
 #include "Link.h"
 
-#ifdef _MSC_VER
-#    define strdup _strdup
-#    define strcasecmp _stricmp
-#endif
-
 #define dimof(X) (sizeof(X) / sizeof((X)[0]))
 
 #define INVALID_PAGE_NO (-1)
-
-/* Those must be implemented in order to provide preview during execution.
-   They can be no-ops. An implementation for windows is in
-   perf-test-preview-win.cc
-*/
-extern void PreviewBitmapInit();
-extern void PreviewBitmapDestroy();
-extern void PreviewBitmapSplash(SplashBitmap *bmpSplash);
 
 class PdfEnginePoppler
 {
@@ -132,8 +109,6 @@ static StrList *gArgsListRoot = nullptr;
 #define RESOLUTION_ARG "-resolution"
 #define RECURSIVE_ARG "-recursive"
 #define OUT_ARG "-out"
-#define PREVIEW_ARG "-preview"
-#define SLOW_PREVIEW_ARG "-slowpreview"
 #define LOAD_ONLY_ARG "-loadonly"
 #define PAGE_ARG "-page"
 #define TEXT_ARG "-text"
@@ -163,17 +138,8 @@ static FILE *gErrFile = nullptr;
    Controlled by -recursive command-line argument */
 static bool gfRecursive = false;
 
-/* If true, preview rendered image. To make sure that they're being rendered correctly. */
-static bool gfPreview = false;
-
 /* 1 second (1000 milliseconds) */
 #define SLOW_PREVIEW_TIME 1000
-
-/* If true, preview rendered image in a slow mode i.e. delay displaying for
-   SLOW_PREVIEW_TIME. This is so that a human has enough time to see if the
-   PDF renders ok. In release mode on fast processor pages take only ~100-200 ms
-   to render and they go away too quickly to be inspected by a human. */
-static bool gfSlowPreview = false;
 
 /* If true, we only dump the text, not render */
 static bool gfTextOnly = false;
@@ -312,35 +278,6 @@ static bool str_endswith(const char *txt, const char *end)
         return true;
     }
     return false;
-}
-
-/* TODO: probably should move to some other file and change name to
-   sleep_milliseconds */
-static void sleep_milliseconds(int milliseconds)
-{
-#ifdef _WIN32
-    Sleep((DWORD)milliseconds);
-#else
-    struct timespec tv;
-    int secs, nanosecs;
-    secs = milliseconds / 1000;
-    nanosecs = (milliseconds - (secs * 1000)) * 1000;
-    tv.tv_sec = (time_t)secs;
-    tv.tv_nsec = (long)nanosecs;
-    while (true) {
-        int rval = nanosleep(&tv, &tv);
-        if (rval == 0) {
-            /* Completed the entire sleep time; all done. */
-            return;
-        } else if (errno == EINTR) {
-            /* Interrupted by a signal. Try again. */
-            continue;
-        } else {
-            /* Some other error; bail out. */
-            return;
-        }
-    }
-#endif
 }
 
 static SplashColorMode gSplashColorMode = splashModeBGR8;
@@ -598,14 +535,6 @@ static void PrintUsageAndExit(int argc, char **argv)
     exit(0);
 }
 
-static bool ShowPreview()
-{
-    if (gfPreview || gfSlowPreview) {
-        return true;
-    }
-    return false;
-}
-
 static void RenderPdfAsText(const char *fileName)
 {
     PDFDoc *pdfDoc = nullptr;
@@ -723,12 +652,6 @@ static void RenderPdf(const char *fileName)
             }
         }
 
-        if (ShowPreview()) {
-            PreviewBitmapSplash(bmpSplash);
-            if (gfSlowPreview) {
-                sleep_milliseconds(SLOW_PREVIEW_TIME);
-            }
-        }
         delete bmpSplash;
     }
 Error:
@@ -847,12 +770,8 @@ static void ParseCommandLine(int argc, char **argv)
                     PrintUsageAndExit(argc, argv);
                 }
                 gOutFileName = str_dup(argv[i]);
-            } else if (str_ieq(arg, PREVIEW_ARG)) {
-                gfPreview = true;
             } else if (str_ieq(arg, TEXT_ARG)) {
                 gfTextOnly = true;
-            } else if (str_ieq(arg, SLOW_PREVIEW_ARG)) {
-                gfSlowPreview = true;
             } else if (str_ieq(arg, LOAD_ONLY_ARG)) {
                 gfLoadOnly = true;
             } else if (str_ieq(arg, PAGE_ARG)) {
@@ -935,8 +854,6 @@ int main(int argc, char **argv)
         gErrFile = stderr;
     }
 
-    PreviewBitmapInit();
-
     StrList *curr = gArgsListRoot;
     while (curr) {
         RenderCmdLineArg(curr->str);
@@ -945,7 +862,6 @@ int main(int argc, char **argv)
     if (outFile) {
         fclose(outFile);
     }
-    PreviewBitmapDestroy();
     StrList_Destroy(&gArgsListRoot);
     free(gOutFileName);
     return 0;
