@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2019, Masamichi Hosoda <trueroad@trueroad.jp>
+ * Copyright (C) 2025, Albert Astals Cid <aacid@kde.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,7 +20,6 @@
 #ifndef POPPLER_DESTINATION_PRIVATE_H
 #define POPPLER_DESTINATION_PRIVATE_H
 
-#include "poppler-global.h"
 #include "poppler-destination.h"
 
 #include "Object.h"

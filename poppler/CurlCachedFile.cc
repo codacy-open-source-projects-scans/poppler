@@ -6,7 +6,7 @@
 //
 // Copyright 2009 Stefan Thomas <thomas@eload24.com>
 // Copyright 2010, 2011 Hib Eris <hib@hiberis.nl>
-// Copyright 2010, 2019, 2021, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright 2010, 2019, 2021, 2022, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright 2024 Oliver Sander <oliver.sander@tu-dresden.de>
 //
 //========================================================================
@@ -30,7 +30,7 @@ CurlCachedFileLoader::~CurlCachedFileLoader()
     curl_easy_cleanup(curl);
 }
 
-static size_t noop_cb(char *ptr, size_t size, size_t nmemb, void *ptr2)
+static size_t noop_cb(char * /*ptr*/, size_t size, size_t nmemb, void * /*ptr2*/)
 {
     return size * nmemb;
 }

@@ -29,6 +29,7 @@
 // Copyright (C) 2024 Fernando Herrera <fherrera@onirica.com>
 // Copyright (C) 2024 Sebastian J. Bronner <waschtl@sbronner.com>
 // Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2025 Arnav V <arnav0872@gmail.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -39,8 +40,6 @@
 #include <poppler-config.h>
 
 #include <cstdio>
-#include <cstdlib>
-#include <cstddef>
 #include <cctype>
 #include <cmath>
 #include "goo/gmem.h"
@@ -303,7 +302,7 @@ long ImageOutputDev::getInlineImageLength(Stream *str, int width, int height, Gf
 {
     if (colorMap) {
         ImageStream imgStr(str, width, colorMap->getNumPixelComps(), colorMap->getBits());
-        if (!imgStr.reset()) {
+        if (!imgStr.rewind()) {
             imgStr.close();
             return 0;
         }
@@ -313,7 +312,7 @@ long ImageOutputDev::getInlineImageLength(Stream *str, int width, int height, Gf
 
         imgStr.close();
     } else {
-        if (!str->reset()) {
+        if (!str->rewind()) {
             return 0;
         }
         for (int y = 0; y < height; y++) {
@@ -325,7 +324,7 @@ long ImageOutputDev::getInlineImageLength(Stream *str, int width, int height, Gf
     }
 
     EmbedStream *embedStr = (EmbedStream *)(str->getBaseStream());
-    if (!embedStr->reset()) {
+    if (!embedStr->rewind()) {
         return 0;
     }
     long len = 0;
@@ -352,9 +351,9 @@ void ImageOutputDev::writeRawImage(Stream *str, const char *ext)
 
     // initialize stream
     str = str->getNextStream();
-    if (!str->reset()) {
+    if (!str->rewind()) {
         fclose(f);
-        error(errIO, -1, "Couldn't reset stream");
+        error(errIO, -1, "Couldn't rewind stream");
         errorCode = 2;
         return;
     }
@@ -404,16 +403,16 @@ void ImageOutputDev::writeImageFile(ImgWriter *writer, ImageFormat format, const
     if (format != imgMonochrome) {
         // initialize stream
         imgStr = new ImageStream(str, width, colorMap->getNumPixelComps(), colorMap->getBits());
-        if (!imgStr->reset()) {
-            error(errIO, -1, "Stream reset failed");
+        if (!imgStr->rewind()) {
+            error(errIO, -1, "Stream rewind failed");
             errorCode = 3;
             return;
         }
     } else {
         // initialize stream
-        if (!str->reset()) {
+        if (!str->rewind()) {
             errorCode = 3;
-            error(errIO, -1, "Stream reset failed");
+            error(errIO, -1, "Stream rewind failed");
             return;
         }
     }
@@ -548,7 +547,7 @@ void ImageOutputDev::writeImageFile(ImgWriter *writer, ImageFormat format, const
     }
 }
 
-void ImageOutputDev::writeImage(GfxState *state, Object *ref, Stream *str, int width, int height, GfxImageColorMap *colorMap, bool inlineImg)
+void ImageOutputDev::writeImage(GfxState * /*state*/, Object * /*ref*/, Stream *str, int width, int height, GfxImageColorMap *colorMap, bool inlineImg)
 {
     ImageFormat format;
 
@@ -580,7 +579,7 @@ void ImageOutputDev::writeImage(GfxState *state, Object *ref, Stream *str, int w
                 errorCode = 2;
                 return;
             }
-            if (globalsStr->reset()) {
+            if (globalsStr->rewind()) {
                 while ((c = globalsStr->getChar()) != EOF) {
                     fputc(c, f);
                 }
@@ -706,13 +705,14 @@ void ImageOutputDev::writeImage(GfxState *state, Object *ref, Stream *str, int w
     }
 }
 
-bool ImageOutputDev::tilingPatternFill(GfxState *state, Gfx *gfx, Catalog *cat, GfxTilingPattern *tPat, const std::array<double, 6> &mat, int x0, int y0, int x1, int y1, double xStep, double yStep)
+bool ImageOutputDev::tilingPatternFill(GfxState * /*state*/, Gfx * /*gfx*/, Catalog * /*cat*/, GfxTilingPattern * /*tPat*/, const std::array<double, 6> & /*mat*/, int /*x0*/, int /*y0*/, int /*x1*/, int /*y1*/, double /*xStep*/,
+                                       double /*yStep*/)
 {
     return true;
     // do nothing -- this avoids the potentially slow loop in Gfx.cc
 }
 
-void ImageOutputDev::drawImageMask(GfxState *state, Object *ref, Stream *str, int width, int height, bool invert, bool interpolate, bool inlineImg)
+void ImageOutputDev::drawImageMask(GfxState *state, Object *ref, Stream *str, int width, int height, bool /*invert*/, bool interpolate, bool inlineImg)
 {
     if (listImages) {
         listImage(state, ref, str, width, height, nullptr, interpolate, inlineImg, imgStencil);
@@ -721,7 +721,7 @@ void ImageOutputDev::drawImageMask(GfxState *state, Object *ref, Stream *str, in
     }
 }
 
-void ImageOutputDev::drawImage(GfxState *state, Object *ref, Stream *str, int width, int height, GfxImageColorMap *colorMap, bool interpolate, const int *maskColors, bool inlineImg)
+void ImageOutputDev::drawImage(GfxState *state, Object *ref, Stream *str, int width, int height, GfxImageColorMap *colorMap, bool interpolate, const int * /*maskColors*/, bool inlineImg)
 {
     if (listImages) {
         listImage(state, ref, str, width, height, colorMap, interpolate, inlineImg, imgImage);
@@ -730,7 +730,7 @@ void ImageOutputDev::drawImage(GfxState *state, Object *ref, Stream *str, int wi
     }
 }
 
-void ImageOutputDev::drawMaskedImage(GfxState *state, Object *ref, Stream *str, int width, int height, GfxImageColorMap *colorMap, bool interpolate, Stream *maskStr, int maskWidth, int maskHeight, bool maskInvert, bool maskInterpolate)
+void ImageOutputDev::drawMaskedImage(GfxState *state, Object *ref, Stream *str, int width, int height, GfxImageColorMap *colorMap, bool interpolate, Stream *maskStr, int maskWidth, int maskHeight, bool /*maskInvert*/, bool maskInterpolate)
 {
     if (listImages) {
         listImage(state, ref, str, width, height, colorMap, interpolate, false, imgImage);

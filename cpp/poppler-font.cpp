@@ -4,6 +4,7 @@
  * Copyright (C) 2018, Adam Reichold <adam.reichold@t-online.de>
  * Copyright (C) 2019, Oliver Sander <oliver.sander@tu-dresden.de>
  * Copyright (C) 2020, Suzuki Toshiya <mpsuzuki@hiroshima-u.ac.jp>
+ * Copyright (C) 2025, Albert Astals Cid <aacid@kde.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,8 +31,6 @@
 #include "poppler-document-private.h"
 
 #include "FontInfo.h"
-
-#include <algorithm>
 
 using namespace poppler;
 

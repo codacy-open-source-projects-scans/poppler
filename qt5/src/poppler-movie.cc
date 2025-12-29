@@ -1,6 +1,6 @@
 /* poppler-sound.cc: qt interface to poppler
  * Copyright (C) 2008, 2010, Pino Toscano <pino@kde.org>
- * Copyright (C) 2008, 2018, 2022, Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2008, 2018, 2022, 2025, Albert Astals Cid <aacid@kde.org>
  * Copyright (C) 2010, Carlos Garcia Campos <carlosgc@gnome.org>
  * Copyright (C) 2012, Tobias Koenig <tobias.koenig@kdab.com>
  *
@@ -21,7 +21,6 @@
 
 #include "poppler-qt5.h"
 
-#include "Object.h"
 #include "Annot.h"
 #include "Movie.h"
 

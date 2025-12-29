@@ -31,9 +31,6 @@
 #ifndef IMAGEOUTPUTDEV_H
 #define IMAGEOUTPUTDEV_H
 
-#include "poppler/poppler-config.h"
-
-#include <cstdio>
 #include "goo/ImgWriter.h"
 #include "OutputDev.h"
 
@@ -114,7 +111,7 @@ public:
     bool needNonText() override { return true; }
 
     // Start a page
-    void startPage(int pageNumA, GfxState *state, XRef *xref) override { pageNum = pageNumA; }
+    void startPage(int pageNumA, GfxState * /*state*/, XRef * /*xref*/) override { pageNum = pageNumA; }
 
     //---- get info about output device
 

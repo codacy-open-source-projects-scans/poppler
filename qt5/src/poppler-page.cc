@@ -28,7 +28,7 @@
  * Copyright (C) 2021 Hubert Figuiere <hub@figuiere.net>
  * Copyright (C) 2021 Thomas Huxhorn <thomas.huxhorn@web.de>
  * Copyright (C) 2023 Kevin Ottens <kevin.ottens@enioka.com>. Work sponsored by De Bortoli Wines
- * Copyright (C) 2024 Stefan Brüns <stefan.bruens@rwth-aachen.de>
+ * Copyright (C) 2024, 2025 Stefan Brüns <stefan.bruens@rwth-aachen.de>
  * Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
  * Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
@@ -69,6 +69,7 @@
 #include <QPainterOutputDev.h>
 #include <Rendition.h>
 #include <SplashOutputDev.h>
+#include <goo/gmem.h>
 #include <splash/SplashBitmap.h>
 
 #include "poppler-private.h"
@@ -464,7 +465,7 @@ Page::~Page()
 }
 
 // Callback that filters out everything but form fields
-static auto annotDisplayDecideCbk = [](Annot *annot, void *user_data) {
+static auto annotDisplayDecideCbk = [](Annot *annot, void * /*user_data*/) {
     // Hide everything but forms
     return (annot->getType() == Annot::typeWidget);
 };
@@ -798,9 +799,8 @@ QList<TextBox *> Page::textList(Rotation rotate, ShouldAbortQueryFunc shouldAbor
     const std::vector<TextWord *> &words = word_list->getWords();
     output_list.reserve(words.size());
     for (const TextWord *word : words) {
-        GooString *gooWord = word->getText();
-        QString string = QString::fromUtf8(gooWord->c_str());
-        delete gooWord;
+        const std::unique_ptr<std::string> wordText = word->getText();
+        const QString string = QString::fromUtf8(wordText->c_str());
         double xMin, yMin, xMax, yMax;
         word->getBBox(&xMin, &yMin, &xMax, &yMax);
 

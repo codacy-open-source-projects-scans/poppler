@@ -14,7 +14,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2006, 2007, 2009, 2012, 2018-2022. 2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2006, 2007, 2009, 2012, 2018-2022, 2024, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2008, 2009 Warren Toomey <wkt@tuhs.org>
 // Copyright (C) 2009, 2011 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2009 Kovid Goyal <kovid@kovidgoyal.net>
@@ -37,14 +37,11 @@
 #define HTMLOUTPUTDEV_H
 
 #include <cstdio>
-#include "goo/gbasename.h"
-#include "GfxFont.h"
 #include "OutputDev.h"
 #include "HtmlLinks.h"
 #include "HtmlFonts.h"
 #include "Link.h"
 #include "Catalog.h"
-#include "UnicodeMap.h"
 
 #define xoutRound(x) ((int)((x) + 0.5))
 
@@ -246,8 +243,9 @@ public:
 
     //----- initialization and control
 
-    bool checkPageSlice(Page *p, double hDPI, double vDPI, int rotate, bool useMediaBox, bool crop, int sliceX, int sliceY, int sliceW, int sliceH, bool printing, bool (*abortCheckCbk)(void *data) = nullptr,
-                        void *abortCheckCbkData = nullptr, bool (*annotDisplayDecideCbk)(Annot *annot, void *user_data) = nullptr, void *annotDisplayDecideCbkData = nullptr) override
+    bool checkPageSlice(Page *p, double /*hDPI*/, double /*vDPI*/, int /*rotate*/, bool /*useMediaBox*/, bool /*crop*/, int /*sliceX*/, int /*sliceY*/, int /*sliceW*/, int /*sliceH*/, bool /*printing*/,
+                        bool (* /*abortCheckCbk*/)(void *data) = nullptr, void * /*abortCheckCbkData*/ = nullptr, bool (* /*annotDisplayDecideCbk*/)(Annot *annot, void *user_data) = nullptr,
+                        void * /*annotDisplayDecideCbkData*/ = nullptr) override
     {
         docPage = p;
         return true;

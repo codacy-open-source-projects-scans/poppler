@@ -29,7 +29,6 @@
 #define FUNCTION_H
 
 #include "Object.h"
-#include <set>
 
 class Dict;
 class Stream;
@@ -82,7 +81,7 @@ public:
     double getRangeMin(int i) const { return range[i][0]; }
     double getRangeMax(int i) const { return range[i][1]; }
     bool getHasRange() const { return hasRange; }
-    virtual bool hasDifferentResultSet(const Function *func) const { return false; }
+    virtual bool hasDifferentResultSet(const Function * /*func*/) const { return false; }
 
     // Transform an input tuple into an output tuple.
     virtual void transform(const double *in, double *out) const = 0;
@@ -177,7 +176,7 @@ class ExponentialFunction : public Function
     };
 
 public:
-    ExponentialFunction(Object *funcObj, Dict *dict);
+    explicit ExponentialFunction(Dict *dict);
     ~ExponentialFunction() override;
     std::unique_ptr<Function> copy() const override { return std::make_unique<ExponentialFunction>(this); }
     Type getType() const override { return Type::Exponential; }
@@ -209,7 +208,7 @@ class StitchingFunction : public Function
     };
 
 public:
-    StitchingFunction(Object *funcObj, Dict *dict, RefRecursionChecker &usedParents);
+    StitchingFunction(Dict *dict, RefRecursionChecker &usedParents);
     ~StitchingFunction() override;
     std::unique_ptr<Function> copy() const override { return std::make_unique<StitchingFunction>(this); }
     Type getType() const override { return Type::Stitching; }

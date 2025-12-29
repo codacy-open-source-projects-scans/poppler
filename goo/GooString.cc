@@ -41,7 +41,6 @@
 
 #include <config.h>
 
-#include <algorithm>
 #include <cassert>
 #include <cctype>
 #include <cmath>
@@ -616,12 +615,6 @@ void formatDoubleSmallAware(double x, char *buf, int bufSize, int prec, bool tri
     }
 }
 
-}
-
-GooString *GooString::lowerCase()
-{
-    lowerCase(*this);
-    return this;
 }
 
 void GooString::lowerCase(std::string &s)

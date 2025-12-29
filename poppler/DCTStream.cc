@@ -15,12 +15,13 @@
 // Copyright 2020 Lluís Batlle i Rossell <viric@viric.name>
 // Copyright 2025 Nelson Benítez León <nbenitezl@gmail.com>
 // Copyright 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2025 Arnav V <arnav0872@gmail.com>
 //
 //========================================================================
 
 #include "DCTStream.h"
 
-static void str_init_source(j_decompress_ptr cinfo) { }
+static void str_init_source(j_decompress_ptr /*cinfo*/) { }
 
 static boolean str_fill_input_buffer(j_decompress_ptr cinfo)
 {
@@ -62,7 +63,7 @@ static void str_skip_input_data(j_decompress_ptr cinfo, long num_bytes_l)
     src->pub.bytes_in_buffer -= num_bytes;
 }
 
-static void str_term_source(j_decompress_ptr cinfo) { }
+static void str_term_source(j_decompress_ptr /*cinfo*/) { }
 
 DCTStream::DCTStream(Stream *strA, int colorXformA, Dict *dict, int recursion) : FilterStream(strA)
 {
@@ -120,11 +121,11 @@ void DCTStream::init()
     row_buffer = nullptr;
 }
 
-bool DCTStream::reset()
+bool DCTStream::rewind()
 {
     int row_stride;
 
-    bool success = str->reset();
+    bool success = str->rewind();
 
     if (row_buffer) {
         jpeg_destroy_decompress(&cinfo);
@@ -269,7 +270,7 @@ std::optional<std::string> DCTStream::getPSFilter(int psLevel, const char *inden
     return s;
 }
 
-bool DCTStream::isBinary(bool last) const
+bool DCTStream::isBinary(bool /*last*/) const
 {
     return str->isBinary(true);
 }

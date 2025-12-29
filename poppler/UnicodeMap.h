@@ -16,7 +16,7 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2017 Adrian Johnson <ajohnson@redneon.com>
-// Copyright (C) 2018-2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2018-2022, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019 Volker Krause <vkrause@kde.org>
 // Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
@@ -29,11 +29,9 @@
 #ifndef UNICODEMAP_H
 #define UNICODEMAP_H
 
-#include "poppler-config.h"
 #include "poppler_private_export.h"
 #include "CharTypes.h"
 
-#include <atomic>
 #include <memory>
 #include <string>
 #include <vector>

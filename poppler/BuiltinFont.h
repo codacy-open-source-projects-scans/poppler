@@ -13,7 +13,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2018, 2020 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2018, 2020, 2025 Albert Astals Cid <aacid@kde.org>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -24,6 +24,10 @@
 #define BUILTINFONT_H
 
 #include "BuiltinFontWidth.h"
+#include "FontEncodingTables.h"
+
+#include <cstddef>
+#include <cstring>
 
 //------------------------------------------------------------------------
 

@@ -11,14 +11,13 @@
 // This file is licensed under the GPLv2 or later
 //
 // Copyright (C) 2018, 2019 Greg Knight <lyngvi@gmail.com>
-// Copyright (C) 2020 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2020, 2025 Albert Astals Cid <aacid@kde.org>
 //
 //========================================================================
 
 #include "InMemoryFile.h"
 
 #include <cstring>
-#include <sstream>
 
 InMemoryFile::InMemoryFile() = default;
 
@@ -79,6 +78,7 @@ FILE *InMemoryFile::open(const char *mode)
     };
     return fptr = fopencookie(this, mode, methods);
 #else
+    (void)mode;
     fprintf(stderr, "If you can read this, your platform does not support the features necessary to achieve your goals.");
     return nullptr;
 #endif

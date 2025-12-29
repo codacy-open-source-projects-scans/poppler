@@ -41,17 +41,14 @@
 #include <poppler-config.h>
 #include <cstdio>
 #include <cstdlib>
-#include <cstddef>
 #include <cstring>
 #include <ctime>
 #include "parseargs.h"
 #include "goo/GooString.h"
 #include "goo/gbase64.h"
 #include "goo/gbasename.h"
-#include "goo/gmem.h"
 #include "Object.h"
 #include "Stream.h"
-#include "Array.h"
 #include "Dict.h"
 #include "XRef.h"
 #include "Catalog.h"
@@ -143,11 +140,11 @@ public:
         : SplashOutputDev(colorModeA, bitmapRowPadA, reverseVideoA, paperColorA, bitmapTopDownA) { }
     ~SplashOutputDevNoText() override;
 
-    void drawChar(GfxState *state, double x, double y, double dx, double dy, double originX, double originY, CharCode code, int nBytes, const Unicode *u, int uLen) override { }
-    bool beginType3Char(GfxState *state, double x, double y, double dx, double dy, CharCode code, const Unicode *u, int uLen) override { return false; }
-    void endType3Char(GfxState *state) override { }
-    void beginTextObject(GfxState *state) override { }
-    void endTextObject(GfxState *state) override { }
+    void drawChar(GfxState * /*state*/, double /*x*/, double /*y*/, double /*dx*/, double /*dy*/, double /*originX*/, double /*originY*/, CharCode /*code*/, int /*nBytes*/, const Unicode * /*u*/, int /*uLen*/) override { }
+    bool beginType3Char(GfxState * /*state*/, double /*x*/, double /*y*/, double /*dx*/, double /*dy*/, CharCode /*code*/, const Unicode * /*u*/, int /*uLen*/) override { return false; }
+    void endType3Char(GfxState * /*state*/) override { }
+    void beginTextObject(GfxState * /*state*/) override { }
+    void endTextObject(GfxState * /*state*/) override { }
     bool interpretType3Chars() override { return false; }
 };
 

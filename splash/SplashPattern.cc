@@ -21,8 +21,6 @@
 
 #include <config.h>
 
-#include "SplashMath.h"
-#include "SplashScreen.h"
 #include "SplashPattern.h"
 
 //------------------------------------------------------------------------
@@ -44,7 +42,7 @@ SplashSolidColor::SplashSolidColor(SplashColorConstPtr colorA)
 
 SplashSolidColor::~SplashSolidColor() = default;
 
-bool SplashSolidColor::getColor(int x, int y, SplashColorPtr c) const
+bool SplashSolidColor::getColor(int /*x*/, int /*y*/, SplashColorPtr c) const
 {
     splashColorCopy(c, color);
     return true;

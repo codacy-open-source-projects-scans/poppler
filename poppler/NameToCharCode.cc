@@ -13,7 +13,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2019 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2019, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
@@ -23,7 +23,6 @@
 
 #include <config.h>
 
-#include <cstring>
 #include "NameToCharCode.h"
 
 void NameToCharCode::add(const char *name, CharCode c)

@@ -21,6 +21,7 @@
 // Copyright (C) 2012 Adam Reichold <adamreichold@myopera.com>
 // Copyright (C) 2013 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2025 Arnav V <arnav0872@gmail.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -85,9 +86,9 @@ std::unique_ptr<Function> Function::parse(Object *funcObj, RefRecursionChecker &
     if (funcType == 0) {
         func = std::make_unique<SampledFunction>(funcObj, dict);
     } else if (funcType == 2) {
-        func = std::make_unique<ExponentialFunction>(funcObj, dict);
+        func = std::make_unique<ExponentialFunction>(dict);
     } else if (funcType == 3) {
-        func = std::make_unique<StitchingFunction>(funcObj, dict, usedParents);
+        func = std::make_unique<StitchingFunction>(dict, usedParents);
     } else if (funcType == 4) {
         func = std::make_unique<PostScriptFunction>(funcObj, dict);
     } else {
@@ -362,8 +363,8 @@ SampledFunction::SampledFunction(Object *funcObj, Dict *dict) : cacheOut {}
         error(errSyntaxError, -1, "Function has invalid number of samples");
         return;
     }
-    if (!str->reset()) {
-        error(errSyntaxError, -1, "Stream reset error");
+    if (!str->rewind()) {
+        error(errSyntaxError, -1, "Stream rewind error");
         return;
     }
     buf = 0;
@@ -545,7 +546,7 @@ bool SampledFunction::hasDifferentResultSet(const Function *func) const
 // ExponentialFunction
 //------------------------------------------------------------------------
 
-ExponentialFunction::ExponentialFunction(Object *funcObj, Dict *dict)
+ExponentialFunction::ExponentialFunction(Dict *dict)
 {
     Object obj1;
 
@@ -664,7 +665,7 @@ void ExponentialFunction::transform(const double *in, double *out) const
 // StitchingFunction
 //------------------------------------------------------------------------
 
-StitchingFunction::StitchingFunction(Object *funcObj, Dict *dict, RefRecursionChecker &usedParents)
+StitchingFunction::StitchingFunction(Dict *dict, RefRecursionChecker &usedParents)
 {
     Object obj1;
     int i;
@@ -1109,8 +1110,8 @@ PostScriptFunction::PostScriptFunction(Object *funcObj, Dict *dict)
         goto err1;
     }
     str = funcObj->getStream();
-    if (!str->reset()) {
-        error(errSyntaxError, -1, "Stream reset error");
+    if (!str->rewind()) {
+        error(errSyntaxError, -1, "Stream rewind error");
         goto err1;
     }
 

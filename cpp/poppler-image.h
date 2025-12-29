@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2010, Pino Toscano <pino@kde.org>
  * Copyright (C) 2018, Zsombor Hollay-Horvath <hollay.horvath@gmail.com>
- * Copyright (C) 2024, Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2024, 2025, Albert Astals Cid <aacid@kde.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,8 +21,10 @@
 #ifndef POPPLER_IMAGE_H
 #define POPPLER_IMAGE_H
 
-#include "poppler-global.h"
-#include "poppler-rectangle.h"
+#include "poppler_cpp_export.h"
+
+#include <string>
+#include <vector>
 
 namespace poppler {
 

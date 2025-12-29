@@ -1,5 +1,5 @@
 /* poppler-base-converter.cc: qt interface to poppler
- * Copyright (C) 2007, 2009, Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2007, 2009, 2025, Albert Astals Cid <aacid@kde.org>
  * Copyright (C) 2008, Pino Toscano <pino@kde.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -16,8 +16,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1301, USA.
  */
-
-#include "poppler-qt6.h"
 
 #include "poppler-converter-private.h"
 

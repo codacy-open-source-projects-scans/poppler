@@ -67,7 +67,6 @@
 #include "goo/PNGWriter.h"
 #include "goo/TiffWriter.h"
 #include "GlobalParams.h"
-#include "Object.h"
 #include "PDFDoc.h"
 #include "PDFDocFactory.h"
 #include "CairoOutputDev.h"
@@ -631,6 +630,8 @@ static void beginDocument(GooString *inputFileName, GooString *outputFileName, d
 #ifdef CAIRO_HAS_WIN32_SURFACE
         if (printToWin32)
             surface = win32BeginDocument(inputFileName, outputFileName);
+#else
+        (void)inputFileName;
 #endif
     }
 }

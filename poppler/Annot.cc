@@ -60,6 +60,8 @@
 // Copyright (C) 2024 Carsten Emde <ce@ceek.de>
 // Copyright (C) 2024, 2025 Lucas Baudin <lucas.baudin@ensae.fr>
 // Copyright (C) 2025 Juraj Šarinay <juraj@sarinay.com>
+// Copyright (C) 2025 Aditya Tiwari <suntiwari3495@gmail.com>
+// Copyright (C) 2025 Arnav V <arnav0872@gmail.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -72,7 +74,6 @@
 #include <cmath>
 #include <cassert>
 #include <numbers>
-#include "goo/gmem.h"
 #include "goo/gstrtod.h"
 #include "Error.h"
 #include "Object.h"
@@ -90,7 +91,6 @@
 #include "Movie.h"
 #include "OptionalContent.h"
 #include "Sound.h"
-#include "FileSpec.h"
 #include "DateInfo.h"
 #include "Link.h"
 #include "UTF.h"
@@ -399,7 +399,7 @@ AnnotCalloutMultiLine::~AnnotCalloutMultiLine() = default;
 // AnnotQuadrilateral
 //------------------------------------------------------------------------
 
-AnnotQuadrilaterals::AnnotQuadrilaterals(const Array &array, PDFRectangle *rect)
+AnnotQuadrilaterals::AnnotQuadrilaterals(const Array &array)
 {
     int arrayLength = array.getLength();
     int quadsLength = 0;
@@ -1408,7 +1408,7 @@ void Annot::initialize(PDFDoc *docA, Dict *dict)
     if (appearStreams) {
         appearance = appearStreams->getAppearanceStream(AnnotAppearance::appearNormal, appearState->c_str());
         Object obj = appearance.fetch(doc->getXRef());
-        if (obj.isStream() && !obj.getStream()->reset()) {
+        if (obj.isStream() && !obj.getStream()->rewind()) {
             // appearance stream is invalid as reset() returned false - Issue #1557
             appearance.setToNull();
         }
@@ -2105,18 +2105,18 @@ AnnotPopup::AnnotPopup(PDFDoc *docA, PDFRectangle *rectA) : Annot(docA, rectA)
     type = typePopup;
 
     annotObj.dictSet("Subtype", Object(objName, "Popup"));
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotPopup::AnnotPopup(PDFDoc *docA, Object &&dictObject, const Object *obj) : Annot(docA, std::move(dictObject), obj)
 {
     type = typePopup;
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotPopup::~AnnotPopup() = default;
 
-void AnnotPopup::initialize(PDFDoc *docA, Dict *dict)
+void AnnotPopup::initialize(Dict *dict)
 {
     const Object &parentObj = dict->lookupNF("Parent");
     if (parentObj.isRef()) {
@@ -2301,7 +2301,7 @@ AnnotText::AnnotText(PDFDoc *docA, PDFRectangle *rectA) : AnnotMarkup(docA, rect
     flags |= flagNoZoom | flagNoRotate;
 
     annotObj.dictSet("Subtype", Object(objName, "Text"));
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotText::AnnotText(PDFDoc *docA, Object &&dictObject, const Object *obj) : AnnotMarkup(docA, std::move(dictObject), obj)
@@ -2309,12 +2309,12 @@ AnnotText::AnnotText(PDFDoc *docA, Object &&dictObject, const Object *obj) : Ann
 
     type = typeText;
     flags |= flagNoZoom | flagNoRotate;
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotText::~AnnotText() = default;
 
-void AnnotText::initialize(PDFDoc *docA, Dict *dict)
+void AnnotText::initialize(Dict *dict)
 {
     Object obj1;
 
@@ -2657,6 +2657,64 @@ void AnnotText::setIcon(const std::string &new_icon)
     "16.641 7.859 20 12 20 c 16.141 20 19.5 16.641 19.5 12.5 c h\n"                                                                                                                                                                            \
     "19.5 12.5 m S\n"
 
+#define ANNOT_TEXT_AP_CHECK                                                                                                                                                                                                                    \
+    "0.8 0.2 0.8 RG 4.0 w\n"                                                                                                                                                                                                                   \
+    "1 J\n"                                                                                                                                                                                                                                    \
+    "1 j\n"                                                                                                                                                                                                                                    \
+    "[] 0.0 d\n"                                                                                                                                                                                                                               \
+    "4 M 6 12 m 10 8 l S\n"                                                                                                                                                                                                                    \
+    "10 8 m 18 16 l S\n"
+
+#define ANNOT_TEXT_AP_STAR                                                                                                                                                                                                                     \
+    "0.2 0.8 0.6 RG 2.5 w\n"                                                                                                                                                                                                                   \
+    "1 J\n"                                                                                                                                                                                                                                    \
+    "1 j\n"                                                                                                                                                                                                                                    \
+    "[] 0.0 d\n"                                                                                                                                                                                                                               \
+    "4 M 12 22 m 15.4 15.8 l 22 14.8 l 17 10 l 18.2 3.2 l 12 6.4 l 5.8 3.2 l 7 10 l 2 14.8 l 8.6 15.8 l h\n"                                                                                                                                   \
+    "S\n"
+
+#define ANNOT_TEXT_AP_RIGHT_ARROW                                                                                                                                                                                                              \
+    "0.533333 0.541176 0.521569 RG 2.5 w\n"                                                                                                                                                                                                    \
+    "1 J\n"                                                                                                                                                                                                                                    \
+    "1 j\n"                                                                                                                                                                                                                                    \
+    "[] 0.0 d\n"                                                                                                                                                                                                                               \
+    "4 M 19.5 12 m 19.5 15.866 16.366 19 12.5 19 c 8.634 19 5.5 15.866 5.5\n"                                                                                                                                                                  \
+    "12 c 5.5 8.134 8.634 5 12.5 5 c 16.366 5 19.5 8.134 19.5 12 c h\n"                                                                                                                                                                        \
+    "19.5 12 m S\n"                                                                                                                                                                                                                            \
+    "8 12 m 16 12 l S\n"                                                                                                                                                                                                                       \
+    "13 9 m 16 12 l 13 15 l S\n"
+
+#define ANNOT_TEXT_AP_RIGHT_POINTER                                                                                                                                                                                                            \
+    "0.9 0.4 0.2 rg\n"                                                                                                                                                                                                                         \
+    "4 M 6 8 m 6 16 l 18 12 l h\n"                                                                                                                                                                                                             \
+    "f\n"
+
+#define ANNOT_TEXT_AP_UP_ARROW                                                                                                                                                                                                                 \
+    "0.2 0.6 0.9 RG 2.5 w\n"                                                                                                                                                                                                                   \
+    "1 J\n"                                                                                                                                                                                                                                    \
+    "1 j\n"                                                                                                                                                                                                                                    \
+    "[] 0.0 d\n"                                                                                                                                                                                                                               \
+    "4 M 12 6 m 12 18 l S\n"                                                                                                                                                                                                                   \
+    "9 15 m 12 18 l 15 15 l S\n"
+
+#define ANNOT_TEXT_AP_UP_LEFT_ARROW                                                                                                                                                                                                            \
+    "0.9 0.2 0.8 RG 2.5 w\n"                                                                                                                                                                                                                   \
+    "1 J\n"                                                                                                                                                                                                                                    \
+    "1 j\n"                                                                                                                                                                                                                                    \
+    "[] 0.0 d\n"                                                                                                                                                                                                                               \
+    "4 M 18 6 m 6 18 l S\n"                                                                                                                                                                                                                    \
+    "6 18 m 11 18 l S\n"                                                                                                                                                                                                                       \
+    "6 18 m 6 13 l S\n"
+
+#define ANNOT_TEXT_AP_CROSS_HAIRS                                                                                                                                                                                                              \
+    "0.2 0.8 0.3 RG 2.5 w\n"                                                                                                                                                                                                                   \
+    "1 J\n"                                                                                                                                                                                                                                    \
+    "1 j\n"                                                                                                                                                                                                                                    \
+    "[] 0.0 d\n"                                                                                                                                                                                                                               \
+    "4 M 12 10 m 12 14 l S\n"                                                                                                                                                                                                                  \
+    "10 12 m 14 12 l S\n"                                                                                                                                                                                                                      \
+    "17 12 m 17 9.239 14.761 7 12 7 c 9.239 7 7 9.239 7 12 c 7 14.761 9.239 17 12 17 c 14.761 17 17 14.761 17 12 c h S\n"
+
 void AnnotText::draw(Gfx *gfx, bool printing)
 {
     double ca = 1;
@@ -2695,6 +2753,20 @@ void AnnotText::draw(Gfx *gfx, bool printing)
             appearBuilder.append(ANNOT_TEXT_AP_CROSS);
         } else if (icon == "Circle") {
             appearBuilder.append(ANNOT_TEXT_AP_CIRCLE);
+        } else if (icon == "Check") {
+            appearBuilder.append(ANNOT_TEXT_AP_CHECK);
+        } else if (icon == "Star") {
+            appearBuilder.append(ANNOT_TEXT_AP_STAR);
+        } else if (icon == "RightArrow") {
+            appearBuilder.append(ANNOT_TEXT_AP_RIGHT_ARROW);
+        } else if (icon == "RightPointer") {
+            appearBuilder.append(ANNOT_TEXT_AP_RIGHT_POINTER);
+        } else if (icon == "UpArrow") {
+            appearBuilder.append(ANNOT_TEXT_AP_UP_ARROW);
+        } else if (icon == "UpLeftArrow") {
+            appearBuilder.append(ANNOT_TEXT_AP_UP_LEFT_ARROW);
+        } else if (icon == "CrossHairs") {
+            appearBuilder.append(ANNOT_TEXT_AP_CROSS_HAIRS);
         }
         appearBuilder.append("Q\n");
 
@@ -2729,19 +2801,19 @@ AnnotLink::AnnotLink(PDFDoc *docA, PDFRectangle *rectA) : Annot(docA, rectA)
 {
     type = typeLink;
     annotObj.dictSet("Subtype", Object(objName, "Link"));
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotLink::AnnotLink(PDFDoc *docA, Object &&dictObject, const Object *obj) : Annot(docA, std::move(dictObject), obj)
 {
 
     type = typeLink;
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotLink::~AnnotLink() = default;
 
-void AnnotLink::initialize(PDFDoc *docA, Dict *dict)
+void AnnotLink::initialize(Dict *dict)
 {
     Object obj1;
 
@@ -2786,7 +2858,7 @@ void AnnotLink::initialize(PDFDoc *docA, Dict *dict)
     */
     obj1 = dict->lookup("QuadPoints");
     if (obj1.isArray()) {
-        quadrilaterals = std::make_unique<AnnotQuadrilaterals>(*obj1.getArray(), rect.get());
+        quadrilaterals = std::make_unique<AnnotQuadrilaterals>(*obj1.getArray());
     }
 
     obj1 = dict->lookup("BS");
@@ -2821,18 +2893,18 @@ AnnotFreeText::AnnotFreeText(PDFDoc *docA, PDFRectangle *rectA) : AnnotMarkup(do
     annotObj.dictSet("Subtype", Object(objName, "FreeText"));
     annotObj.dictSet("DA", Object(std::make_unique<GooString>()));
 
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotFreeText::AnnotFreeText(PDFDoc *docA, Object &&dictObject, const Object *obj) : AnnotMarkup(docA, std::move(dictObject), obj)
 {
     type = typeFreeText;
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotFreeText::~AnnotFreeText() = default;
 
-void AnnotFreeText::initialize(PDFDoc *docA, Dict *dict)
+void AnnotFreeText::initialize(Dict *dict)
 {
     Object obj1;
 
@@ -3395,18 +3467,18 @@ AnnotLine::AnnotLine(PDFDoc *docA, PDFRectangle *rectA) : AnnotMarkup(docA, rect
     type = typeLine;
     annotObj.dictSet("Subtype", Object(objName, "Line"));
 
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotLine::AnnotLine(PDFDoc *docA, Object &&dictObject, const Object *obj) : AnnotMarkup(docA, std::move(dictObject), obj)
 {
     type = typeLine;
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotLine::~AnnotLine() = default;
 
-void AnnotLine::initialize(PDFDoc *docA, Dict *dict)
+void AnnotLine::initialize(Dict *dict)
 {
     Object obj1;
 
@@ -3845,19 +3917,19 @@ AnnotTextMarkup::AnnotTextMarkup(PDFDoc *docA, PDFRectangle *rectA, AnnotSubtype
     }
     annotObj.dictSet("QuadPoints", Object(quadPoints));
 
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotTextMarkup::AnnotTextMarkup(PDFDoc *docA, Object &&dictObject, const Object *obj) : AnnotMarkup(docA, std::move(dictObject), obj)
 {
     // the real type will be read in initialize()
     type = typeHighlight;
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotTextMarkup::~AnnotTextMarkup() = default;
 
-void AnnotTextMarkup::initialize(PDFDoc *docA, Dict *dict)
+void AnnotTextMarkup::initialize(Dict *dict)
 {
     Object obj1;
 
@@ -3876,7 +3948,7 @@ void AnnotTextMarkup::initialize(PDFDoc *docA, Dict *dict)
 
     obj1 = dict->lookup("QuadPoints");
     if (obj1.isArray()) {
-        quadrilaterals = std::make_unique<AnnotQuadrilaterals>(*obj1.getArray(), rect.get());
+        quadrilaterals = std::make_unique<AnnotQuadrilaterals>(*obj1.getArray());
     } else {
         error(errSyntaxError, -1, "Bad Annot Text Markup QuadPoints");
         ok = false;
@@ -3924,7 +3996,7 @@ void AnnotTextMarkup::setQuadrilaterals(const AnnotQuadrilaterals &quadPoints)
         a->add(Object(quadPoints.getY4(i)));
     }
 
-    quadrilaterals = std::make_unique<AnnotQuadrilaterals>(*a, rect.get());
+    quadrilaterals = std::make_unique<AnnotQuadrilaterals>(*a);
 
     annotObj.dictSet("QuadPoints", Object(a));
     invalidateAppearance();
@@ -4125,19 +4197,19 @@ AnnotWidget::AnnotWidget(PDFDoc *docA, Object &&dictObject, const Object *obj) :
 {
     type = typeWidget;
     field = nullptr;
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotWidget::AnnotWidget(PDFDoc *docA, Object *dictObject, Object *obj, FormField *fieldA) : Annot(docA, dictObject->copy(), obj)
 {
     type = typeWidget;
     field = fieldA;
-    initialize(docA, dictObject->getDict());
+    initialize(dictObject->getDict());
 }
 
 AnnotWidget::~AnnotWidget() = default;
 
-void AnnotWidget::initialize(PDFDoc *docA, Dict *dict)
+void AnnotWidget::initialize(Dict *dict)
 {
     Object obj1;
 
@@ -5111,7 +5183,7 @@ bool AnnotAppearanceBuilder::drawFormField(const FormField *field, const Form *f
         return drawFormFieldChoice(static_cast<const FormFieldChoice *>(field), form, resources, da, border, appearCharacs, rect, xref, resourcesDict);
         break;
     case formSignature:
-        return drawSignatureFieldText(static_cast<const FormFieldSignature *>(field), form, resources, da, border, appearCharacs, rect, xref, resourcesDict);
+        return drawSignatureFieldText(static_cast<const FormFieldSignature *>(field), form, da, border, rect, xref, resourcesDict);
         break;
     case formUndef:
     default:
@@ -5208,8 +5280,7 @@ static void setChildDictEntryValue(Dict *parentDict, const char *childDictName, 
     childDictionaryObj.dictSet(childDictEntryName, Object(childDictEntryValue));
 }
 
-bool AnnotAppearanceBuilder::drawSignatureFieldText(const FormFieldSignature *field, const Form *form, const GfxResources *resources, const GooString *_da, const AnnotBorder *border, const AnnotAppearanceCharacs *appearCharacs,
-                                                    const PDFRectangle *rect, XRef *xref, Dict *resourcesDict)
+bool AnnotAppearanceBuilder::drawSignatureFieldText(const FormFieldSignature *field, const Form *form, const GooString *_da, const AnnotBorder *border, const PDFRectangle *rect, XRef *xref, Dict *resourcesDict)
 {
     const GooString &contents = field->getCustomAppearanceContent();
     if (contents.toStr().empty()) {
@@ -5568,18 +5639,18 @@ AnnotMovie::AnnotMovie(PDFDoc *docA, PDFRectangle *rectA, Movie *movieA) : Annot
     movie = movieA->copy();
     // TODO: create movie dict from movieA
 
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotMovie::AnnotMovie(PDFDoc *docA, Object &&dictObject, const Object *obj) : Annot(docA, std::move(dictObject), obj)
 {
     type = typeMovie;
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotMovie::~AnnotMovie() = default;
 
-void AnnotMovie::initialize(PDFDoc *docA, Dict *dict)
+void AnnotMovie::initialize(Dict *dict)
 {
     Object obj1;
 
@@ -5688,18 +5759,18 @@ AnnotScreen::AnnotScreen(PDFDoc *docA, PDFRectangle *rectA) : Annot(docA, rectA)
     type = typeScreen;
 
     annotObj.dictSet("Subtype", Object(objName, "Screen"));
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotScreen::AnnotScreen(PDFDoc *docA, Object &&dictObject, const Object *obj) : Annot(docA, std::move(dictObject), obj)
 {
     type = typeScreen;
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotScreen::~AnnotScreen() = default;
 
-void AnnotScreen::initialize(PDFDoc *docA, Dict *dict)
+void AnnotScreen::initialize(Dict *dict)
 {
     Object obj1;
 
@@ -5742,18 +5813,18 @@ AnnotStamp::AnnotStamp(PDFDoc *docA, PDFRectangle *rectA) : AnnotMarkup(docA, re
 {
     type = typeStamp;
     annotObj.dictSet("Subtype", Object(objName, "Stamp"));
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotStamp::AnnotStamp(PDFDoc *docA, Object &&dictObject, const Object *obj) : AnnotMarkup(docA, std::move(dictObject), obj)
 {
     type = typeStamp;
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotStamp::~AnnotStamp() = default;
 
-void AnnotStamp::initialize(PDFDoc *docA, Dict *dict)
+void AnnotStamp::initialize(Dict *dict)
 {
     Object obj1 = dict->lookup("Name");
     if (obj1.isName()) {
@@ -5974,19 +6045,19 @@ AnnotGeometry::AnnotGeometry(PDFDoc *docA, PDFRectangle *rectA, AnnotSubtype sub
         assert(0 && "Invalid subtype for AnnotGeometry\n");
     }
 
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotGeometry::AnnotGeometry(PDFDoc *docA, Object &&dictObject, const Object *obj) : AnnotMarkup(docA, std::move(dictObject), obj)
 {
     // the real type will be read in initialize()
     type = typeSquare;
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotGeometry::~AnnotGeometry() = default;
 
-void AnnotGeometry::initialize(PDFDoc *docA, Dict *dict)
+void AnnotGeometry::initialize(Dict *dict)
 {
     Object obj1;
 
@@ -6139,19 +6210,19 @@ AnnotPolygon::AnnotPolygon(PDFDoc *docA, PDFRectangle *rectA, AnnotSubtype subTy
     a->add(Object(0.));
     annotObj.dictSet("Vertices", Object(a));
 
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotPolygon::AnnotPolygon(PDFDoc *docA, Object &&dictObject, const Object *obj) : AnnotMarkup(docA, std::move(dictObject), obj)
 {
     // the real type will be read in initialize()
     type = typePolygon;
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotPolygon::~AnnotPolygon() = default;
 
-void AnnotPolygon::initialize(PDFDoc *docA, Dict *dict)
+void AnnotPolygon::initialize(Dict *dict)
 {
     Object obj1;
 
@@ -6456,18 +6527,18 @@ AnnotCaret::AnnotCaret(PDFDoc *docA, PDFRectangle *rectA) : AnnotMarkup(docA, re
     type = typeCaret;
 
     annotObj.dictSet("Subtype", Object(objName, "Caret"));
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotCaret::AnnotCaret(PDFDoc *docA, Object &&dictObject, const Object *obj) : AnnotMarkup(docA, std::move(dictObject), obj)
 {
     type = typeCaret;
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotCaret::~AnnotCaret() = default;
 
-void AnnotCaret::initialize(PDFDoc *docA, Dict *dict)
+void AnnotCaret::initialize(Dict *dict)
 {
     Object obj1;
 
@@ -6513,18 +6584,18 @@ AnnotInk::AnnotInk(PDFDoc *docA, PDFRectangle *rectA) : AnnotMarkup(docA, rectA)
 
     drawBelow = false;
 
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotInk::AnnotInk(PDFDoc *docA, Object &&dictObject, const Object *obj) : AnnotMarkup(docA, std::move(dictObject), obj)
 {
     type = typeInk;
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotInk::~AnnotInk() = default;
 
-void AnnotInk::initialize(PDFDoc *docA, Dict *dict)
+void AnnotInk::initialize(Dict *dict)
 {
     Object obj1;
 
@@ -6547,10 +6618,14 @@ void AnnotInk::initialize(PDFDoc *docA, Dict *dict)
 
     obj1 = getAppearanceResDict();
     if (obj1.isDict()) {
-        if (obj1.dictLookup("ExtGState").isDict()) {
-            obj1 = obj1.dictLookup("ExtGState").dictGetVal(0);
-            if (obj1.isDict() && obj1.dictLookup("BM").isName("Multiply")) {
-                drawBelow = true;
+        const Object extGState = obj1.dictLookup("ExtGState");
+        if (extGState.isDict()) {
+            const Dict *extGStateDict = extGState.getDict();
+            if (extGStateDict->getLength() > 0) {
+                obj1 = extGStateDict->getVal(0);
+                if (obj1.isDict() && obj1.dictLookup("BM").isName("Multiply")) {
+                    drawBelow = true;
+                }
             }
         }
     }
@@ -6710,18 +6785,18 @@ AnnotFileAttachment::AnnotFileAttachment(PDFDoc *docA, PDFRectangle *rectA, GooS
     annotObj.dictSet("Subtype", Object(objName, "FileAttachment"));
     annotObj.dictSet("FS", Object(filename->copy()));
 
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotFileAttachment::AnnotFileAttachment(PDFDoc *docA, Object &&dictObject, const Object *obj) : AnnotMarkup(docA, std::move(dictObject), obj)
 {
     type = typeFileAttachment;
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotFileAttachment::~AnnotFileAttachment() = default;
 
-void AnnotFileAttachment::initialize(PDFDoc *docA, Dict *dict)
+void AnnotFileAttachment::initialize(Dict *dict)
 {
     Object objFS = dict->lookup("FS");
     if (objFS.isDict() || objFS.isString()) {
@@ -6907,24 +6982,24 @@ AnnotSound::AnnotSound(PDFDoc *docA, PDFRectangle *rectA, Sound *soundA) : Annot
     type = typeSound;
 
     annotObj.dictSet("Subtype", Object(objName, "Sound"));
-    annotObj.dictSet("Sound", soundA->getObject()->copy());
+    annotObj.dictSet("Sound", soundA->getObject().copy());
 
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotSound::AnnotSound(PDFDoc *docA, Object &&dictObject, const Object *obj) : AnnotMarkup(docA, std::move(dictObject), obj)
 {
     type = typeSound;
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotSound::~AnnotSound() = default;
 
-void AnnotSound::initialize(PDFDoc *docA, Dict *dict)
+void AnnotSound::initialize(Dict *dict)
 {
     Object obj1 = dict->lookup("Sound");
 
-    sound = Sound::parseSound(&obj1);
+    sound = Sound::parseSound(obj1);
     if (!sound) {
         error(errSyntaxError, -1, "Bad Annot Sound");
         ok = false;
@@ -7055,18 +7130,18 @@ Annot3D::Annot3D(PDFDoc *docA, PDFRectangle *rectA) : Annot(docA, rectA)
 
     annotObj.dictSet("Subtype", Object(objName, "3D"));
 
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 Annot3D::Annot3D(PDFDoc *docA, Object &&dictObject, const Object *obj) : Annot(docA, std::move(dictObject), obj)
 {
     type = type3D;
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 Annot3D::~Annot3D() = default;
 
-void Annot3D::initialize(PDFDoc *docA, Dict *dict)
+void Annot3D::initialize(Dict *dict)
 {
     Object obj1 = dict->lookup("3DA");
     if (obj1.isDict()) {
@@ -7158,18 +7233,18 @@ AnnotRichMedia::AnnotRichMedia(PDFDoc *docA, PDFRectangle *rectA) : Annot(docA, 
 
     annotObj.dictSet("Subtype", Object(objName, "RichMedia"));
 
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotRichMedia::AnnotRichMedia(PDFDoc *docA, Object &&dictObject, const Object *obj) : Annot(docA, std::move(dictObject), obj)
 {
     type = typeRichMedia;
-    initialize(docA, annotObj.getDict());
+    initialize(annotObj.getDict());
 }
 
 AnnotRichMedia::~AnnotRichMedia() = default;
 
-void AnnotRichMedia::initialize(PDFDoc *docA, Dict *dict)
+void AnnotRichMedia::initialize(Dict *dict)
 {
     Object obj1 = dict->lookup("RichMediaContent");
     if (obj1.isDict()) {
