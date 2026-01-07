@@ -17,7 +17,7 @@
 // Copyright (C) 2006 Ed Catmur <ed@catmur.co.uk>
 // Copyright (C) 2007, 2008, 2011, 2013 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2007, 2017 Adrian Johnson <ajohnson@redneon.com>
-// Copyright (C) 2008, 2010, 2015, 2016, 2018, 2019, 2021, 2025 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2008, 2010, 2015, 2016, 2018, 2019, 2021, 2025, 2026 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2010 Brian Ewins <brian.ewins@gmail.com>
 // Copyright (C) 2012, 2013, 2015, 2016 Jason Crain <jason@aquaticape.us>
 // Copyright (C) 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
@@ -28,7 +28,7 @@
 // Copyright (C) 2019 Dan Shea <dan.shea@logical-innovations.com>
 // Copyright (C) 2020 Suzuki Toshiya <mpsuzuki@hiroshima-u.ac.jp>
 // Copyright (C) 2024, 2025 Stefan Brüns <stefan.bruens@rwth-aachen.de>
-// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2025 Hagen Möbius <hagen.moebius@googlemail.com>
 //
 // To see a description of the changes please see the Changelog file that
@@ -626,7 +626,8 @@ public:
                   double *xMax, double *yMax, PDFRectangle *continueMatch, bool *ignoredHyphen);
 
     // Get the text which is inside the specified rectangle.
-    GooString getText(double xMin, double yMin, double xMax, double yMax, EndOfLineKind textEOL, bool physLayout) const;
+    // physical layout false and raw order false does not go well with a rectangle
+    GooString getText(const std::optional<PDFRectangle> &area, EndOfLineKind textEOL, bool physLayout) const;
 
     void visitSelection(TextSelectionVisitor *visitor, const PDFRectangle *selection, SelectionStyle style);
 
@@ -644,7 +645,7 @@ public:
     bool findCharRange(int pos, int length, double *xMin, double *yMin, double *xMax, double *yMax) const;
 
     // Dump contents of page to a file.
-    void dump(void *outputStream, TextOutputFunc outputFunc, bool physLayout, EndOfLineKind textEOL, bool pageBreaks, bool suppressLastEol = false, const PDFRectangle *area = nullptr) const;
+    void dump(void *outputStream, TextOutputFunc outputFunc, bool physLayout, EndOfLineKind textEOL, bool pageBreaks, bool suppressLastEol, std::optional<PDFRectangle> area) const;
 
     // Get the head of the linked list of TextFlows.
     const TextFlow *getFlows() const { return flows; }
@@ -837,7 +838,8 @@ public:
     bool findText(const Unicode *s, int len, bool startAtTop, bool stopAtBottom, bool startAtLast, bool stopAtLast, bool caseSensitive, bool backward, bool wholeWord, double *xMin, double *yMin, double *xMax, double *yMax) const;
 
     // Get the text which is inside the specified rectangle.
-    GooString getText(double xMin, double yMin, double xMax, double yMax) const;
+    // You can only give an area if either physLayout or rawOrder are true
+    GooString getText(const std::optional<PDFRectangle> &area) const;
 
     // Find a string by character position and length.  If found, sets
     // the text bounding rectangle and returns true; otherwise returns

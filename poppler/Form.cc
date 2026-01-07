@@ -5,7 +5,7 @@
 // This file is licensed under the GPLv2 or later
 //
 // Copyright 2006-2008 Julien Rebetez <julienr@svn.gnome.org>
-// Copyright 2007-2012, 2015-2025 Albert Astals Cid <aacid@kde.org>
+// Copyright 2007-2012, 2015-2026 Albert Astals Cid <aacid@kde.org>
 // Copyright 2007-2008, 2011 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright 2007, 2013, 2016, 2019, 2022 Adrian Johnson <ajohnson@redneon.com>
 // Copyright 2007 Iñigo Martínez <inigomartinez@gmail.com>
@@ -23,7 +23,7 @@
 // Copyright 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright 2018 Chinmoy Ranjan Pradhan <chinmoyrp65@protonmail.com>
 // Copyright 2018 Adam Reichold <adam.reichold@t-online.de>
-// Copyright 2018-2022 Nelson Benítez León <nbenitezl@gmail.com>
+// Copyright 2018-2022, 2026 Nelson Benítez León <nbenitezl@gmail.com>
 // Copyright 2019, 2020 2024, Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright 2019 Tomoyuki Kubota <himajin100000@gmail.com>
 // Copyright 2019 João Netto <joaonetto901@gmail.com>
@@ -761,7 +761,7 @@ std::optional<CryptoSign::SigningErrorMessage> FormWidgetSignature::signDocument
         if (leftFontSize == 0) {
             leftFontSize = Annot::calculateFontSize(form, font.get(), &signatureTextLeft, wMax / 2.0, hMax);
         }
-        const DefaultAppearance da { { objName, pdfFontName.c_str() }, fontSize, std::move(fontColor) };
+        const DefaultAppearance da { pdfFontName, fontSize, std::move(fontColor) };
         getField()->setDefaultAppearance(da.toAppearanceString());
         form->ensureFontsForAllCharacters(&signatureText, pdfFontName);
         form->ensureFontsForAllCharacters(&signatureTextLeft, pdfFontName);
@@ -946,8 +946,8 @@ bool FormWidgetSignature::createSignature(Object &vObj, Ref vRef, const GooStrin
     bObj.arrayAdd(Object(static_cast<long long>(9999999999LL)));
     bObj.arrayAdd(Object(static_cast<long long>(9999999999LL)));
     vObj.dictAdd("ByteRange", bObj.copy());
-    obj.dictSet("V", Object(vRef));
-    xref->setModifiedObject(&obj, ref);
+    field->getObj()->dictSet("V", Object(vRef));
+    xref->setModifiedObject(field->getObj(), field->getRef());
     return true;
 }
 
@@ -1009,7 +1009,13 @@ FormField::FormField(PDFDoc *docA, Object &&aobj, const Ref aref, FormField *par
                 // Field child: it could be a form field or a widget or composed dict
                 const Object &objParent = childObj.dictLookupNF("Parent");
                 Object obj3 = childObj.dictLookup("Parent");
-                if (objParent.isRef() || obj3.isDict()) {
+                const bool hasParent = objParent.isRef() || obj3.isDict();
+                const bool isWidget = childObj.dictLookup("Subtype").isName("Widget");
+                // Handle hypothetical case of root Field with no children and no "T" key (as "T" is optional for PDF < 2.0)
+                const bool isField = childObj.dictLookup("T").isString() || (!hasParent && childObj.dictLookup("FT").isName());
+                const bool isComposedWidget = isWidget && isField;
+                const bool isPureWidget = isWidget && !isComposedWidget;
+                if (hasParent && !isPureWidget) {
                     // Child is a form field or composed dict
                     // We create the field, if it's composed
                     // it will create the widget as a child
@@ -1022,16 +1028,21 @@ FormField::FormField(PDFDoc *docA, Object &&aobj, const Ref aref, FormField *par
                     }
 
                     children.push_back(Form::createFieldFromDict(std::move(childObj), doc, childRef, this, &usedParentsAux));
-                } else {
-                    Object obj2 = childObj.dictLookup("Subtype");
-                    if (obj2.isName("Widget")) {
-                        // Child is a widget annotation
-                        if (!terminal && !children.empty()) {
-                            error(errSyntaxWarning, -1, "Field can't have both Widget AND Field as kids");
-                            continue;
+                } else if (isPureWidget) {
+                    if (hasParent) {
+                        // PDF 1.7 wrt 1.4 introduced "Parent" for Widget Annotations, this is
+                        // such a case so let's validate the Parent just for warning purposes
+                        const bool parentOK = (objParent.isRef() && objParent.getRef() == ref) || (obj3.isDict() && &obj3 == &obj);
+                        if (!parentOK) {
+                            error(errSyntaxWarning, -1, "Widget Annotation's Parent entry not pointing to its parent FormField");
                         }
-                        _createWidget(&childObj, childRef);
                     }
+                    // Child is a widget annotation
+                    if (!terminal && !children.empty()) {
+                        error(errSyntaxWarning, -1, "Field can't have both Widget AND Field as kids");
+                        continue;
+                    }
+                    _createWidget(&childObj, childRef);
                 }
             }
         }
@@ -1221,7 +1232,7 @@ const GooString *FormField::getFullyQualifiedName() const
                     fullyQualifiedName->insert(0, tmp_str.c_str() + 2, tmp_str.size() - 2); // Remove the unicode BOM
                 }
             } else {
-                fullyQualifiedName->insert(0, 1, '.'); // 1-byte ascii period
+                fullyQualifiedName->insert(0, "."); // 1-byte ascii period
                 if (hasUnicodeByteOrderMark(parent_name->toStr())) {
                     unicode_encoded = true;
                     fullyQualifiedName = convertToUtf16(fullyQualifiedName.get());
@@ -1502,7 +1513,7 @@ bool FormFieldButton::setState(const char *state, bool ignoreToggleOff)
     const char *current = getAppearanceState();
     bool currentFound = false, newFound = false;
 
-    for (size_t i = 0; i < terminal ? widgets.size() : children.size(); i++) {
+    for (size_t i = 0; i < (terminal ? widgets.size() : children.size()); i++) {
         FormWidgetButton *widget;
 
         // If radio button is a terminal field we want the widget at i, but
@@ -1671,31 +1682,29 @@ void FormFieldText::setContent(std::unique_ptr<GooString> new_content)
         Form *form = doc->getCatalog()->getForm();
         if (form) {
             DefaultAppearance da(defaultAppearance.get());
-            if (da.getFontName().isName()) {
-                const std::string fontName = da.getFontName().getName();
-                if (!fontName.empty()) {
-                    // Use the field resource dictionary if it exists
-                    Object fieldResourcesDictObj = obj.dictLookup("DR");
-                    if (fieldResourcesDictObj.isDict()) {
-                        GfxResources fieldResources(doc->getXRef(), fieldResourcesDictObj.getDict(), form->getDefaultResources());
-                        const std::vector<Form::AddFontResult> newFonts = form->ensureFontsForAllCharacters(content.get(), fontName, &fieldResources);
-                        // If we added new fonts to the Form object default resuources we also need to add them (we only add the ref so this is cheap)
-                        // to the field DR dictionary
-                        if (!newFonts.empty()) {
-                            for (const Form::AddFontResult &afr : newFonts) {
-                                fieldResourcesDictObj.dictLookup("Font").dictAdd(afr.fontName, Object(afr.ref));
-                                // This is not fully correct, it changes the entire font to the last added font
-                                // but it is much better than not doing anything, because we know that one of
-                                // the fonts have characters we need, so there is a bit of hope involved here
-                                // It is likely that we only have added one font, and it is likely that it is
-                                // a non-subset version of a subset or a reduced type1 font or similar.
-                                da.setFontName(Object(objName, afr.fontName.c_str()));
-                            }
-                            setDefaultAppearance(da.toAppearanceString());
+            const std::string &fontName = da.getFontName();
+            if (!fontName.empty()) {
+                // Use the field resource dictionary if it exists
+                Object fieldResourcesDictObj = obj.dictLookup("DR");
+                if (fieldResourcesDictObj.isDict()) {
+                    GfxResources fieldResources(doc->getXRef(), fieldResourcesDictObj.getDict(), form->getDefaultResources());
+                    const std::vector<Form::AddFontResult> newFonts = form->ensureFontsForAllCharacters(content.get(), fontName, &fieldResources);
+                    // If we added new fonts to the Form object default resuources we also need to add them (we only add the ref so this is cheap)
+                    // to the field DR dictionary
+                    if (!newFonts.empty()) {
+                        for (const Form::AddFontResult &afr : newFonts) {
+                            fieldResourcesDictObj.dictLookup("Font").dictAdd(afr.fontName, Object(afr.ref));
+                            // This is not fully correct, it changes the entire font to the last added font
+                            // but it is much better than not doing anything, because we know that one of
+                            // the fonts have characters we need, so there is a bit of hope involved here
+                            // It is likely that we only have added one font, and it is likely that it is
+                            // a non-subset version of a subset or a reduced type1 font or similar.
+                            da.setFontName(afr.fontName);
                         }
-                    } else {
-                        form->ensureFontsForAllCharacters(content.get(), fontName);
+                        setDefaultAppearance(da.toAppearanceString());
                     }
+                } else {
+                    form->ensureFontsForAllCharacters(content.get(), fontName);
                 }
             } else {
                 // This is wrong, there has to be a Tf in DA

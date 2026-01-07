@@ -34,7 +34,7 @@
 // Copyright (C) 2020, 2021, 2025 Nelson Benítez León <nbenitezl@gmail.com>
 // Copyright (C) 2020 Philipp Knechtges <philipp-dev@knechtges.com>
 // Copyright (C) 2024 Pablo Correa Gómez <ablocorrea@hotmail.com>
-// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2025 Stefan Brüns <stefan.bruens@rwth-aachen.de>
 // Copyright (C) 2025 Arnav V <arnav0872@gmail.com>
 //
@@ -84,22 +84,22 @@ constexpr PDFRectangle r4 { 2, 3, 3, 3 };
 static_assert(r1.isValid());
 static_assert([]() {
     auto r = r1;
-    r.clipTo(&r1);
+    r.clipTo(r1);
     return r == r1;
 }());
 static_assert([]() {
     auto r = r1;
-    r.clipTo(&r2);
+    r.clipTo(r2);
     return r == r2;
 }());
 static_assert([]() {
     auto r = r2;
-    r.clipTo(&r1);
+    r.clipTo(r1);
     return r == r2;
 }());
 static_assert([]() {
     auto r = r2;
-    r.clipTo(&r3);
+    r.clipTo(r3);
     return r == r4;
 }());
 } // namespace testing
@@ -199,10 +199,10 @@ PageAttrs::~PageAttrs() = default;
 
 void PageAttrs::clipBoxes()
 {
-    cropBox.clipTo(&mediaBox);
-    bleedBox.clipTo(&mediaBox);
-    trimBox.clipTo(&mediaBox);
-    artBox.clipTo(&mediaBox);
+    cropBox.clipTo(mediaBox);
+    bleedBox.clipTo(mediaBox);
+    trimBox.clipTo(mediaBox);
+    artBox.clipTo(mediaBox);
 }
 
 bool PageAttrs::readBox(Dict *dict, const char *key, PDFRectangle *box)
