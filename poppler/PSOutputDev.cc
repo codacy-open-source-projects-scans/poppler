@@ -15,7 +15,7 @@
 //
 // Copyright (C) 2005 Martin Kretzschmar <martink@gnome.org>
 // Copyright (C) 2005, 2006 Kristian Høgsberg <krh@redhat.com>
-// Copyright (C) 2006-2009, 2011-2013, 2015-2022, 2024, 2025 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2006-2009, 2011-2013, 2015-2022, 2024-2026 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2006 Jeff Muizelaar <jeff@infidigm.net>
 // Copyright (C) 2007, 2008 Brad Hards <bradh@kde.org>
 // Copyright (C) 2008, 2009 Koji Otani <sho@bbr.jp>
@@ -1084,7 +1084,6 @@ PSOutputDev::PSOutputDev(const char *fileName, PDFDoc *docA, char *psTitleA, con
     customCodeCbkData = customCodeCbkDataA;
 
     font16Enc = nullptr;
-    imgIDs = nullptr;
     formIDs = nullptr;
     embFontList = nullptr;
     customColors = nullptr;
@@ -1139,7 +1138,6 @@ PSOutputDev::PSOutputDev(int fdA, PDFDoc *docA, char *psTitleA, const std::vecto
     customCodeCbkData = customCodeCbkDataA;
 
     font16Enc = nullptr;
-    imgIDs = nullptr;
     formIDs = nullptr;
     embFontList = nullptr;
     customColors = nullptr;
@@ -1175,7 +1173,6 @@ PSOutputDev::PSOutputDev(FoFiOutputFunc outputFuncA, void *outputStreamA, char *
     customCodeCbkData = customCodeCbkDataA;
 
     font16Enc = nullptr;
-    imgIDs = nullptr;
     formIDs = nullptr;
     embFontList = nullptr;
     customColors = nullptr;
@@ -1390,8 +1387,6 @@ void PSOutputDev::postInit()
     }
     font16EncLen = 0;
     font16EncSize = 0;
-    imgIDLen = 0;
-    imgIDSize = 0;
     formIDLen = 0;
     formIDSize = 0;
 
@@ -1518,7 +1513,6 @@ PSOutputDev::~PSOutputDev()
         }
         gfree(font16Enc);
     }
-    gfree(imgIDs);
     gfree(formIDs);
     while (customColors) {
         cc = customColors;
@@ -2688,8 +2682,6 @@ std::unique_ptr<GooString> PSOutputDev::makePSFontName(GfxFont *font, const Ref 
 
 void PSOutputDev::setupImages(Dict *resDict)
 {
-    Ref imgID;
-
     if (!(mode == psModeForm || inType3Char || preloadImagesForms)) {
         return;
     }
@@ -2704,23 +2696,9 @@ void PSOutputDev::setupImages(Dict *resDict)
                 Object subtypeObj = xObj.streamGetDict()->lookup("Subtype");
                 if (subtypeObj.isName("Image")) {
                     if (xObjRef.isRef()) {
-                        imgID = xObjRef.getRef();
-                        int j;
-                        for (j = 0; j < imgIDLen; ++j) {
-                            if (imgIDs[j] == imgID) {
-                                break;
-                            }
-                        }
-                        if (j == imgIDLen) {
-                            if (imgIDLen >= imgIDSize) {
-                                if (imgIDSize == 0) {
-                                    imgIDSize = 64;
-                                } else {
-                                    imgIDSize *= 2;
-                                }
-                                imgIDs = (Ref *)greallocn(imgIDs, imgIDSize, sizeof(Ref));
-                            }
-                            imgIDs[imgIDLen++] = imgID;
+                        const Ref imgID = xObjRef.getRef();
+                        const auto [_, inserted] = imgIDs.insert(imgID);
+                        if (inserted) {
                             setupImage(imgID, xObj.getStream(), false);
                             if (level >= psLevel3) {
                                 Object maskObj = xObj.streamGetDict()->lookup("Mask");
@@ -4112,7 +4090,7 @@ void PSOutputDev::updateFont(GfxState *state)
 
 void PSOutputDev::updateTextMat(GfxState *state)
 {
-    const double *mat = state->getTextMat();
+    const std::array<double, 6> &mat = state->getTextMat();
     if (fabs(mat[0] * mat[3] - mat[1] * mat[2]) < 0.00001) {
         // avoid a singular (or close-to-singular) matrix
         writePSFmt("[0.00001 0 0 0.00001 {0:.6g} {1:.6g}] Tm\n", mat[4], mat[5]);
@@ -5070,14 +5048,14 @@ void PSOutputDev::drawImageMask(GfxState *state, Object *ref, Stream *str, int w
     }
 }
 
-void PSOutputDev::setSoftMaskFromImageMask(GfxState * /*state*/, Object * /*ref*/, Stream *str, int width, int height, bool invert, bool /*inlineImg*/, double * /*baseMatrix*/)
+void PSOutputDev::setSoftMaskFromImageMask(GfxState * /*state*/, Object * /*ref*/, Stream *str, int width, int height, bool invert, bool /*inlineImg*/, std::array<double, 6> & /*baseMatrix*/)
 {
     if (level != psLevel1 && level != psLevel1Sep) {
         maskToClippingPath(str, width, height, invert);
     }
 }
 
-void PSOutputDev::unsetSoftMaskFromImageMask(GfxState * /*state*/, double * /*baseMatrix*/)
+void PSOutputDev::unsetSoftMaskFromImageMask(GfxState * /*state*/, std::array<double, 6> & /*baseMatrix*/)
 {
     if (level != psLevel1 && level != psLevel1Sep) {
         writePS("pdfImClipEnd\n");

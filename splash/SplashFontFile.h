@@ -12,7 +12,7 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2006 Takashi Iwai <tiwai@suse.de>
-// Copyright (C) 2008, 2010, 2018, 2024, 2025 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2008, 2010, 2018, 2024-2026 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2022 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
@@ -43,24 +43,17 @@ class POPPLER_PRIVATE_EXPORT SplashFontSrc
 {
 public:
     SplashFontSrc();
+    ~SplashFontSrc();
 
     SplashFontSrc(const SplashFontSrc &) = delete;
     SplashFontSrc &operator=(const SplashFontSrc &) = delete;
 
     void setFile(const std::string &file);
-    void setBuf(char *bufA, int buflenA);
     void setBuf(std::vector<unsigned char> &&bufA);
 
-    void ref();
-    void unref();
-
-    bool isFile;
+    bool isFile = false;
     std::string fileName;
     std::vector<unsigned char> buf;
-
-private:
-    ~SplashFontSrc();
-    int refcnt;
 };
 
 class POPPLER_PRIVATE_EXPORT SplashFontFile
@@ -88,10 +81,10 @@ public:
     bool doAdjustMatrix;
 
 protected:
-    SplashFontFile(std::unique_ptr<SplashFontFileID> idA, SplashFontSrc *srcA);
+    SplashFontFile(std::unique_ptr<SplashFontFileID> idA, std::unique_ptr<SplashFontSrc> srcA);
 
     std::unique_ptr<SplashFontFileID> id;
-    SplashFontSrc *src;
+    const std::unique_ptr<SplashFontSrc> src;
     int refCnt;
 
     friend class SplashFontEngine;

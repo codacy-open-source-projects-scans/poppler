@@ -16,7 +16,7 @@
 // Copyright (C) 2005 Kristian Høgsberg <krh@redhat.com>
 // Copyright (C) 2006, 2007 Jeff Muizelaar <jeff@infidigm.net>
 // Copyright (C) 2006, 2010 Carlos Garcia Campos <carlosgc@gnome.org>
-// Copyright (C) 2006-2022, 2024, 2025 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2006-2022, 2024-2026 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2009, 2012 Koji Otani <sho@bbr.jp>
 // Copyright (C) 2009, 2011-2016, 2020, 2023 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2009, 2019 Christian Persch <chpe@gnome.org>
@@ -4793,7 +4793,7 @@ std::unique_ptr<GfxShading> GfxGouraudTriangleShading::copy() const
     return std::make_unique<GfxGouraudTriangleShading>(this);
 }
 
-void GfxGouraudTriangleShading::getTriangle(int i, double *x0, double *y0, GfxColor *color0, double *x1, double *y1, GfxColor *color1, double *x2, double *y2, GfxColor *color2)
+void GfxGouraudTriangleShading::getTriangle(int i, double *x0, double *y0, GfxColor *color0, double *x1, double *y1, GfxColor *color1, double *x2, double *y2, GfxColor *color2) const
 {
     int v;
 
@@ -4825,7 +4825,7 @@ void GfxGouraudTriangleShading::getParameterizedColor(double t, GfxColor *color)
     }
 }
 
-void GfxGouraudTriangleShading::getTriangle(int i, double *x0, double *y0, double *color0, double *x1, double *y1, double *color1, double *x2, double *y2, double *color2)
+void GfxGouraudTriangleShading::getTriangle(int i, double *x0, double *y0, double *color0, double *x1, double *y1, double *color1, double *x2, double *y2, double *color2) const
 {
     int v;
 
@@ -6508,7 +6508,7 @@ GfxState::GfxState(const GfxState *state, bool copyPath)
 {
     hDPI = state->hDPI;
     vDPI = state->vDPI;
-    memcpy(ctm, state->ctm, sizeof(ctm));
+    ctm = state->ctm;
     px1 = state->px1;
     py1 = state->py1;
     px2 = state->px2;
@@ -6555,7 +6555,7 @@ GfxState::GfxState(const GfxState *state, bool copyPath)
 
     font = state->font;
     fontSize = state->fontSize;
-    memcpy(textMat, state->textMat, sizeof(textMat));
+    textMat = state->textMat;
     charSpace = state->charSpace;
     wordSpace = state->wordSpace;
     horizScaling = state->horizScaling;
@@ -6649,12 +6649,6 @@ int GfxState::getCmsRenderingIntent()
 }
 
 #endif
-
-void GfxState::setPath(GfxPath *pathA)
-{
-    delete path;
-    path = pathA;
-}
 
 void GfxState::getUserClipBBox(double *xMin, double *yMin, double *xMax, double *yMax) const
 {
