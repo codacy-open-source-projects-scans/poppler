@@ -8,7 +8,7 @@
 // Copyright 2018, 2019, 2022 Albert Astals Cid <aacid@kde.org>
 // Copyright 2018 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright 2020 Thorsten Behrens <Thorsten.Behrens@CIB.de>
-// Copyright 2023, 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2023, 2024, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -17,7 +17,7 @@
 #include <cstring>
 #include <cstdlib>
 
-X509CertificateInfo::X509CertificateInfo() : ku_extensions(KU_NONE), cert_version(-1), is_qualified(false), is_self_signed(false), keyLocation(KeyLocation::Unknown) { }
+X509CertificateInfo::X509CertificateInfo() = default;
 
 X509CertificateInfo::~X509CertificateInfo() = default;
 
@@ -78,12 +78,12 @@ void X509CertificateInfo::setVersion(int version)
 
 void X509CertificateInfo::setSerialNumber(const GooString &serialNumber)
 {
-    cert_serial.Set(&serialNumber);
+    cert_serial.assign(serialNumber.toStr());
 }
 
 void X509CertificateInfo::setNickName(const GooString &nickName)
 {
-    cert_nick.Set(&nickName);
+    cert_nick.assign(nickName.toStr());
 }
 
 void X509CertificateInfo::setIssuerInfo(EntityInfo &&issuerInfo)
@@ -113,7 +113,7 @@ void X509CertificateInfo::setKeyUsageExtensions(unsigned int keyUsages)
 
 void X509CertificateInfo::setCertificateDER(const GooString &certDer)
 {
-    cert_der.Set(&certDer);
+    cert_der.assign(certDer.toStr());
 }
 
 void X509CertificateInfo::setIsSelfSigned(bool isSelfSigned)

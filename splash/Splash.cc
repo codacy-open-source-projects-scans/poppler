@@ -11,7 +11,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2005-2025 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005-2026 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2005 Marco Pesenti Gritti <mpg@redhat.com>
 // Copyright (C) 2010-2016 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2010 Christian Feuersänger <cfeuersaenger@googlemail.com>
@@ -225,11 +225,7 @@ inline void Splash::pipeInit(SplashPipe *pipe, int x, int y, SplashPattern *patt
     pipe->knockoutOpacity = knockoutOpacity;
 
     // result alpha
-    if (aInput == 255 && !state->softMask && !usesShape && !state->inNonIsolatedGroup && !nonIsolatedGroup) {
-        pipe->noTransparency = true;
-    } else {
-        pipe->noTransparency = false;
-    }
+    pipe->noTransparency = aInput == 255 && !state->softMask && !usesShape && !state->inNonIsolatedGroup && !nonIsolatedGroup;
 
     // result color
     if (pipe->noTransparency) {
@@ -868,7 +864,7 @@ void Splash::pipeRunAAMono1(SplashPipe *pipe)
 
     //----- result color
     // note: aDest = alpha2 = aResult = 0xff
-    cResult0 = state->grayTransfer[(unsigned char)div255((0xff - aSrc) * cDest[0] + aSrc * pipe->cSrc[0])];
+    cResult0 = state->grayTransfer[div255((0xff - aSrc) * cDest[0] + aSrc * pipe->cSrc[0])];
 
     //----- write destination pixel
     if (state->screen->test(pipe->x, pipe->y, cResult0)) {
@@ -2436,10 +2432,10 @@ bool Splash::pathAllOutside(const SplashPath &path)
         SplashCoord y;
     };
     auto calcLowerLeft = [](_SplashPoint a, _SplashPoint b) -> _SplashPoint { //
-        return { std::min(a.x, b.x), std::min(a.y, b.y) };
+        return { .x = std::min(a.x, b.x), .y = std::min(a.y, b.y) };
     };
     auto calcUpperRight = [](_SplashPoint a, _SplashPoint b) -> _SplashPoint { //
-        return { std::max(a.x, b.x), std::max(a.y, b.y) };
+        return { .x = std::max(a.x, b.x), .y = std::max(a.y, b.y) };
     };
 
     SplashCoord x, y, x2, y2;
@@ -2452,13 +2448,14 @@ bool Splash::pathAllOutside(const SplashPath &path)
         // If the first point is inside the clipping rectangle,
         // the check is sufficient
         return false;
-    } else if (path.length == 1) {
+    }
+    if (path.length == 1) {
         return true;
     }
 
     transform(state->matrix, path.pts[path.length / 2].x, path.pts[path.length / 2].y, &x2, &y2);
-    auto ll = calcLowerLeft({ x, y }, { x2, y2 });
-    auto ur = calcUpperRight({ x, y }, { x2, y2 });
+    auto ll = calcLowerLeft({ .x = x, .y = y }, { .x = x2, .y = y2 });
+    auto ur = calcUpperRight({ .x = x, .y = y }, { .x = x2, .y = y2 });
 
     xMinI = splashFloor(ll.x);
     yMinI = splashFloor(ll.y);
@@ -2471,7 +2468,8 @@ bool Splash::pathAllOutside(const SplashPath &path)
         // clipping rectangle, the check is finished. Otherwise,
         // we have to check the remaining points.
         return false;
-    } else if (path.length == 2) {
+    }
+    if (path.length == 2) {
         return true;
     }
 
@@ -2492,20 +2490,20 @@ bool Splash::pathAllOutside(const SplashPath &path)
     }
 
     transform(state->matrix, xMin1, yMin1, &x, &y);
-    ll = { x, y };
-    ur = { x, y };
+    ll = { .x = x, .y = y };
+    ur = { .x = x, .y = y };
 
     transform(state->matrix, xMin1, yMax1, &x, &y);
-    ll = calcLowerLeft(ll, { x, y });
-    ur = calcUpperRight(ur, { x, y });
+    ll = calcLowerLeft(ll, { .x = x, .y = y });
+    ur = calcUpperRight(ur, { .x = x, .y = y });
 
     transform(state->matrix, xMax1, yMin1, &x, &y);
-    ll = calcLowerLeft(ll, { x, y });
-    ur = calcUpperRight(ur, { x, y });
+    ll = calcLowerLeft(ll, { .x = x, .y = y });
+    ur = calcUpperRight(ur, { .x = x, .y = y });
 
     transform(state->matrix, xMax1, yMax1, &x, &y);
-    ll = calcLowerLeft(ll, { x, y });
-    ur = calcUpperRight(ur, { x, y });
+    ll = calcLowerLeft(ll, { .x = x, .y = y });
+    ur = calcUpperRight(ur, { .x = x, .y = y });
 
     xMinI = splashFloor(ll.x);
     yMinI = splashFloor(ll.y);
@@ -3515,8 +3513,12 @@ SplashError Splash::drawImage(SplashImageSource src, SplashICCTransform tf, void
         clipRes = state->clip->testRect(x0, y0, x1 - 1, y1 - 1);
         opClipRes = clipRes;
         if (clipRes != splashClipAllOutside) {
-            scaledWidth = x1 - x0;
-            scaledHeight = y1 - y0;
+            if (checkedSubtraction(x1, x0, &scaledWidth)) {
+                return splashErrBadArg;
+            }
+            if (checkedSubtraction(y1, y0, &scaledHeight)) {
+                return splashErrBadArg;
+            }
             yp = h / scaledHeight;
             if (yp < 0 || yp > INT_MAX - 1) {
                 return splashErrBadArg;

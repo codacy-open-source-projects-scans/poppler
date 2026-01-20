@@ -1,5 +1,6 @@
 #include <cstdint>
 #include <poppler-qt5.h>
+#include <poppler-form.h>
 #include <QtCore/QBuffer>
 #include <QtGui/QImage>
 
@@ -23,6 +24,13 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
         QImage image = p->renderToImage(72.0, 72.0, -1, -1, -1, -1, Poppler::Page::Rotate0);
         delete p;
     }
+
+    const QVector<Poppler::FormFieldSignature *> signatures = doc->signatures();
+    for (Poppler::FormFieldSignature *signature : signatures) {
+        const Poppler::SignatureValidationInfo svi = signature->validateAsync(Poppler::FormFieldSignature::ValidateVerifyCertificate).first;
+        signature->validateResult();
+    }
+    qDeleteAll(signatures);
 
     if (doc->numPages() > 0) {
         QList<int> pageList;

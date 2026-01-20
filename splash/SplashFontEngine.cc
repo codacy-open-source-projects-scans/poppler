@@ -21,7 +21,7 @@
 // Copyright (C) 2017 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2018 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2019 Christian Persch <chpe@src.gnome.org>
-// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -56,7 +56,7 @@ SplashFontEngine::SplashFontEngine(bool enableFreeType, bool enableFreeTypeHinti
 
 SplashFontEngine::~SplashFontEngine()
 {
-    for (auto font : fontCache) {
+    for (auto *font : fontCache) {
         delete font;
     }
 
@@ -65,7 +65,7 @@ SplashFontEngine::~SplashFontEngine()
 
 std::shared_ptr<SplashFontFile> SplashFontEngine::getFontFile(const SplashFontFileID &id)
 {
-    for (auto font : fontCache) {
+    for (auto *font : fontCache) {
         if (font) {
             std::shared_ptr<SplashFontFile> fontFile = font->getFontFile();
             if (fontFile && fontFile->getID().matches(id)) {
@@ -159,7 +159,7 @@ SplashFont *SplashFontEngine::getFont(std::shared_ptr<SplashFontFile> fontFile, 
     }
 
     // Try to find the font in the cache
-    auto fontIt = std::ranges::find_if(fontCache, [&](const SplashFont *font) { return font && font->matches(fontFile, mat, textMat); });
+    std::array<SplashFont *, 16>::iterator fontIt = std::ranges::find_if(fontCache, [&](const SplashFont *font) { return font && font->matches(fontFile, mat, textMat); });
 
     // The requested font has been found in the cache
     if (fontIt != fontCache.end()) {
@@ -168,7 +168,7 @@ SplashFont *SplashFontEngine::getFont(std::shared_ptr<SplashFontFile> fontFile, 
     }
 
     // The requested font has not been found in the cache
-    auto newFont = fontFile->makeFont(mat, textMat);
+    auto *newFont = fontFile->makeFont(mat, textMat);
     if (fontCache.back()) {
         delete fontCache.back();
     }

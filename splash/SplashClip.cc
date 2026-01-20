@@ -58,7 +58,7 @@ SplashClip::SplashClip(SplashCoord x0, SplashCoord y0, SplashCoord x1, SplashCoo
     yMaxI = splashCeil(yMax) - 1;
 }
 
-SplashClip::SplashClip(const SplashClip *clip, PrivateTag)
+SplashClip::SplashClip(const SplashClip *clip, PrivateTag /*unused*/)
 {
     antialias = clip->antialias;
     xMin = clip->xMin;
@@ -164,19 +164,29 @@ constexpr bool isRect(const SplashXPathSeg &a, const SplashXPathSeg &b, const Sp
     return false;
 }
 // 4 valid cases - two orientations, start on left or right
-static_assert(isRect({ 0.0, 0.0, 0.0, 1.0, 0.0, 0 }, { 0.0, 1.0, 2.0, 1.0, 0.0, 0 }, { 2.0, 0.0, 2.0, 1.0, 0.0, 0 }, { 2.0, 0.0, 0.0, 0.0, 0.0, 0 }));
-static_assert(isRect({ 0.0, 0.0, 0.0, 1.0, 0.0, 0 }, { 0.0, 0.0, 2.0, 0.0, 0.0, 0 }, { 2.0, 0.0, 2.0, 1.0, 0.0, 0 }, { 2.0, 1.0, 0.0, 1.0, 0.0, 0 }));
-static_assert(isRect({ 2.0, 0.0, 2.0, 1.0, 0.0, 0 }, { 2.0, 0.0, 0.0, 0.0, 0.0, 0 }, { 0.0, 0.0, 0.0, 1.0, 0.0, 0 }, { 0.0, 1.0, 2.0, 1.0, 0.0, 0 }));
-static_assert(isRect({ 2.0, 0.0, 2.0, 1.0, 0.0, 0 }, { 2.0, 1.0, 0.0, 1.0, 0.0, 0 }, { 0.0, 0.0, 0.0, 1.0, 0.0, 0 }, { 0.0, 0.0, 2.0, 0.0, 0.0, 0 }));
+static_assert(isRect({ .x0 = 0.0, .y0 = 0.0, .x1 = 0.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 }, { .x0 = 0.0, .y0 = 1.0, .x1 = 2.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 }, { .x0 = 2.0, .y0 = 0.0, .x1 = 2.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 },
+                     { .x0 = 2.0, .y0 = 0.0, .x1 = 0.0, .y1 = 0.0, .dxdy = 0.0, .flags = 0 }));
+static_assert(isRect({ .x0 = 0.0, .y0 = 0.0, .x1 = 0.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 }, { .x0 = 0.0, .y0 = 0.0, .x1 = 2.0, .y1 = 0.0, .dxdy = 0.0, .flags = 0 }, { .x0 = 2.0, .y0 = 0.0, .x1 = 2.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 },
+                     { .x0 = 2.0, .y0 = 1.0, .x1 = 0.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 }));
+static_assert(isRect({ .x0 = 2.0, .y0 = 0.0, .x1 = 2.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 }, { .x0 = 2.0, .y0 = 0.0, .x1 = 0.0, .y1 = 0.0, .dxdy = 0.0, .flags = 0 }, { .x0 = 0.0, .y0 = 0.0, .x1 = 0.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 },
+                     { .x0 = 0.0, .y0 = 1.0, .x1 = 2.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 }));
+static_assert(isRect({ .x0 = 2.0, .y0 = 0.0, .x1 = 2.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 }, { .x0 = 2.0, .y0 = 1.0, .x1 = 0.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 }, { .x0 = 0.0, .y0 = 0.0, .x1 = 0.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 },
+                     { .x0 = 0.0, .y0 = 0.0, .x1 = 2.0, .y1 = 0.0, .dxdy = 0.0, .flags = 0 }));
 // 4 invalid cases, one segment point not closing
-static_assert(!isRect({ 2.0, 0.0, 2.0, 3.0, 0.0, 0 }, { 2.0, 1.0, 0.0, 1.0, 0.0, 0 }, { 0.0, 0.0, 0.0, 1.0, 0.0, 0 }, { 0.0, 0.0, 2.0, 0.0, 0.0, 0 }));
-static_assert(!isRect({ 2.0, 0.0, 2.0, 1.0, 0.0, 0 }, { 3.0, 1.0, 0.0, 1.0, 0.0, 0 }, { 0.0, 0.0, 0.0, 1.0, 0.0, 0 }, { 0.0, 0.0, 2.0, 0.0, 0.0, 0 }));
-static_assert(!isRect({ 2.0, 0.0, 2.0, 1.0, 0.0, 0 }, { 2.0, 1.0, 0.0, 1.0, 0.0, 0 }, { 0.0, 0.0, 0.0, 3.0, 0.0, 0 }, { 0.0, 0.0, 2.0, 0.0, 0.0, 0 }));
-static_assert(!isRect({ 2.0, 0.0, 2.0, 1.0, 0.0, 0 }, { 2.0, 1.0, 0.0, 1.0, 0.0, 0 }, { 0.0, 0.0, 0.0, 1.0, 0.0, 0 }, { 0.0, 0.0, 3.0, 0.0, 0.0, 0 }));
+static_assert(!isRect({ .x0 = 2.0, .y0 = 0.0, .x1 = 2.0, .y1 = 3.0, .dxdy = 0.0, .flags = 0 }, { .x0 = 2.0, .y0 = 1.0, .x1 = 0.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 }, { .x0 = 0.0, .y0 = 0.0, .x1 = 0.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 },
+                      { .x0 = 0.0, .y0 = 0.0, .x1 = 2.0, .y1 = 0.0, .dxdy = 0.0, .flags = 0 }));
+static_assert(!isRect({ .x0 = 2.0, .y0 = 0.0, .x1 = 2.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 }, { .x0 = 3.0, .y0 = 1.0, .x1 = 0.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 }, { .x0 = 0.0, .y0 = 0.0, .x1 = 0.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 },
+                      { .x0 = 0.0, .y0 = 0.0, .x1 = 2.0, .y1 = 0.0, .dxdy = 0.0, .flags = 0 }));
+static_assert(!isRect({ .x0 = 2.0, .y0 = 0.0, .x1 = 2.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 }, { .x0 = 2.0, .y0 = 1.0, .x1 = 0.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 }, { .x0 = 0.0, .y0 = 0.0, .x1 = 0.0, .y1 = 3.0, .dxdy = 0.0, .flags = 0 },
+                      { .x0 = 0.0, .y0 = 0.0, .x1 = 2.0, .y1 = 0.0, .dxdy = 0.0, .flags = 0 }));
+static_assert(!isRect({ .x0 = 2.0, .y0 = 0.0, .x1 = 2.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 }, { .x0 = 2.0, .y0 = 1.0, .x1 = 0.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 }, { .x0 = 0.0, .y0 = 0.0, .x1 = 0.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 },
+                      { .x0 = 0.0, .y0 = 0.0, .x1 = 3.0, .y1 = 0.0, .dxdy = 0.0, .flags = 0 }));
 // invalid case, closed, but left segment not vertical
-static_assert(!isRect({ 2.0, 0.0, 2.0, 1.0, 0.0, 0 }, { 2.0, 1.0, 0.0, 1.0, 0.0, 0 }, { 1.0, 0.0, 0.0, 1.0, 0.0, 0 }, { 1.0, 0.0, 2.0, 0.0, 0.0, 0 }));
+static_assert(!isRect({ .x0 = 2.0, .y0 = 0.0, .x1 = 2.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 }, { .x0 = 2.0, .y0 = 1.0, .x1 = 0.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 }, { .x0 = 1.0, .y0 = 0.0, .x1 = 0.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 },
+                      { .x0 = 1.0, .y0 = 0.0, .x1 = 2.0, .y1 = 0.0, .dxdy = 0.0, .flags = 0 }));
 // invalid case, all horizontal/vertical, but horizontal segments coincident
-static_assert(!isRect({ 0.0, 0.0, 0.0, 1.0, 0.0, 0 }, { 0.0, 0.0, 2.0, 0.0, 0.0, 0 }, { 2.0, 0.0, 2.0, 1.0, 0.0, 0 }, { 2.0, 0.0, 0.0, 0.0, 0.0, 0 }));
+static_assert(!isRect({ .x0 = 0.0, .y0 = 0.0, .x1 = 0.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 }, { .x0 = 0.0, .y0 = 0.0, .x1 = 2.0, .y1 = 0.0, .dxdy = 0.0, .flags = 0 }, { .x0 = 2.0, .y0 = 0.0, .x1 = 2.0, .y1 = 1.0, .dxdy = 0.0, .flags = 0 },
+                      { .x0 = 2.0, .y0 = 0.0, .x1 = 0.0, .y1 = 0.0, .dxdy = 0.0, .flags = 0 }));
 }
 
 SplashError SplashClip::clipToPath(const SplashPath &path, const std::array<SplashCoord, 6> &matrix, SplashCoord flatness, bool eo)
@@ -241,7 +251,7 @@ SplashClipResult SplashClip::testSpan(int spanXMin, int spanXMax, int spanY)
     if ((SplashCoord)(spanXMax + 1) <= xMin || (SplashCoord)spanXMin >= xMax || (SplashCoord)(spanY + 1) <= yMin || (SplashCoord)spanY >= yMax) {
         return splashClipAllOutside;
     }
-    if (!((SplashCoord)spanXMin >= xMin && (SplashCoord)(spanXMax + 1) <= xMax && (SplashCoord)spanY >= yMin && (SplashCoord)(spanY + 1) <= yMax)) {
+    if ((SplashCoord)spanXMin < xMin || (SplashCoord)(spanXMax + 1) > xMax || (SplashCoord)spanY < yMin || (SplashCoord)(spanY + 1) > yMax) {
         return splashClipPartial;
     }
     if (antialias) {

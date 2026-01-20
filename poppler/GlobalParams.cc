@@ -43,10 +43,10 @@
 // Copyright (C) 2019, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2020 Kai Pastor <dg0yt@darc.de>
 // Copyright (C) 2021, 2022 Stefan Löffler <st.loeffler@gmail.com>
-// Copyright (C) 2021 sunderme <sunderme@gmx.de>
+// Copyright (C) 2021, 2026 Jan Sundermeyer <sunderme@gmx.de>
 // Copyright (C) 2022 Even Rouault <even.rouault@spatialys.com>
 // Copyright (C) 2022 Claes Nästén <pekdon@gmail.com>
-// Copyright (C) 2023-2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2023-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2023 Shivodit Gill <shivodit.gill@gmail.com>
 // Copyright (C) 2024 Keyu Tao <me@taoky.moe>
 // Copyright (C) 2025 Volker Krause <vkrause@kde.org>
@@ -62,6 +62,7 @@
 #include <cstring>
 #include <cstdio>
 #include <filesystem>
+#include <utility>
 #ifdef _WIN32
 #    include <shlobj.h>
 #    include <mbstring.h>
@@ -270,7 +271,7 @@ SysFontList::SysFontList() = default;
 
 SysFontList::~SysFontList()
 {
-    for (auto entry : fonts) {
+    for (auto *entry : fonts) {
         delete entry;
     }
 }
@@ -402,7 +403,7 @@ const SysFontInfo *SysFontList::find(const std::string &name, bool fixedWidth, b
 // parsing
 //------------------------------------------------------------------------
 
-GlobalParams::GlobalParams(const std::string &customPopplerDataDir) : popplerDataDir(customPopplerDataDir)
+GlobalParams::GlobalParams(std::string customPopplerDataDir) : popplerDataDir(std::move(customPopplerDataDir))
 {
     // scan the encoding in reverse because we want the lowest-numbered
     // index for each char name ('space' is encoded twice)
@@ -647,12 +648,11 @@ static bool findModifier(const std::string &name, const size_t modStart, const c
     size_t match = name.find(modifier, modStart);
     if (match == std::string::npos) {
         return false;
-    } else {
-        if (start == std::string::npos || match < start) {
-            start = match;
-        }
-        return true;
     }
+    if (start == std::string::npos || match < start) {
+        start = match;
+    }
+    return true;
 }
 
 static const char *getFontLang(const GfxFont &font)
@@ -858,8 +858,8 @@ static FcPattern *buildFcPattern(const GfxFont &font, const GooString *base14Nam
 
 std::optional<std::string> GlobalParams::findFontFile(const std::string &fontName)
 {
-    setupBaseFonts(POPPLER_FONTSDIR);
     globalParamsLocker();
+    setupBaseFonts(POPPLER_FONTSDIR);
     const auto fontFile = fontFiles.find(fontName);
     if (fontFile != fontFiles.end()) {
         return fontFile->second;
@@ -910,7 +910,7 @@ static bool supportedFontForEmbedding(Unicode uChar, const char *filepath, int f
 */
 #if WITH_FONTCONFIGURATION_FONTCONFIG
 // not needed for fontconfig
-void GlobalParams::setupBaseFonts(const char *) { }
+void GlobalParams::setupBaseFonts(const char * /*unused*/) { }
 
 std::optional<std::string> GlobalParams::findBase14FontFile(const GooString *base14Name, const GfxFont &font, GooString *substituteFontName)
 {
@@ -937,7 +937,7 @@ std::optional<std::string> GlobalParams::findSystemFontFile(const GfxFont &font,
         path = fi->path->toStr();
         *type = fi->type;
         *fontNum = fi->fontNum;
-        substituteName.Set(fi->substituteName->c_str());
+        substituteName.assign(fi->substituteName->toStr());
     } else {
         FcChar8 *s;
         char *ext;
@@ -985,13 +985,13 @@ std::optional<std::string> GlobalParams::findSystemFontFile(const GfxFont &font,
                 FcChar8 *s2;
                 res = FcPatternGetString(set->fonts[i], FC_FULLNAME, 0, &s2);
                 if (res == FcResultMatch && s2) {
-                    substituteName.Set((char *)s2);
+                    substituteName.assign((char *)s2);
                 } else {
                     // fontconfig does not extract fullname for some fonts
                     // create the fullname from family and style
                     res = FcPatternGetString(set->fonts[i], FC_FAMILY, 0, &s2);
                     if (res == FcResultMatch && s2) {
-                        substituteName.Set((char *)s2);
+                        substituteName.assign((char *)s2);
                         res = FcPatternGetString(set->fonts[i], FC_STYLE, 0, &s2);
                         if (res == FcResultMatch && s2) {
                             const std::string style = { (char *)s2 };
@@ -1073,7 +1073,7 @@ std::optional<std::string> GlobalParams::findSystemFontFile(const GfxFont &font,
         *fontNum = fi->fontNum;
     }
     if (substituteFontName) {
-        substituteFontName->Set(substituteName.c_str());
+        substituteFontName->assign(substituteName.toStr());
     }
 fin:
     if (p) {
@@ -1083,7 +1083,8 @@ fin:
     return path;
 }
 
-FamilyStyleFontSearchResult GlobalParams::findSystemFontFileForFamilyAndStyle(const std::string &fontFamily, const std::string &fontStyle, const std::vector<std::string> &filesToIgnore)
+FamilyStyleFontSearchResult GlobalParams::findSystemFontFileForFamilyAndStyle(const std::string &fontFamily, const std::string &fontStyle, // NOLINT(readability-convert-member-functions-to-static)
+                                                                              const std::vector<std::string> &filesToIgnore)
 {
     FcPattern *p = FcPatternBuild(nullptr, FC_FAMILY, FcTypeString, fontFamily.c_str(), FC_STYLE, FcTypeString, fontStyle.c_str(), nullptr);
     FcConfigSubstitute(nullptr, p, FcMatchPattern);
@@ -1116,7 +1117,7 @@ FamilyStyleFontSearchResult GlobalParams::findSystemFontFileForFamilyAndStyle(co
     return {};
 }
 
-UCharFontSearchResult GlobalParams::findSystemFontFileForUChar(Unicode uChar, const GfxFont &fontToEmulate)
+UCharFontSearchResult GlobalParams::findSystemFontFileForUChar(Unicode uChar, const GfxFont &fontToEmulate) // NOLINT(readability-convert-member-functions-to-static)
 {
     FcPattern *pattern = buildFcPattern(fontToEmulate, nullptr);
 
@@ -1437,7 +1438,7 @@ bool GlobalParams::getProfileCommands()
     return profileCommands;
 }
 
-bool GlobalParams::getErrQuiet()
+bool GlobalParams::getErrQuiet() const
 {
     // no locking -- this function may get called from inside a locked
     // section

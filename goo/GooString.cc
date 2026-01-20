@@ -31,7 +31,7 @@
 // Copyright (C) 2018 Greg Knight <lyngvi@gmail.com>
 // Copyright (C) 2019, 2022-2024 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2023 Even Rouault <even.rouault@mines-paris.org>
-// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2025, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2025 Jonathan Hähne <jonathan.haehne@hotmail.com>
 //
 // To see a description of the changes please see the Changelog file that
@@ -183,11 +183,11 @@ GooString *GooString::appendfv(const char *fmt, va_list argList)
             ++p0;
             if (*p0 == '{') {
                 ++p0;
-                append('{');
+                push_back('{');
             } else {
 
                 // parse the format string
-                if (!(*p0 >= '0' && *p0 <= '9')) {
+                if (*p0 < '0' || *p0 > '9') {
                     break;
                 }
                 idx = *p0 - '0';
@@ -455,13 +455,13 @@ GooString *GooString::appendfv(const char *fmt, va_list argList)
                 // append the formatted arg, handling width and alignment
                 if (!reverseAlign && len < width) {
                     for (i = len; i < width; ++i) {
-                        append(' ');
+                        push_back(' ');
                     }
                 }
                 append(str, len);
                 if (reverseAlign && len < width) {
                     for (i = len; i < width; ++i) {
-                        append(' ');
+                        push_back(' ');
                     }
                 }
             }
@@ -471,7 +471,7 @@ GooString *GooString::appendfv(const char *fmt, va_list argList)
             if (*p0 == '}') {
                 ++p0;
             }
-            append('}');
+            push_back('}');
 
         } else {
             for (p1 = p0 + 1; *p1 && *p1 != '{' && *p1 != '}'; ++p1) {
@@ -487,17 +487,6 @@ GooString *GooString::appendfv(const char *fmt, va_list argList)
     }
 
     return this;
-}
-
-std::string GooString::formatLongLong(long long x, int width)
-{
-    char buf[65];
-    const char *p;
-    int len;
-
-    formatInt(x, buf, sizeof(buf), true /*zeroFill*/, width, 10 /*base*/, &p, &len);
-
-    return { p, static_cast<size_t>(len) };
 }
 
 namespace {

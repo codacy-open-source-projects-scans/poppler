@@ -33,7 +33,7 @@
 // Copyright (C) 2019, 2021 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2021 William Bader <williambader@hotmail.com>
 // Copyright (C) 2022 kVdNi <kVdNi@waqa.eu>
-// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2025, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2025 Hagen Möbius <hagen.moebius@googlemail.com>
 //
 // To see a description of the changes please see the Changelog file that
@@ -252,7 +252,7 @@ int main(int argc, char *argv[])
         userPW = GooString(userPassword);
     }
 
-    if (fileName.cmp("-") == 0) {
+    if (fileName.compare("-") == 0) {
         fileName = GooString("fd://0");
     }
 
@@ -273,7 +273,7 @@ int main(int argc, char *argv[])
     // construct text file name
     if (argc == 3) {
         textFileName = std::make_unique<GooString>(argv[2]);
-    } else if (fileName.cmp("fd://0") == 0) {
+    } else if (fileName.compare("fd://0") == 0) {
         error(errCommandLine, -1, "You have to provide an output filename when reading from stdin.");
         return 99;
     } else {
@@ -300,7 +300,7 @@ int main(int argc, char *argv[])
 
     // write HTML header
     if (htmlMeta) {
-        if (!textFileName->cmp("-")) {
+        if (!textFileName->compare("-")) {
             f = stdout;
         } else {
             if (!(f = fopen(textFileName->c_str(), "wb"))) {
@@ -360,7 +360,7 @@ int main(int argc, char *argv[])
 
         if (tsvMode) {
             TextOutputDev textOut(nullptr, physLayout, fixedPitch, rawOrder, htmlMeta, discardDiag);
-            if (!textFileName->cmp("-")) {
+            if (!textFileName->compare("-")) {
                 f = stdout;
             } else {
                 if (!(f = fopen(textFileName->c_str(), "wb"))) {
@@ -398,7 +398,7 @@ int main(int argc, char *argv[])
 
     // write end of HTML file
     if (htmlMeta) {
-        if (!textFileName->cmp("-")) {
+        if (!textFileName->compare("-")) {
             f = stdout;
         } else {
             if (!(f = fopen(textFileName->c_str(), "ab"))) {

@@ -55,7 +55,7 @@
 // Copyright (C) 2022 Martin <martinbts@gmx.net>
 // Copyright (C) 2022 Andreas Naumann <42870-ANaumann85@users.noreply.gitlab.freedesktop.org>
 // Copyright (C) 2022, 2024 Erich E. Hoover <erich.e.hoover@gmail.com>
-// Copyright (C) 2023-2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2023-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
 // Copyright (C) 2024 Carsten Emde <ce@ceek.de>
 // Copyright (C) 2024, 2025 Lucas Baudin <lucas.baudin@ensae.fr>
@@ -96,6 +96,7 @@
 #include "UTF.h"
 #include <cstring>
 #include <algorithm>
+#include <utility>
 
 #include "annot_stamp_approved.h"
 #include "annot_stamp_as_is.h"
@@ -148,25 +149,32 @@ static AnnotLineEndingStyle parseAnnotLineEndingStyle(const Object &name)
 
     if (name.isName("Square")) {
         return annotLineEndingSquare;
-    } else if (name.isName("Circle")) {
-        return annotLineEndingCircle;
-    } else if (name.isName("Diamond")) {
-        return annotLineEndingDiamond;
-    } else if (name.isName("OpenArrow")) {
-        return annotLineEndingOpenArrow;
-    } else if (name.isName("ClosedArrow")) {
-        return annotLineEndingClosedArrow;
-    } else if (name.isName("Butt")) {
-        return annotLineEndingButt;
-    } else if (name.isName("ROpenArrow")) {
-        return annotLineEndingROpenArrow;
-    } else if (name.isName("RClosedArrow")) {
-        return annotLineEndingRClosedArrow;
-    } else if (name.isName("Slash")) {
-        return annotLineEndingSlash;
-    } else {
-        return annotLineEndingNone;
     }
+    if (name.isName("Circle")) {
+        return annotLineEndingCircle;
+    }
+    if (name.isName("Diamond")) {
+        return annotLineEndingDiamond;
+    }
+    if (name.isName("OpenArrow")) {
+        return annotLineEndingOpenArrow;
+    }
+    if (name.isName("ClosedArrow")) {
+        return annotLineEndingClosedArrow;
+    }
+    if (name.isName("Butt")) {
+        return annotLineEndingButt;
+    }
+    if (name.isName("ROpenArrow")) {
+        return annotLineEndingROpenArrow;
+    }
+    if (name.isName("RClosedArrow")) {
+        return annotLineEndingRClosedArrow;
+    }
+    if (name.isName("Slash")) {
+        return annotLineEndingSlash;
+    }
+    return annotLineEndingNone;
 }
 
 static const char *convertAnnotLineEndingStyle(AnnotLineEndingStyle style)
@@ -274,11 +282,14 @@ static const char *determineFallbackFont(const std::string &tok, const char *def
     // TODO: adjust these based on other example PDFs.
     if (tok == "/ZaDb") {
         return "ZapfDingbats";
-    } else if (tok == "/Cour") {
+    }
+    if (tok == "/Cour") {
         return "Courier";
-    } else if (tok == "/TiRo") {
+    }
+    if (tok == "/TiRo") {
         return "TimesNewRoman";
-    } else if (tok == "/Helvetica-Bold") {
+    }
+    if (tok == "/Helvetica-Bold") {
         return "Helvetica-Bold";
     }
     return defaultFallback;
@@ -808,20 +819,19 @@ Object AnnotColor::writeToObject(XRef *xref) const
 {
     if (length == 0) {
         return Object::null(); // Transparent (no color)
-    } else {
-        Array *a = new Array(xref);
-        for (int i = 0; i < length; ++i) {
-            a->add(Object(values[i]));
-        }
-        return Object(a);
     }
+    Array *a = new Array(xref);
+    for (int i = 0; i < length; ++i) {
+        a->add(Object(values[i]));
+    }
+    return Object(a);
 }
 
 //------------------------------------------------------------------------
 // DefaultAppearance
 //------------------------------------------------------------------------
 
-DefaultAppearance::DefaultAppearance(const std::string &fontNameA, double fontPtSizeA, std::unique_ptr<AnnotColor> &&fontColorA) : fontName(fontNameA), fontPtSize(fontPtSizeA), fontColor(std::move(fontColorA)) { }
+DefaultAppearance::DefaultAppearance(std::string fontNameA, double fontPtSizeA, std::unique_ptr<AnnotColor> &&fontColorA) : fontName(std::move(fontNameA)), fontPtSize(fontPtSizeA), fontColor(std::move(fontColorA)) { }
 
 DefaultAppearance::DefaultAppearance(const GooString *da)
 {
@@ -847,9 +857,9 @@ DefaultAppearance::DefaultAppearance(const GooString *da)
         while (true) {
             if (i == 0) {
                 break;
-            } else {
-                --i;
             }
+            --i;
+
             if (!fontColor) {
                 if (daToks[i] == "g" && i >= 1) {
                     fontColor = std::make_unique<AnnotColor>(gatof(daToks[i - 1].c_str()));
@@ -984,7 +994,8 @@ Object AnnotAppearance::getAppearanceStream(AnnotAppearanceType type, const char
 
     if (apData.isDict() && state) {
         return apData.dictLookupNF(state).copy();
-    } else if (apData.isRef()) {
+    }
+    if (apData.isRef()) {
         // Ref can point to 1)Stream or 2)dictionary with named streams - Issue #1558
         Object obj = apData.fetch(doc->getXRef());
         if (obj.isDict() && state) {
@@ -2033,9 +2044,8 @@ int Annot::getRotation() const
 
     if (flags & flagNoRotate) {
         return (360 - pageobj->getRotate()) % 360;
-    } else {
-        return 0;
     }
+    return 0;
 }
 
 void Annot::draw(Gfx *gfx, bool printing)
@@ -2335,19 +2345,19 @@ void AnnotText::initialize(Dict *dict)
         if (obj2.isString()) {
             const GooString *stateName = obj2.getString();
 
-            if (!stateName->cmp("Marked")) {
+            if (!stateName->compare("Marked")) {
                 state = stateMarked;
-            } else if (!stateName->cmp("Unmarked")) {
+            } else if (!stateName->compare("Unmarked")) {
                 state = stateUnmarked;
-            } else if (!stateName->cmp("Accepted")) {
+            } else if (!stateName->compare("Accepted")) {
                 state = stateAccepted;
-            } else if (!stateName->cmp("Rejected")) {
+            } else if (!stateName->compare("Rejected")) {
                 state = stateRejected;
-            } else if (!stateName->cmp("Cancelled")) {
+            } else if (!stateName->compare("Cancelled")) {
                 state = stateCancelled;
-            } else if (!stateName->cmp("Completed")) {
+            } else if (!stateName->compare("Completed")) {
                 state = stateCompleted;
-            } else if (!stateName->cmp("None")) {
+            } else if (!stateName->compare("None")) {
                 state = stateNone;
             } else {
                 state = stateUnknown;
@@ -2356,7 +2366,7 @@ void AnnotText::initialize(Dict *dict)
             state = stateUnknown;
         }
 
-        if (!modelName->cmp("Marked")) {
+        if (!modelName->compare("Marked")) {
             switch (state) {
             case stateUnknown:
                 state = stateMarked;
@@ -2371,7 +2381,7 @@ void AnnotText::initialize(Dict *dict)
             default:
                 break;
             }
-        } else if (!modelName->cmp("Review")) {
+        } else if (!modelName->compare("Review")) {
             switch (state) {
             case stateUnknown:
                 state = stateNone;
@@ -3072,7 +3082,7 @@ std::unique_ptr<DefaultAppearance> AnnotFreeText::getDefaultAppearance() const
 
 static std::unique_ptr<GfxFont> createAnnotDrawFont(XRef *xref, Dict *fontParentDict, const char *resourceName = "AnnotDrawFont", const char *fontname = "Helvetica")
 {
-    const Ref dummyRef = { -1, -1 };
+    const Ref dummyRef = { .num = -1, .gen = -1 };
 
     Dict *fontDict = new Dict(xref);
     fontDict->add("BaseFont", Object(objName, fontname));
@@ -3196,7 +3206,7 @@ public:
 
     struct Data
     {
-        Data(const std::string &t, const std::string &fName, double w, int cc) : text(t), fontName(fName), width(w), charCount(cc) { }
+        Data(std::string t, std::string fName, double w, int cc) : text(std::move(t)), fontName(std::move(fName)), width(w), charCount(cc) { }
 
         const std::string text;
         const std::string fontName;
@@ -4414,49 +4424,48 @@ void Annot::layoutText(const GooString *text, GooString *outBuf, size_t *i, cons
         }
 
         if (noReencode) {
-            outBuf->append(uChar);
+            outBuf->push_back(uChar);
         } else {
             const CharCodeToUnicode *ccToUnicode = font.getToUnicode();
             if (!ccToUnicode) {
                 // This assumes an identity CMap.
-                outBuf->append((uChar >> 8) & 0xff);
-                outBuf->append(uChar & 0xff);
+                outBuf->push_back((uChar >> 8) & 0xff);
+                outBuf->push_back(uChar & 0xff);
             } else if (ccToUnicode->mapToCharCode(&uChar, &c, 1)) {
                 if (font.isCIDFont()) {
-                    auto cidFont = static_cast<const GfxCIDFont *>(&font);
+                    const auto *cidFont = static_cast<const GfxCIDFont *>(&font);
                     if (c < cidFont->getCIDToGIDLen()) {
                         const int glyph = cidFont->getCIDToGID()[c];
                         if (glyph > 0 || c == 0) {
-                            outBuf->append((c >> 8) & 0xff);
-                            outBuf->append(c & 0xff);
+                            outBuf->push_back((c >> 8) & 0xff);
+                            outBuf->push_back(c & 0xff);
                         } else {
                             if (newFontNeeded) {
                                 *newFontNeeded = true;
                                 *i -= unicode ? 2 : 1;
                                 break;
                             }
-                            outBuf->append((c >> 8) & 0xff);
-                            outBuf->append(c & 0xff);
+                            outBuf->push_back((c >> 8) & 0xff);
+                            outBuf->push_back(c & 0xff);
                             error(errSyntaxError, -1, "AnnotWidget::layoutText, font doesn't have glyph for charcode U+{0:04uX}", c);
                         }
                     } else {
                         // TODO: This assumes an identity CMap.  It should be extended to
                         // handle the general case.
-                        outBuf->append((c >> 8) & 0xff);
-                        outBuf->append(c & 0xff);
+                        outBuf->push_back((c >> 8) & 0xff);
+                        outBuf->push_back(c & 0xff);
                     }
                 } else {
                     // 8-bit font
-                    outBuf->append(c);
+                    outBuf->push_back(c);
                 }
             } else {
                 if (newFontNeeded) {
                     *newFontNeeded = true;
                     *i -= unicode ? 2 : 1;
                     break;
-                } else {
-                    error(errSyntaxError, -1, "AnnotWidget::layoutText, cannot convert U+{0:04uX}", uChar);
                 }
+                error(errSyntaxError, -1, "AnnotWidget::layoutText, cannot convert U+{0:04uX}", uChar);
             }
         }
 
@@ -4558,20 +4567,20 @@ void Annot::layoutText(const GooString *text, GooString *outBuf, size_t *i, cons
 // escaping characters as appropriate.
 void AnnotAppearanceBuilder::writeString(const std::string &str)
 {
-    appearBuf->append('(');
+    appearBuf->push_back('(');
 
     for (const char c : str) {
         if (c == '(' || c == ')' || c == '\\') {
-            appearBuf->append('\\');
-            appearBuf->append(c);
+            appearBuf->push_back('\\');
+            appearBuf->push_back(c);
         } else if (c < 0x20) {
             appearBuf->appendf("\\{0:03o}", (unsigned char)c);
         } else {
-            appearBuf->append(c);
+            appearBuf->push_back(c);
         }
     }
 
-    appearBuf->append(')');
+    appearBuf->push_back(')');
 }
 
 // Draw the variable text or caption for a field.
@@ -4672,7 +4681,7 @@ bool AnnotAppearanceBuilder::drawText(const GooString *text, const Form *form, c
 
         textToFree = std::make_unique<GooString>();
         for (int i = 0; i < len; ++i) {
-            textToFree->append('*');
+            textToFree->push_back('*');
         }
         text = textToFree.get();
     }
@@ -4728,7 +4737,8 @@ bool AnnotAppearanceBuilder::drawText(const GooString *text, const Form *form, c
 
         // write the DA string
         for (const std::string &daTok : daToks) {
-            appearBuf->append(daTok)->append(' ');
+            appearBuf->append(daTok);
+            appearBuf->push_back(' ');
         }
 
         const DrawMultiLineTextResult textCommands = drawMultiLineText(text->toStr(), dx, form, *font, std::string(), fontSize, quadding, borderWidth + 2);
@@ -4778,7 +4788,8 @@ bool AnnotAppearanceBuilder::drawText(const GooString *text, const Form *form, c
 
             // write the DA string
             for (const std::string &daTok : daToks) {
-                appearBuf->append(daTok)->append(' ');
+                appearBuf->append(daTok);
+                appearBuf->push_back(' ');
             }
 
             // write the text string
@@ -4866,7 +4877,8 @@ bool AnnotAppearanceBuilder::drawText(const GooString *text, const Form *form, c
 
             // write the DA string
             for (const std::string &daTok : daToks) {
-                appearBuf->append(daTok)->append(' ');
+                appearBuf->append(daTok);
+                appearBuf->push_back(' ');
             }
             // This newline is not neeed at all but it makes for easier reading
             // and our auto tests "wrongly" assume it will be there, so add it anyway
@@ -4930,9 +4942,9 @@ bool AnnotAppearanceBuilder::drawListBox(const FormFieldChoice *fieldChoice, con
             }
         }
         for (std::size_t k = 2; k < daToks.size(); ++k) {
-            if (k >= 2 && !(daToks[k])->cmp("Tf")) {
+            if (k >= 2 && !(daToks[k])->compare("Tf")) {
                 tfPos = k - 2;
-            } else if (k >= 6 && !(daToks[k])->cmp("Tm")) {
+            } else if (k >= 6 && !(daToks[k])->compare("Tm")) {
                 tmPos = k - 6;
             }
         }
@@ -5044,7 +5056,8 @@ bool AnnotAppearanceBuilder::drawListBox(const FormFieldChoice *fieldChoice, con
 
         // write the DA string
         for (const std::unique_ptr<GooString> &daTok : daToks) {
-            appearBuf->append(daTok.get())->append(' ');
+            appearBuf->append(daTok->toStr());
+            appearBuf->push_back(' ');
         }
 
         // write the font matrix (if not part of the DA string)
@@ -5205,10 +5218,11 @@ bool AnnotAppearanceBuilder::drawFormFieldButton(const FormFieldButton *field, c
     switch (field->getButtonType()) {
     case formButtonRadio: {
         //~ Acrobat doesn't draw a caption if there is no AP dict (?)
-        if (appearState && appearState->cmp("Off") != 0 && field->getState(appearState->c_str())) {
+        if (appearState && appearState->compare("Off") != 0 && field->getState(appearState->c_str())) {
             if (caption) {
                 return drawText(caption, form, da, resources, border, appearCharacs, rect, VariableTextQuadding::centered, xref, resourcesDict, ForceZapfDingbatsDrawTextFlag);
-            } else if (appearCharacs) {
+            }
+            if (appearCharacs) {
                 const AnnotColor *aColor = appearCharacs->getBorderColor();
                 if (aColor) {
                     const double dx = rect->x2 - rect->x1;
@@ -5226,13 +5240,12 @@ bool AnnotAppearanceBuilder::drawFormFieldButton(const FormFieldButton *field, c
         }
         break;
     case formButtonCheck:
-        if (appearState && appearState->cmp("Off") != 0) {
+        if (appearState && appearState->compare("Off") != 0) {
             if (!caption) {
                 GooString checkMark("3");
                 return drawText(&checkMark, form, da, resources, border, appearCharacs, rect, VariableTextQuadding::centered, xref, resourcesDict, ForceZapfDingbatsDrawTextFlag);
-            } else {
-                return drawText(caption, form, da, resources, border, appearCharacs, rect, VariableTextQuadding::centered, xref, resourcesDict, ForceZapfDingbatsDrawTextFlag);
             }
+            return drawText(caption, form, da, resources, border, appearCharacs, rect, VariableTextQuadding::centered, xref, resourcesDict, ForceZapfDingbatsDrawTextFlag);
         }
         break;
     }
@@ -6684,7 +6697,7 @@ void AnnotInk::setDrawBelow(bool drawBelow_)
     generateInkAppearance();
 }
 
-bool AnnotInk::getDrawBelow()
+bool AnnotInk::getDrawBelow() const
 {
     return drawBelow;
 }
@@ -6947,13 +6960,13 @@ void AnnotFileAttachment::draw(Gfx *gfx, bool printing)
         } else {
             appearBuilder.append("1 1 1 rg\n");
         }
-        if (!name->cmp("PushPin")) {
+        if (!name->compare("PushPin")) {
             appearBuilder.append(ANNOT_FILE_ATTACHMENT_AP_PUSHPIN);
-        } else if (!name->cmp("Paperclip")) {
+        } else if (!name->compare("Paperclip")) {
             appearBuilder.append(ANNOT_FILE_ATTACHMENT_AP_PAPERCLIP);
-        } else if (!name->cmp("Graph")) {
+        } else if (!name->compare("Graph")) {
             appearBuilder.append(ANNOT_FILE_ATTACHMENT_AP_GRAPH);
-        } else if (!name->cmp("Tag")) {
+        } else if (!name->compare("Tag")) {
             appearBuilder.append(ANNOT_FILE_ATTACHMENT_AP_TAG);
         }
         appearBuilder.append("Q\n");
@@ -7098,9 +7111,9 @@ void AnnotSound::draw(Gfx *gfx, bool printing)
         } else {
             appearBuilder.append("1 1 1 rg\n");
         }
-        if (!name->cmp("Speaker")) {
+        if (!name->compare("Speaker")) {
             appearBuilder.append(ANNOT_SOUND_AP_SPEAKER);
-        } else if (!name->cmp("Mic")) {
+        } else if (!name->compare("Mic")) {
             appearBuilder.append(ANNOT_SOUND_AP_MIC);
         }
         appearBuilder.append("Q\n");
@@ -7571,10 +7584,9 @@ bool Annots::removeAnnot(const std::shared_ptr<Annot> &annot)
 
     if (idx == annots.end()) {
         return false;
-    } else {
-        annots.erase(idx);
-        return true;
     }
+    annots.erase(idx);
+    return true;
 }
 
 std::shared_ptr<Annot> Annots::createAnnot(Object &&dictObject, const Object *obj)

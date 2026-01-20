@@ -7,6 +7,7 @@
 //
 // Copyright (C) 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
 // Copyright (C) 2022 by Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -62,10 +63,9 @@ int main(int argc, char *argv[])
     if (baseImageRef == Ref::INVALID()) {
         if (fail) {
             return 0;
-        } else {
-            fprintf(stderr, "ImageEmbeddingUtils::embed() failed.\n");
-            return 1;
         }
+        fprintf(stderr, "ImageEmbeddingUtils::embed() failed.\n");
+        return 1;
     }
 
     // Save the updated PDF document.
@@ -91,13 +91,13 @@ int main(int argc, char *argv[])
         }
     }
     if (!colorSpace.toStr().empty()) {
-        if (colorSpace.cmp(baseImageDict->lookup("ColorSpace").getName()) != 0) {
+        if (colorSpace.compare(baseImageDict->lookup("ColorSpace").getName()) != 0) {
             fprintf(stderr, "A problem with ColorSpace.\n");
             return 1;
         }
     }
     if (!filter.toStr().empty()) {
-        if (filter.cmp(baseImageDict->lookup("Filter").getName()) != 0) {
+        if (filter.compare(baseImageDict->lookup("Filter").getName()) != 0) {
             fprintf(stderr, "A problem with Filter.\n");
             return 1;
         }

@@ -6,7 +6,7 @@
 //
 // Copyright 2015 André Guerreiro <aguerreiro1985@gmail.com>
 // Copyright 2015 André Esser <bepandre@hotmail.com>
-// Copyright 2015, 2017-2025 Albert Astals Cid <aacid@kde.org>
+// Copyright 2015, 2017-2026 Albert Astals Cid <aacid@kde.org>
 // Copyright 2016 Markus Kilås <digital@markuspage.com>
 // Copyright 2017, 2019 Hans-Ulrich Jüttner <huj@froreich-bioscientia.de>
 // Copyright 2017, 2019 Adrian Johnson <ajohnson@redneon.com>
@@ -18,7 +18,7 @@
 // Copyright 2021 Theofilos Intzoglou <int.teo@gmail.com>
 // Copyright 2022 Felix Jung <fxjung@posteo.de>
 // Copyright 2022, 2024 Erich E. Hoover <erich.e.hoover@gmail.com>
-// Copyright 2023-2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2023-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright 2025 Blair Bonnett <blair.bonnett@gmail.com>
 //
 //========================================================================
@@ -51,7 +51,6 @@
 #include "CryptoSignBackend.h"
 #include "SignatureInfo.h"
 #include "Win32Console.h"
-#include "numberofcharacters.h"
 #include "UTF.h"
 #if __has_include(<libgen.h>)
 #    include <libgen.h>
@@ -162,7 +161,7 @@ static std::vector<std::string> parseAssertSigner(std::string_view input)
     return std::vector<std::string> { std::string { input } };
 }
 
-static bool dumpSignature(int sig_num, int sigCount, FormFieldSignature *s, const char *filename)
+static bool dumpSignature(int sig_num, FormFieldSignature *s, const char *filename)
 {
     const std::vector<unsigned char> &signature = s->getSignature();
     if (signature.empty()) {
@@ -170,9 +169,8 @@ static bool dumpSignature(int sig_num, int sigCount, FormFieldSignature *s, cons
         return false;
     }
 
-    const int sigCountWidth = numberOfCharacters(sigCount);
     const std::string filenameWithExtension = GooString::format("{0:s}.sig", gbasename(filename).c_str());
-    const std::string sig_numString = GooString::formatLongLong(sig_num, sigCountWidth);
+    const std::string sig_numString = std::to_string(sig_num);
     const std::string path = filenameWithExtension + sig_numString;
     printf("Signature #%d (%lu bytes) => %s\n", sig_num, signature.size(), path.c_str());
     std::ofstream outfile(path.c_str(), std::ofstream::binary);
@@ -288,10 +286,9 @@ static std::vector<std::unique_ptr<X509CertificateInfo>> getAvailableSigningCert
         firstTime = false;
         if (!nssPassword.empty()) {
             return strdup(nssPassword.c_str());
-        } else {
-            passwordNeeded = true;
-            return nullptr;
         }
+        passwordNeeded = true;
+        return nullptr;
     };
     NSSSignatureConfiguration::setNSSPasswordCallback(passwordCallback);
 #endif
@@ -419,18 +416,18 @@ int main(int argc, char *argv[])
         const std::vector<std::unique_ptr<X509CertificateInfo>> vCerts = getAvailableSigningCertificates(&getCertsError);
         if (getCertsError) {
             return 2;
+        }
+        if (vCerts.empty()) {
+            printf("There are no certificates available.\n");
         } else {
-            if (vCerts.empty()) {
-                printf("There are no certificates available.\n");
-            } else {
-                printf("Certificate nicknames available:\n");
-                for (auto &cert : vCerts) {
-                    const GooString &nick = cert->getNickName();
-                    const auto location = locationToString(cert->getKeyLocation());
-                    printf("%s %s %s %s\n", nick.c_str(), (cert->isQualified() ? "(*)" : "   "), location.c_str(), allowPgp ? typeToString(cert->getCertificateType()) : "");
-                }
+            printf("Certificate nicknames available:\n");
+            for (const auto &cert : vCerts) {
+                const GooString &nick = cert->getNickName();
+                const auto location = locationToString(cert->getKeyLocation());
+                printf("%s %s %s %s\n", nick.c_str(), (cert->isQualified() ? "(*)" : "   "), location.c_str(), allowPgp ? typeToString(cert->getCertificateType()) : "");
             }
         }
+
         return 0;
     }
 
@@ -515,7 +512,7 @@ int main(int argc, char *argv[])
             std::uniform_int_distribution<> distrib(1, 15);
             for (int i = 0; i < 32; ++i) {
                 const int value = distrib(gen);
-                newSignatureFieldName.append(value < 10 ? 48 + value : 65 + (value - 10));
+                newSignatureFieldName.push_back(value < 10 ? 48 + value : 65 + (value - 10));
             }
         }
 
@@ -628,7 +625,7 @@ int main(int argc, char *argv[])
         if (dumpSignatures) {
             printf("Dumping Signatures: %u\n", sigCount);
             for (unsigned int i = 0; i < sigCount; i++) {
-                const bool dumpingOk = dumpSignature(i, sigCount, signatures.at(i), fileName->c_str());
+                const bool dumpingOk = dumpSignature(i, signatures.at(i), fileName->c_str());
                 if (!dumpingOk) {
                     // for now, do nothing. We have logged a message
                     // to the user before returning false in dumpSignature
@@ -637,9 +634,9 @@ int main(int argc, char *argv[])
                 }
             }
             return 0;
-        } else {
-            printf("Digital Signature Info of: %s\n", fileName->c_str());
         }
+        printf("Digital Signature Info of: %s\n", fileName->c_str());
+
     } else {
         printf("File '%s' does not contain any signatures\n", fileName->c_str());
         return 2;
@@ -772,7 +769,6 @@ int main(int argc, char *argv[])
             }
         }
         return 0;
-    } else {
-        return 1;
     }
+    return 1;
 }

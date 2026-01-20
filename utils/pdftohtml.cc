@@ -13,7 +13,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2007-2008, 2010, 2012, 2015-2020, 2022, 2024, 2025 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2007-2008, 2010, 2012, 2015-2020, 2022, 2024-2026 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2010 Hib Eris <hib@hiberis.nl>
 // Copyright (C) 2010 Mike Slegeir <tehpola@yahoo.com>
 // Copyright (C) 2010, 2013 Suzuki Toshiya <mpsuzuki@hiroshima-u.ac.jp>
@@ -30,7 +30,7 @@
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019, 2021, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2021 Hubert Figuiere <hub@figuiere.net>
-// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -136,8 +136,7 @@ static const ArgDesc argDesc[] = { { "-f", argInt, &firstPage, 0, "first page to
 class SplashOutputDevNoText : public SplashOutputDev
 {
 public:
-    SplashOutputDevNoText(SplashColorMode colorModeA, int bitmapRowPadA, bool reverseVideoA, SplashColorPtr paperColorA, bool bitmapTopDownA = true)
-        : SplashOutputDev(colorModeA, bitmapRowPadA, reverseVideoA, paperColorA, bitmapTopDownA) { }
+    SplashOutputDevNoText(SplashColorMode colorModeA, int bitmapRowPadA, SplashColorPtr paperColorA, bool bitmapTopDownA = true) : SplashOutputDev(colorModeA, bitmapRowPadA, paperColorA, bitmapTopDownA) { }
     ~SplashOutputDevNoText() override;
 
     void drawChar(GfxState * /*state*/, double /*x*/, double /*y*/, double /*dx*/, double /*dy*/, double /*originX*/, double /*originY*/, CharCode /*code*/, int /*nBytes*/, const Unicode * /*u*/, int /*uLen*/) override { }
@@ -213,7 +212,7 @@ int main(int argc, char *argv[])
 
     fileName = new GooString(argv[1]);
 
-    if (fileName->cmp("-") == 0) {
+    if (fileName->compare("-") == 0) {
         delete fileName;
         fileName = new GooString("fd://0");
     }
@@ -254,7 +253,7 @@ int main(int argc, char *argv[])
         if (!htmlFileName) {
             htmlFileName = std::move(tmp);
         }
-    } else if (fileName->cmp("fd://0") == 0) {
+    } else if (fileName->compare("fd://0") == 0) {
         error(errCommandLine, -1, "You have to provide an output filename when reading from stdin.");
         goto error;
     } else {
@@ -336,7 +335,7 @@ int main(int argc, char *argv[])
         // If the user specified "jpg" use JPEG, otherwise PNG
         SplashImageFileFormat format = strcmp(extension, "jpg") ? splashFormatPng : splashFormatJpeg;
 
-        splashOut = new SplashOutputDevNoText(splashModeRGB8, 4, false, color);
+        splashOut = new SplashOutputDevNoText(splashModeRGB8, 4, color);
         splashOut->startDoc(doc.get());
 
         for (int pg = firstPage; pg <= lastPage; ++pg) {
@@ -345,7 +344,7 @@ int main(int argc, char *argv[])
             SplashBitmap *bitmap = splashOut->getBitmap();
 
             const std::string imgFileName = GooString::format("{0:s}{1:03d}.{2:s}", htmlFileName->c_str(), pg, extension);
-            auto f1 = dataUrls ? imf.open("wb") : fopen(imgFileName.c_str(), "wb");
+            auto *f1 = dataUrls ? imf.open("wb") : fopen(imgFileName.c_str(), "wb");
             if (!f1) {
                 fprintf(stderr, "Could not open %s\n", imgFileName.c_str());
                 continue;
@@ -446,12 +445,10 @@ static std::optional<std::string> getInfoDate(Dict *infoDict, const char *key)
             mktime(&tmStruct); // compute the tm_wday and tm_yday fields
             if (strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S+00:00", &tmStruct)) {
                 return std::string(buf);
-            } else {
-                return s->toStr();
             }
-        } else {
             return s->toStr();
         }
+        return s->toStr();
     }
     return {};
 }

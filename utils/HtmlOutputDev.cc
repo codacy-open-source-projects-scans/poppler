@@ -47,7 +47,7 @@
 // Copyright (C) 2020 Eddie Kohler <ekohler@gmail.com>
 // Copyright (C) 2021 Christopher Hasse <hasse.christopher@gmail.com>
 // Copyright (C) 2022 Brian Rosenfield <brosenfi@yahoo.com>
-// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2025 Arnav V <arnav0872@gmail.com>
 //
 // To see a description of the changes please see the Changelog file that
@@ -638,7 +638,7 @@ void HtmlPage::coalesce()
             CloseTags(str1->htext.get(), finish_a, finish_italic, finish_bold);
             if (switch_links && hlink2 != nullptr) {
                 const std::unique_ptr<GooString> ls = hlink2->getLinkStart();
-                str1->htext->append(ls.get());
+                str1->htext->append(ls->toStr());
             }
             if ((!hfont1->isItalic() || finish_italic) && hfont2->isItalic()) {
                 str1->htext->append("<i>", 3);
@@ -647,7 +647,7 @@ void HtmlPage::coalesce()
                 str1->htext->append("<b>", 3);
             }
 
-            str1->htext->append(str2->htext.get());
+            str1->htext->append(str2->htext->toStr());
             // str1 now contains href for link of str2 (if it is defined)
             str1->link = str2->link;
             hfont1 = hfont2;
@@ -714,7 +714,7 @@ void HtmlPage::dumpAsXML(FILE *f, int page)
     }
 
     for (auto &ptr : imgList) {
-        auto img = static_cast<HtmlImage *>(ptr.get());
+        auto *img = static_cast<HtmlImage *>(ptr.get());
         if (!noRoundedCoordinates) {
             fprintf(f, R"(<image top="%d" left="%d" )", xoutRound(img->yMin), xoutRound(img->xMin));
             fprintf(f, R"(width="%d" height="%d" )", xoutRound(img->xMax - img->xMin), xoutRound(img->yMax - img->yMin));
@@ -915,7 +915,7 @@ void HtmlPage::dump(FILE *f, int pageNum, const std::vector<std::string> &backgr
         fprintf(f, "<a name=%d></a>", pageNum);
         // Loop over the list of image names on this page
         for (auto &ptr : imgList) {
-            auto img = static_cast<HtmlImage *>(ptr.get());
+            auto *img = static_cast<HtmlImage *>(ptr.get());
 
             // see printCSS() for class names
             const char *styles[4] = { "", " class=\"xflip\"", " class=\"yflip\"", " class=\"xyflip\"" };
@@ -993,9 +993,9 @@ HtmlMetaVar::~HtmlMetaVar() = default;
 std::unique_ptr<GooString> HtmlMetaVar::toString() const
 {
     auto result = std::make_unique<GooString>("<meta name=\"");
-    result->append(name.get());
+    result->append(name->toStr());
     result->append("\" content=\"");
-    result->append(content.get());
+    result->append(content->toStr());
     result->append("\"/>");
     return result;
 }
@@ -1534,9 +1534,8 @@ std::unique_ptr<GooString> HtmlOutputDev::getLinkDest(AnnotLink *link)
                 printf(" link to page %d ", destPage);
             }
             return file;
-        } else {
-            return std::make_unique<GooString>();
         }
+        return std::make_unique<GooString>();
     }
     case actionGoToR: {
         LinkGoToR *ha = (LinkGoToR *)link->getAction();
@@ -1564,7 +1563,7 @@ std::unique_ptr<GooString> HtmlOutputDev::getLinkDest(AnnotLink *link)
                     file->erase(file->size() - 4, 4);
                     file->append(".html");
                 }
-                file->append('#');
+                file->push_back('#');
                 file->append(std::to_string(destPage));
             }
         }

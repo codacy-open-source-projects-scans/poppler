@@ -8,7 +8,7 @@
 // Copyright (C) 2015 André Esser <bepandre@hotmail.com>
 // Copyright (C) 2016, 2018, 2021 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
-// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2024, 2025 Erich E. Hoover <erich.e.hoover@gmail.com>
 //
 // To see a description of the changes please see the Changelog file that
@@ -41,7 +41,7 @@ bool parseDateString(const GooString *date, int *year, int *month, int *day, int
     for (auto &c : u) {
         // Ignore any non ASCII characters
         if (c < 128) {
-            s.append(c);
+            s.push_back(c);
         }
     }
     const char *dateString = s.c_str();
@@ -118,7 +118,7 @@ std::string timeToStringWithFormat(const time_t *timeA, const char *format)
     }
     size_t bufLen = 50;
     std::string buf(bufLen, ' ');
-    while (strftime(&buf[0], buf.size(), fmt.c_str(), &localtime_tm) == 0) {
+    while (strftime(buf.data(), buf.size(), fmt.c_str(), &localtime_tm) == 0) {
         buf.resize(bufLen *= 2);
     }
     buf.resize(buf.find('\0'));

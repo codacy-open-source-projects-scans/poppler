@@ -5,6 +5,7 @@
  * Copyright (C) 2015 Adam Reichold <adamreichold@myopera.com>
  * Copyright (C) 2018, 2021 Nelson Benítez León <nbenitezl@gmail.com>
  * Copyright (C) 2021, Oliver Sander <oliver.sander@tu-dresden.de>
+ * Copyright (C) 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -42,7 +43,7 @@ class PageTransition;
 class PageData
 {
 public:
-    std::unique_ptr<Link> convertLinkActionToLink(::LinkAction *a, const QRectF &linkArea);
+    std::unique_ptr<Link> convertLinkActionToLink(::LinkAction *a, const QRectF &linkArea) const;
 
     DocumentData *parentDoc;
     ::Page *page;
@@ -51,9 +52,9 @@ public:
 
     static std::unique_ptr<Link> convertLinkActionToLink(::LinkAction *a, DocumentData *parentDoc, const QRectF &linkArea);
 
-    std::unique_ptr<TextPage> prepareTextSearch(const QString &text, Page::Rotation rotate, QVector<Unicode> *u);
-    bool performSingleTextSearch(TextPage *textPage, QVector<Unicode> &u, double &sLeft, double &sTop, double &sRight, double &sBottom, Page::SearchDirection direction, bool sCase, bool sWords, bool sDiacritics, bool sAcrossLines);
-    QList<QRectF> performMultipleTextSearch(TextPage *textPage, QVector<Unicode> &u, bool sCase, bool sWords, bool sDiacritics, bool sAcrossLines);
+    std::unique_ptr<TextPage> prepareTextSearch(const QString &text, Page::Rotation rotate, QVector<Unicode> *u) const;
+    static bool performSingleTextSearch(TextPage *textPage, QVector<Unicode> &u, double &sLeft, double &sTop, double &sRight, double &sBottom, Page::SearchDirection direction, bool sCase, bool sWords, bool sDiacritics, bool sAcrossLines);
+    static QList<QRectF> performMultipleTextSearch(TextPage *textPage, QVector<Unicode> &u, bool sCase, bool sWords, bool sDiacritics, bool sAcrossLines);
 };
 
 }

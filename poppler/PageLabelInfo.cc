@@ -8,7 +8,7 @@
 // Copyright (C) 2012 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2024 Oliver Sander <oliver.sander@tu-dresden.de>
-// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2025, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -45,7 +45,7 @@ PageLabelInfo::Interval::Interval(const Dict &dict, int baseA)
 
     obj = dict.lookup("P");
     if (obj.isString()) {
-        const auto str = obj.getString();
+        const auto *const str = obj.getString();
         prefix.assign(str->toStr());
     }
 
@@ -220,7 +220,7 @@ bool PageLabelInfo::indexToLabel(int index, GooString *label) const
             label->append(ucs2_char, 2);
         }
     } else {
-        label->append(&number_string);
+        label->append(number_string.toStr());
     }
 
     return true;

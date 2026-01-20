@@ -16,7 +16,7 @@
 // Copyright (C) 2006 Takashi Iwai <tiwai@suse.de>
 // Copyright (C) 2007 Koji Otani <sho@bbr.jp>
 // Copyright (C) 2007 Carlos Garcia Campos <carlosgc@gnome.org>
-// Copyright (C) 2008, 2009, 2012, 2014-2022, 2024, 2025 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2008, 2009, 2012, 2014-2022, 2024-2026 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2008 Tomas Are Haavet <tomasare@gmail.com>
 // Copyright (C) 2012 Suzuki Toshiya <mpsuzuki@hiroshima-u.ac.jp>
 // Copyright (C) 2012, 2017 Adrian Johnson <ajohnson@redneon.com>
@@ -26,7 +26,7 @@
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2022 Zachary Travis <ztravis@everlaw.com>
 // Copyright (C) 2022, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
-// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -179,8 +179,9 @@ struct T42Table
 // TrueType tables to be embedded in Type 42 fonts.
 // NB: the table names must be in alphabetical order here.
 #define nT42Tables 11
-static const T42Table t42Tables[nT42Tables] = { { "cvt ", true }, { "fpgm", true }, { "glyf", true }, { "head", true },  { "hhea", true }, { "hmtx", true },
-                                                { "loca", true }, { "maxp", true }, { "prep", true }, { "vhea", false }, { "vmtx", false } };
+static const T42Table t42Tables[nT42Tables] = { { .tag = "cvt ", .required = true }, { .tag = "fpgm", .required = true },  { .tag = "glyf", .required = true }, { .tag = "head", .required = true },
+                                                { .tag = "hhea", .required = true }, { .tag = "hmtx", .required = true },  { .tag = "loca", .required = true }, { .tag = "maxp", .required = true },
+                                                { .tag = "prep", .required = true }, { .tag = "vhea", .required = false }, { .tag = "vmtx", .required = false } };
 #define t42HeadTable 3
 #define t42LocaTable 6
 #define t42GlyfTable 2
@@ -477,7 +478,7 @@ std::unique_ptr<FoFiTrueType> FoFiTrueType::load(const char *fileName, int faceI
     return ff;
 }
 
-FoFiTrueType::FoFiTrueType(std::vector<unsigned char> &&fileA, int faceIndexA, PrivateTag) : FoFiBase(std::move(fileA))
+FoFiTrueType::FoFiTrueType(std::vector<unsigned char> &&fileA, int faceIndexA, PrivateTag /*unused*/) : FoFiBase(std::move(fileA))
 {
     parsedOk = false;
     faceIndex = faceIndexA;
@@ -487,7 +488,7 @@ FoFiTrueType::FoFiTrueType(std::vector<unsigned char> &&fileA, int faceIndexA, P
     parse();
 }
 
-FoFiTrueType::FoFiTrueType(std::span<const unsigned char> data, int faceIndexA, PrivateTag) : FoFiBase(data)
+FoFiTrueType::FoFiTrueType(std::span<const unsigned char> data, int faceIndexA, PrivateTag /*unused*/) : FoFiBase(data)
 {
     parsedOk = false;
     faceIndex = faceIndexA;
@@ -516,7 +517,8 @@ int FoFiTrueType::getCmapEncoding(int i) const
 
 int FoFiTrueType::findCmap(int platform, int encoding) const
 {
-    for (int i = 0; i < (int)cmaps.size(); ++i) {
+    const int nCmaps = cmaps.size();
+    for (int i = 0; i < nCmaps; ++i) {
         if (cmaps[i].platform == platform && cmaps[i].encoding == encoding) {
             return i;
         }
@@ -533,7 +535,7 @@ int FoFiTrueType::mapCodeToGID(int i, unsigned int c) const
     unsigned int high, low, idx;
     bool ok;
 
-    if (i < 0 || i >= (int)cmaps.size()) {
+    if (i < 0 || static_cast<size_t>(i) >= cmaps.size()) {
         return 0;
     }
     ok = true;
@@ -608,6 +610,9 @@ int FoFiTrueType::mapCodeToGID(int i, unsigned int c) const
         segCnt = getU32BE(pos + 12, &ok);
         a = -1;
         b = segCnt - 1;
+        if (b > std::numeric_limits<int>::max() / 12) {
+            return 0;
+        }
         segEnd = getU32BE(pos + 16 + 12 * b + 4, &ok);
         if (c > segEnd) {
             return 0;
@@ -701,20 +706,6 @@ int FoFiTrueType::getEmbeddingRights() const
     return 3;
 }
 
-void FoFiTrueType::getFontMatrix(double *mat) const
-{
-    auto cffBlock = getCFFBlock();
-
-    if (!cffBlock) {
-        return;
-    }
-    auto ff = FoFiType1C::make(cffBlock.value());
-    if (!ff) {
-        return;
-    }
-    ff->getFontMatrix(mat);
-}
-
 void FoFiTrueType::convertToType42(const char *psName, char **encoding, const std::vector<int> &codeToGID, FoFiOutputFunc outputFunc, void *outputStream) const
 {
     int maxUsedGlyph;
@@ -764,9 +755,7 @@ void FoFiTrueType::convertToType1(const char *psName, const char **newEncoding, 
 
 void FoFiTrueType::convertToCIDType2(const char *psName, const std::vector<int> &cidMap, bool needVerticalMetrics, FoFiOutputFunc outputFunc, void *outputStream) const
 {
-    int cid, maxUsedGlyph;
     bool ok;
-    int i, j, k;
 
     if (openTypeCFF) {
         return;
@@ -795,12 +784,12 @@ void FoFiTrueType::convertToCIDType2(const char *psName, const std::vector<int> 
         (*outputFunc)(outputStream, buf.c_str(), buf.size());
         if (cidMap.size() > 32767) {
             (*outputFunc)(outputStream, "/CIDMap [", 9);
-            for (i = 0; i < int(cidMap.size()); i += 32768 - 16) {
+            for (size_t i = 0; i < cidMap.size(); i += 32768 - 16) {
                 (*outputFunc)(outputStream, "<\n", 2);
-                for (j = 0; j < 32768 - 16 && i + j < int(cidMap.size()); j += 16) {
+                for (size_t j = 0; j < 32768 - 16 && i + j < cidMap.size(); j += 16) {
                     (*outputFunc)(outputStream, "  ", 2);
-                    for (k = 0; k < 16 && i + j + k < int(cidMap.size()); ++k) {
-                        cid = cidMap[i + j + k];
+                    for (size_t k = 0; k < 16 && i + j + k < cidMap.size(); ++k) {
+                        const int cid = cidMap[i + j + k];
                         buf = GooString::format("{0:02x}{1:02x}", (cid >> 8) & 0xff, cid & 0xff);
                         (*outputFunc)(outputStream, buf.c_str(), buf.size());
                     }
@@ -812,10 +801,10 @@ void FoFiTrueType::convertToCIDType2(const char *psName, const std::vector<int> 
             (*outputFunc)(outputStream, "] def\n", 6);
         } else {
             (*outputFunc)(outputStream, "/CIDMap <\n", 10);
-            for (i = 0; i < int(cidMap.size()); i += 16) {
+            for (size_t i = 0; i < cidMap.size(); i += 16) {
                 (*outputFunc)(outputStream, "  ", 2);
-                for (j = 0; j < 16 && i + j < int(cidMap.size()); ++j) {
-                    cid = cidMap[i + j];
+                for (size_t j = 0; j < 16 && i + j < cidMap.size(); ++j) {
+                    const int cid = cidMap[i + j];
                     buf = GooString::format("{0:02x}{1:02x}", (cid >> 8) & 0xff, cid & 0xff);
                     (*outputFunc)(outputStream, buf.c_str(), buf.size());
                 }
@@ -829,8 +818,8 @@ void FoFiTrueType::convertToCIDType2(const char *psName, const std::vector<int> 
         (*outputFunc)(outputStream, buf.c_str(), buf.size());
         if (nGlyphs > 32767) {
             (*outputFunc)(outputStream, "/CIDMap [\n", 10);
-            for (i = 0; i < nGlyphs; i += 32767) {
-                j = nGlyphs - i < 32767 ? nGlyphs - i : 32767;
+            for (int i = 0; i < nGlyphs; i += 32767) {
+                const int j = nGlyphs - i < 32767 ? nGlyphs - i : 32767;
                 buf = GooString::format("  {0:d} string 0 1 {1:d} {{\n", 2 * j, j - 1);
                 (*outputFunc)(outputStream, buf.c_str(), buf.size());
                 buf = GooString::format("    2 copy dup 2 mul exch {0:d} add -8 bitshift put\n", i);
@@ -863,7 +852,8 @@ void FoFiTrueType::convertToCIDType2(const char *psName, const std::vector<int> 
     (*outputFunc)(outputStream, "  end readonly def\n", 19);
 
     // write the guts of the dictionary
-    cvtSfnts(outputFunc, outputStream, std::nullopt, needVerticalMetrics, &maxUsedGlyph);
+    int unusedMaxUsedGlyph;
+    cvtSfnts(outputFunc, outputStream, std::nullopt, needVerticalMetrics, &unusedMaxUsedGlyph);
 
     // end the dictionary and define the font
     (*outputFunc)(outputStream, "CIDFontName currentdict end /CIDFont defineresource pop\n", 56);
@@ -994,7 +984,7 @@ void FoFiTrueType::convertToType0(const std::string &psName, const std::vector<i
     ff->convertToType0(psName, cidMap, outputFunc, outputStream);
 }
 
-void FoFiTrueType::cvtEncoding(char **encoding, FoFiOutputFunc outputFunc, void *outputStream) const
+void FoFiTrueType::cvtEncoding(char **encoding, FoFiOutputFunc outputFunc, void *outputStream)
 {
     const char *name;
     int i;
@@ -1104,7 +1094,7 @@ void FoFiTrueType::cvtSfnts(FoFiOutputFunc outputFunc, void *outputStream, const
 
     // construct the 'head' table, zero out the font checksum
     int i = seekTable("head");
-    if (i < 0 || i >= (int)tables.size()) {
+    if (i < 0 || static_cast<size_t>(i) >= tables.size()) {
         return;
     }
     int pos = tables[i].offset;
@@ -1358,13 +1348,13 @@ void FoFiTrueType::cvtSfnts(FoFiOutputFunc outputFunc, void *outputStream, const
                 if ((j = seekTable(t42Tables[i].tag)) >= 0 && checkRegion(tables[j].offset, tables[j].len)) {
                     dumpString(std::span(file.data() + tables[j].offset, tables[j].len), outputFunc, outputStream);
                 } else if (needVerticalMetrics && i == t42VheaTable) {
-                    if (unlikely(length > (int)sizeof(vheaTab))) {
+                    if (unlikely(static_cast<size_t>(length) > sizeof(vheaTab))) {
                         error(errSyntaxWarning, -1, "length bigger than vheaTab size");
                         length = sizeof(vheaTab);
                     }
                     dumpString(vheaTab, outputFunc, outputStream);
                 } else if (needVerticalMetrics && i == t42VmtxTable) {
-                    if (unlikely(length > (int)vmtxTab.size())) {
+                    if (unlikely(static_cast<size_t>(length) > vmtxTab.size())) {
                         error(errSyntaxWarning, -1, "length bigger than vmtxTab size");
                     }
                     dumpString(vmtxTab, outputFunc, outputStream);
@@ -1380,14 +1370,14 @@ void FoFiTrueType::cvtSfnts(FoFiOutputFunc outputFunc, void *outputStream, const
 void FoFiTrueType::dumpString(std::span<const unsigned char> s, FoFiOutputFunc outputFunc, void *outputStream)
 {
     (*outputFunc)(outputStream, "<", 1);
-    for (int i = 0; i < (int)s.size(); i += 32) {
-        for (int j = 0; j < 32 && i + j < (int)s.size(); ++j) {
+    for (size_t i = 0; i < s.size(); i += 32) {
+        for (size_t j = 0; j < 32 && i + j < s.size(); ++j) {
             const std::string buf = GooString::format("{0:02x}", s[i + j] & 0xff);
             (*outputFunc)(outputStream, buf.c_str(), buf.size());
         }
         if (i % (65536 - 32) == 65536 - 64) {
             (*outputFunc)(outputStream, ">\n<", 3);
-        } else if (i + 32 < (int)s.size()) {
+        } else if (i + 32 < s.size()) {
             (*outputFunc)(outputStream, "\n", 1);
         }
     }
@@ -1521,7 +1511,12 @@ void FoFiTrueType::parse()
             cmaps[j].offset = tables[i].offset + getU32BE(pos + 4, &parsedOk);
             pos += 8;
             cmaps[j].fmt = getU16BE(cmaps[j].offset, &parsedOk);
-            cmaps[j].len = getU16BE(cmaps[j].offset + 2, &parsedOk);
+            int lenOffset;
+            if (checkedAdd(cmaps[j].offset, 2, &lenOffset)) {
+                parsedOk = false;
+            } else {
+                cmaps[j].len = getU16BE(lenOffset, &parsedOk);
+            }
         }
         if (!parsedOk) {
             cmaps.clear();
@@ -1635,10 +1630,9 @@ err:
 
 int FoFiTrueType::seekTable(const char *tag) const
 {
-    unsigned int tagI;
-
-    tagI = ((tag[0] & 0xff) << 24) | ((tag[1] & 0xff) << 16) | ((tag[2] & 0xff) << 8) | (tag[3] & 0xff);
-    for (int i = 0; i < (int)tables.size(); ++i) {
+    const unsigned int tagI = ((tag[0] & 0xff) << 24) | ((tag[1] & 0xff) << 16) | ((tag[2] & 0xff) << 8) | (tag[3] & 0xff);
+    const int nTables = tables.size();
+    for (int i = 0; i < nTables; ++i) {
         if (tables[i].tag == tagI) {
             return i;
         }
@@ -1646,7 +1640,7 @@ int FoFiTrueType::seekTable(const char *tag) const
     return -1;
 }
 
-unsigned int FoFiTrueType::charToTag(const std::string &tagName) const
+unsigned int FoFiTrueType::charToTag(const std::string &tagName)
 {
     size_t n = tagName.size();
     unsigned int tag = 0;
@@ -1761,7 +1755,8 @@ int FoFiTrueType::setupGSUB(const std::string &scriptName, const std::string &la
             /* convert to offset from file top */
             gsubFeatureTable = ftable + gsubTable + featureList;
             return 0;
-        } else if (tag == vertTag) {
+        }
+        if (tag == vertTag) {
             ftable = getU16BE(tpos, &parsedOk);
         }
     }
@@ -1782,7 +1777,8 @@ int FoFiTrueType::setupGSUB(const std::string &scriptName, const std::string &la
             /* vrt2 is preferred, overwrite vert */
             ftable = getU16BE(pos, &parsedOk);
             break;
-        } else if (ftable == 0 && tag == vertTag) {
+        }
+        if (ftable == 0 && tag == vertTag) {
             ftable = getU16BE(pos, &parsedOk);
         }
         pos = oldPos; /* restore old position */

@@ -20,7 +20,7 @@
 // Copyright (C) 2008 Boris Toloknov <tlknv@yandex.ru>
 // Copyright (C) 2010, 2021, 2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2013 Julien Nabet <serval2412@yahoo.fr>
-// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2025, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -115,7 +115,7 @@ std::unique_ptr<GooString> HtmlLink::getLinkStart() const
 {
     std::unique_ptr<GooString> res = std::make_unique<GooString>("<a href=\"");
     std::unique_ptr<GooString> d = xml ? EscapeSpecialChars(dest.get()) : nullptr;
-    res->append(d ? d.get() : dest.get());
+    res->append(d ? d->toStr() : dest->toStr());
     res->append("\">");
     return res;
 }

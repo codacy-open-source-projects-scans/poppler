@@ -20,7 +20,7 @@
 // Copyright (C) 2012 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2012 Adam Reichold <adamreichold@myopera.com>
 // Copyright (C) 2013 Fabio D'Urso <fabiodurso@hotmail.it>
-// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2025, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2025 Arnav V <arnav0872@gmail.com>
 //
 // To see a description of the changes please see the Changelog file that
@@ -30,6 +30,7 @@
 
 #include <config.h>
 
+#include <climits>
 #include <cstdlib>
 #include <cstring>
 #include <cctype>
@@ -416,7 +417,7 @@ SampledFunction::~SampledFunction()
     }
 }
 
-SampledFunction::SampledFunction(const SampledFunction *func, PrivateTag) : Function(func)
+SampledFunction::SampledFunction(const SampledFunction *func, PrivateTag /*unused*/) : Function(func)
 {
     memcpy(sampleSize, func->sampleSize, funcMaxInputs * sizeof(int));
 
@@ -627,7 +628,7 @@ ExponentialFunction::ExponentialFunction(Dict *dict)
 
 ExponentialFunction::~ExponentialFunction() = default;
 
-ExponentialFunction::ExponentialFunction(const ExponentialFunction *func, PrivateTag) : Function(func)
+ExponentialFunction::ExponentialFunction(const ExponentialFunction *func, PrivateTag /*unused*/) : Function(func)
 {
     memcpy(c0, func->c0, funcMaxOutputs * sizeof(double));
     memcpy(c1, func->c1, funcMaxOutputs * sizeof(double));
@@ -758,7 +759,7 @@ StitchingFunction::StitchingFunction(Dict *dict, RefRecursionChecker &usedParent
     ok = true;
 }
 
-StitchingFunction::StitchingFunction(const StitchingFunction *func, PrivateTag) : Function(func)
+StitchingFunction::StitchingFunction(const StitchingFunction *func, PrivateTag /*unused*/) : Function(func)
 {
     funcs.reserve(func->funcs.size());
     for (const std::unique_ptr<Function> &f : func->funcs) {
@@ -962,7 +963,7 @@ public:
         }
         return 0;
     }
-    bool empty() { return sp == psStackSize; }
+    bool empty() const { return sp == psStackSize; }
     bool topIsInt() { return sp < psStackSize && stack[sp].type == psInt; }
     bool topTwoAreInts() { return sp < psStackSize - 1 && stack[sp].type == psInt && stack[sp + 1].type == psInt; }
     bool topIsReal() { return sp < psStackSize && stack[sp].type == psReal; }
@@ -994,7 +995,7 @@ public:
     }
 
 private:
-    bool checkOverflow(int n = 1)
+    bool checkOverflow(int n = 1) const
     {
         if (sp - n < 0) {
             error(errSyntaxError, -1, "Stack overflow in PostScript function");
@@ -1002,7 +1003,7 @@ private:
         }
         return true;
     }
-    bool checkUnderflow()
+    bool checkUnderflow() const
     {
         if (sp == psStackSize) {
             error(errSyntaxError, -1, "Stack underflow in PostScript function");
@@ -1117,7 +1118,7 @@ PostScriptFunction::PostScriptFunction(Object *funcObj, Dict *dict)
 
     //----- parse the function
     codeString = std::make_unique<GooString>();
-    if (getToken(str)->cmp("{") != 0) {
+    if (getToken(str)->compare("{") != 0) {
         error(errSyntaxError, -1, "Expected '{{' at start of PostScript function");
         goto err1;
     }
@@ -1142,7 +1143,7 @@ err1:
     return;
 }
 
-PostScriptFunction::PostScriptFunction(const PostScriptFunction *func, PrivateTag) : Function(func)
+PostScriptFunction::PostScriptFunction(const PostScriptFunction *func, PrivateTag /*unused*/) : Function(func)
 {
     codeSize = func->codeSize;
 
@@ -1242,7 +1243,7 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr, int &recursionCoun
                 code[*codePtr].intg = atoi(tok->c_str());
             }
             ++*codePtr;
-        } else if (!tok->cmp("{")) {
+        } else if (!tok->compare("{")) {
             opPtr = *codePtr;
             *codePtr += 3;
             resizeCode(opPtr + 2);
@@ -1250,7 +1251,7 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr, int &recursionCoun
                 return false;
             }
             tok = getToken(str);
-            if (!tok->cmp("{")) {
+            if (!tok->compare("{")) {
                 elsePtr = *codePtr;
                 if (!parseCode(str, codePtr, ++recursionCounter)) {
                     return false;
@@ -1259,7 +1260,7 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr, int &recursionCoun
             } else {
                 elsePtr = -1;
             }
-            if (!tok->cmp("if")) {
+            if (!tok->compare("if")) {
                 if (elsePtr >= 0) {
                     error(errSyntaxError, -1, "Got 'if' operator with two blocks in PostScript function");
                     return false;
@@ -1268,7 +1269,7 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr, int &recursionCoun
                 code[opPtr].op = psOpIf;
                 code[opPtr + 2].type = psBlock;
                 code[opPtr + 2].blk = *codePtr;
-            } else if (!tok->cmp("ifelse")) {
+            } else if (!tok->compare("ifelse")) {
                 if (elsePtr < 0) {
                     error(errSyntaxError, -1, "Got 'ifelse' operator with one block in PostScript function");
                     return false;
@@ -1283,7 +1284,7 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr, int &recursionCoun
                 error(errSyntaxError, -1, "Expected if/ifelse operator in PostScript function");
                 return false;
             }
-        } else if (!tok->cmp("}")) {
+        } else if (!tok->compare("}")) {
             resizeCode(*codePtr);
             code[*codePtr].type = psOperator;
             code[*codePtr].op = psOpReturn;
@@ -1296,7 +1297,7 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr, int &recursionCoun
             // invariant: psOpNames[a] < tok < psOpNames[b]
             while (b - a > 1) {
                 mid = (a + b) / 2;
-                cmp = tok->cmp(psOpNames[mid]);
+                cmp = tok->compare(psOpNames[mid]);
                 if (cmp > 0) {
                     a = mid;
                 } else if (cmp < 0) {
@@ -1329,7 +1330,7 @@ std::unique_ptr<GooString> PostScriptFunction::getToken(Stream *str)
         if ((c = str->getChar()) == EOF) {
             break;
         }
-        codeString->append(c);
+        codeString->push_back(c);
         if (comment) {
             if (c == '\x0a' || c == '\x0d') {
                 comment = false;
@@ -1346,11 +1347,11 @@ std::unique_ptr<GooString> PostScriptFunction::getToken(Stream *str)
         while (true) {
             s.push_back((char)c);
             c = str->lookChar();
-            if (c == EOF || !(isdigit(c) || c == '.' || c == '-')) {
+            if (c == EOF || (!isdigit(c) && c != '.' && c != '-')) {
                 break;
             }
             str->getChar();
-            codeString->append(c);
+            codeString->push_back(c);
         }
     } else {
         while (true) {
@@ -1360,7 +1361,7 @@ std::unique_ptr<GooString> PostScriptFunction::getToken(Stream *str)
                 break;
             }
             str->getChar();
-            codeString->append(c);
+            codeString->push_back(c);
         }
     }
     return std::make_unique<GooString>(std::move(s));
@@ -1525,7 +1526,7 @@ void PostScriptFunction::exec(PSStack *stack, int codePtr) const
             case psOpIdiv:
                 i2 = stack->popInt();
                 i1 = stack->popInt();
-                if (likely((i2 != 0) && !(i2 == -1 && i1 == INT_MIN))) {
+                if (likely((i2 != 0) && (i2 != -1 || i1 != INT_MIN))) {
                     stack->pushInt(i1 / i2);
                 }
                 break;

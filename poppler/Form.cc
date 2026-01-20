@@ -35,7 +35,7 @@
 // Copyright 2021 Even Rouault <even.rouault@spatialys.com>
 // Copyright 2022 Alexander Sulfrian <asulfrian@zedat.fu-berlin.de>
 // Copyright 2022, 2024 Erich E. Hoover <erich.e.hoover@gmail.com>
-// Copyright 2023-2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2023-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright 2024 Pratham Gandhi <ppg.1382@gmail.com>
 // Copyright 2024 Vincent Lefevre <vincent@vinc17.net>
 // Copyright 2025 Juraj Šarinay <juraj@sarinay.com>
@@ -132,7 +132,7 @@ FormWidget::FormWidget(PDFDoc *docA, Object *aobj, unsigned num, Ref aref, FormF
 
 FormWidget::~FormWidget() = default;
 
-void FormWidget::print(int indent)
+void FormWidget::print(int indent) const
 {
     printf("%*s+ (%d %d): [widget]\n", indent, "", ref.num, ref.gen);
 }
@@ -315,7 +315,7 @@ void FormWidgetButton::setState(bool astate)
     for (int i = 0; i < tot; i++) {
         bool found_related = false;
         FormWidget *wid = this_page_widgets->getWidget(i);
-        const bool same_fqn = wid->getFullyQualifiedName()->cmp(getFullyQualifiedName()) == 0;
+        const bool same_fqn = wid->getFullyQualifiedName()->compare(getFullyQualifiedName()->toStr()) == 0;
         const bool same_button_type = wid->getType() == formButton && static_cast<const FormWidgetButton *>(wid)->getButtonType() == this_button_type;
 
         if (same_fqn && same_button_type) {
@@ -616,11 +616,11 @@ std::optional<CryptoSign::SigningErrorMessage> FormWidgetSignature::signDocument
 {
     auto backend = CryptoSign::Factory::createActive();
     if (!backend) {
-        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::InternalError, ERROR_IN_CODE_LOCATION };
+        return CryptoSign::SigningErrorMessage { .type = CryptoSign::SigningError::InternalError, .message = ERROR_IN_CODE_LOCATION };
     }
     if (certNickname.empty()) {
         error(errInternal, -1, "signDocument: Empty nickname");
-        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::KeyMissing, ERROR_IN_CODE_LOCATION };
+        return CryptoSign::SigningErrorMessage { .type = CryptoSign::SigningError::KeyMissing, .message = ERROR_IN_CODE_LOCATION };
     }
 
     auto sigHandler = backend->createSigningHandler(certNickname, HashAlgorithm::Sha256);
@@ -629,7 +629,7 @@ std::optional<CryptoSign::SigningErrorMessage> FormWidgetSignature::signDocument
     std::unique_ptr<X509CertificateInfo> certInfo = sigHandler->getCertificateInfo();
     if (!certInfo) {
         error(errInternal, -1, "signDocument: error getting signature info");
-        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::KeyMissing, ERROR_IN_CODE_LOCATION };
+        return CryptoSign::SigningErrorMessage { .type = CryptoSign::SigningError::KeyMissing, .message = ERROR_IN_CODE_LOCATION };
     }
     const std::string signerName = certInfo->getSubjectInfo().commonName;
     signatureField->setCertificateInfo(certInfo);
@@ -638,13 +638,13 @@ std::optional<CryptoSign::SigningErrorMessage> FormWidgetSignature::signDocument
     Object vObj(new Dict(xref));
     Ref vref = xref->addIndirectObject(vObj);
     if (!createSignature(vObj, vref, GooString(signerName), CryptoSign::maxSupportedSignatureSize, reason, location, sigHandler->signatureType())) {
-        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::InternalError, ERROR_IN_CODE_LOCATION };
+        return CryptoSign::SigningErrorMessage { .type = CryptoSign::SigningError::InternalError, .message = ERROR_IN_CODE_LOCATION };
     }
 
     // Incremental save to avoid breaking any existing signatures
     if (doc->saveAs(saveFilename, writeForceIncremental) != errNone) {
         error(errIO, -1, "signDocument: error saving to file \"{0:s}\"", saveFilename.c_str());
-        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::WriteFailed, ERROR_IN_CODE_LOCATION };
+        return CryptoSign::SigningErrorMessage { .type = CryptoSign::SigningError::WriteFailed, .message = ERROR_IN_CODE_LOCATION };
     }
 
     // Get start/end offset of signature object in the saved PDF
@@ -652,7 +652,7 @@ std::optional<CryptoSign::SigningErrorMessage> FormWidgetSignature::signDocument
     const GooString fname(saveFilename);
     if (!getObjectStartEnd(fname, vref.num, &objStart, &objEnd, ownerPassword, userPassword)) {
         error(errIO, -1, "signDocument: unable to get signature object offsets");
-        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::InternalError, ERROR_IN_CODE_LOCATION };
+        return CryptoSign::SigningErrorMessage { .type = CryptoSign::SigningError::InternalError, .message = ERROR_IN_CODE_LOCATION };
     }
 
     // Update byte range of signature in the saved PDF
@@ -661,17 +661,17 @@ std::optional<CryptoSign::SigningErrorMessage> FormWidgetSignature::signDocument
     if (!updateOffsets(file, objStart, objEnd, &sigStart, &sigEnd, &fileSize)) {
         error(errIO, -1, "signDocument: unable update byte range");
         fclose(file);
-        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::WriteFailed, ERROR_IN_CODE_LOCATION };
+        return CryptoSign::SigningErrorMessage { .type = CryptoSign::SigningError::WriteFailed, .message = ERROR_IN_CODE_LOCATION };
     }
 
     // compute hash of byte ranges
     if (!hashFileRange(file, sigHandler.get(), 0LL, sigStart)) {
         fclose(file);
-        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::InternalError, ERROR_IN_CODE_LOCATION };
+        return CryptoSign::SigningErrorMessage { .type = CryptoSign::SigningError::InternalError, .message = ERROR_IN_CODE_LOCATION };
     }
     if (!hashFileRange(file, sigHandler.get(), sigEnd, fileSize)) {
         fclose(file);
-        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::InternalError, ERROR_IN_CODE_LOCATION };
+        return CryptoSign::SigningErrorMessage { .type = CryptoSign::SigningError::InternalError, .message = ERROR_IN_CODE_LOCATION };
     }
 
     // and sign it
@@ -684,7 +684,7 @@ std::optional<CryptoSign::SigningErrorMessage> FormWidgetSignature::signDocument
     if (std::get<std::vector<unsigned char>>(signature).size() > CryptoSign::maxSupportedSignatureSize) {
         error(errInternal, -1, "signature too large");
         fclose(file);
-        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::InternalError, ERROR_IN_CODE_LOCATION };
+        return CryptoSign::SigningErrorMessage { .type = CryptoSign::SigningError::InternalError, .message = ERROR_IN_CODE_LOCATION };
     }
 
     // pad with zeroes to placeholder length
@@ -694,7 +694,7 @@ std::optional<CryptoSign::SigningErrorMessage> FormWidgetSignature::signDocument
     if (!updateSignature(file, sigStart, sigEnd, std::get<std::vector<unsigned char>>(signature))) {
         error(errIO, -1, "signDocument: unable update signature");
         fclose(file);
-        return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::WriteFailed, ERROR_IN_CODE_LOCATION };
+        return CryptoSign::SigningErrorMessage { .type = CryptoSign::SigningError::WriteFailed, .message = ERROR_IN_CODE_LOCATION };
     }
     signatureField->setSignature(std::get<std::vector<unsigned char>>(std::move(signature)));
 
@@ -751,7 +751,7 @@ std::optional<CryptoSign::SigningErrorMessage> FormWidgetSignature::signDocument
     if (!signatureText.empty() || !signatureTextLeft.empty()) {
         const std::string pdfFontName = form->findPdfFontNameToUseForSigning();
         if (pdfFontName.empty()) {
-            return CryptoSign::SigningErrorMessage { CryptoSign::SigningError::InternalError, ERROR_IN_CODE_LOCATION };
+            return CryptoSign::SigningErrorMessage { .type = CryptoSign::SigningError::InternalError, .message = ERROR_IN_CODE_LOCATION };
         }
         std::shared_ptr<GfxFont> font = form->getDefaultResources()->lookupFont(pdfFontName.c_str());
 
@@ -941,10 +941,10 @@ bool FormWidgetSignature::createSignature(Object &vObj, Ref vRef, const GooStrin
     vObj.dictAdd("Contents", Object(objHexString, std::string(placeholderLength, '\0')));
     Object bObj(new Array(xref));
     // reserve space in byte range for maximum number of bytes
-    bObj.arrayAdd(Object(static_cast<long long>(0LL)));
-    bObj.arrayAdd(Object(static_cast<long long>(9999999999LL)));
-    bObj.arrayAdd(Object(static_cast<long long>(9999999999LL)));
-    bObj.arrayAdd(Object(static_cast<long long>(9999999999LL)));
+    bObj.arrayAdd(Object(0LL));
+    bObj.arrayAdd(Object(9999999999LL));
+    bObj.arrayAdd(Object(9999999999LL));
+    bObj.arrayAdd(Object(9999999999LL));
     vObj.dictAdd("ByteRange", bObj.copy());
     field->getObj()->dictSet("V", Object(vRef));
     xref->setModifiedObject(field->getObj(), field->getRef());
@@ -1263,7 +1263,7 @@ const GooString *FormField::getFullyQualifiedName() const
                 fullyQualifiedName = convertToUtf16(fullyQualifiedName.get());
                 fullyQualifiedName->append(partialName->c_str() + 2, partialName->size() - 2); // Remove the unicode BOM
             } else {
-                fullyQualifiedName->append(partialName.get());
+                fullyQualifiedName->append(partialName->toStr());
             }
         }
     } else {
@@ -1380,7 +1380,7 @@ FormField *FormField::findFieldByRef(Ref aref)
 FormField *FormField::findFieldByFullyQualifiedName(const std::string &name)
 {
     if (terminal) {
-        if (getFullyQualifiedName()->cmp(name.c_str()) == 0) {
+        if (getFullyQualifiedName()->compare(name) == 0) {
             return this;
         }
     } else {
@@ -1498,10 +1498,7 @@ bool FormFieldButton::setState(const char *state, bool ignoreToggleOff)
 
     if (terminal && parent && parent->getType() == formButton && appearanceState.isNull()) {
         // It's button in a set, set state on parent
-        if (static_cast<FormFieldButton *>(parent)->setState(state)) {
-            return true;
-        }
-        return false;
+        return static_cast<FormFieldButton *>(parent)->setState(state);
     }
 
     bool isOn = strcmp(state, "Off") != 0;
@@ -1768,7 +1765,7 @@ void FormFieldText::setTextFontSize(int fontSize)
         defaultAppearance = std::make_unique<GooString>();
         for (std::size_t i = 0; i < daToks.size(); ++i) {
             if (i > 0) {
-                defaultAppearance->append(' ');
+                defaultAppearance->push_back(' ');
             }
             if (i == idx) {
                 defaultAppearance->appendf("{0:d}", fontSize);
@@ -1941,11 +1938,11 @@ void FormFieldChoice::fillChoices(FillValueType fillType)
 
             for (int i = 0; i < numChoices; i++) {
                 if (choices[i].exportVal) {
-                    if (choices[i].exportVal->cmp(obj1.getString()) == 0) {
+                    if (choices[i].exportVal->compare(obj1.getString()->toStr()) == 0) {
                         optionFound = true;
                     }
                 } else if (choices[i].optionName) {
-                    if (choices[i].optionName->cmp(obj1.getString()) == 0) {
+                    if (choices[i].optionName->compare(obj1.getString()->toStr()) == 0) {
                         optionFound = true;
                     }
                 }
@@ -1976,11 +1973,11 @@ void FormFieldChoice::fillChoices(FillValueType fillType)
                     bool matches = false;
 
                     if (choices[i].exportVal) {
-                        if (choices[i].exportVal->cmp(obj2.getString()) == 0) {
+                        if (choices[i].exportVal->compare(obj2.getString()->toStr()) == 0) {
                             matches = true;
                         }
                     } else if (choices[i].optionName) {
-                        if (choices[i].optionName->cmp(obj2.getString()) == 0) {
+                        if (choices[i].optionName->compare(obj2.getString()->toStr()) == 0) {
                             matches = true;
                         }
                     }
@@ -2191,8 +2188,7 @@ void FormFieldChoice::reset(const std::vector<std::string> &excludedFields)
 //------------------------------------------------------------------------
 // FormFieldSignature
 //------------------------------------------------------------------------
-FormFieldSignature::FormFieldSignature(PDFDoc *docA, Object &&dict, const Ref refA, FormField *parentA, std::set<int> *usedParents)
-    : FormField(docA, std::move(dict), refA, parentA, usedParents, formSignature), signature_type(CryptoSign::SignatureType::unsigned_signature_field)
+FormFieldSignature::FormFieldSignature(PDFDoc *docA, Object &&dict, const Ref refA, FormField *parentA, std::set<int> *usedParents) : FormField(docA, std::move(dict), refA, parentA, usedParents, formSignature)
 {
     signature_info = new SignatureInfo();
     parseInfo();
@@ -2525,7 +2521,8 @@ std::pair<std::optional<std::vector<unsigned char>>, int64_t> FormFieldSignature
                 return { signature, checkedFileSize };
             }
             return { {}, 0 };
-        } else if (signature[1] > 0x80) {
+        }
+        if (signature[1] > 0x80) {
             size_t lengthLength = signature[1] - 0x80;
             size_t length = 0;
             for (size_t i = 0; i < lengthLength; i++) {
@@ -2674,15 +2671,18 @@ std::unique_ptr<FormField> Form::createFieldFromDict(Object &&obj, PDFDoc *docA,
     const Object obj2 = Form::fieldLookup(obj.getDict(), "FT");
     if (obj2.isName("Btn")) {
         return std::make_unique<FormFieldButton>(docA, std::move(obj), aref, parent, usedParents);
-    } else if (obj2.isName("Tx")) {
-        return std::make_unique<FormFieldText>(docA, std::move(obj), aref, parent, usedParents);
-    } else if (obj2.isName("Ch")) {
-        return std::make_unique<FormFieldChoice>(docA, std::move(obj), aref, parent, usedParents);
-    } else if (obj2.isName("Sig")) {
-        return std::make_unique<FormFieldSignature>(docA, std::move(obj), aref, parent, usedParents);
-    } else { // we don't have an FT entry => non-terminal field
-        return std::make_unique<FormField>(docA, std::move(obj), aref, parent, usedParents);
     }
+    if (obj2.isName("Tx")) {
+        return std::make_unique<FormFieldText>(docA, std::move(obj), aref, parent, usedParents);
+    }
+    if (obj2.isName("Ch")) {
+        return std::make_unique<FormFieldChoice>(docA, std::move(obj), aref, parent, usedParents);
+    }
+    if (obj2.isName("Sig")) {
+        return std::make_unique<FormFieldSignature>(docA, std::move(obj), aref, parent, usedParents);
+    }
+    // we don't have an FT entry => non-terminal field
+    return std::make_unique<FormField>(docA, std::move(obj), aref, parent, usedParents);
 
     return {};
 }
@@ -2971,7 +2971,7 @@ Form::AddFontResult Form::addFontToDefaultResources(const std::string &filepath,
         doc->getCatalog()->setAcroFormModified();
     }
 
-    return { dictFontName, fontDictRef };
+    return { .fontName = dictFontName, .ref = fontDictRef };
 }
 
 std::string Form::getFallbackFontForChar(Unicode uChar, const GfxFont &fontToEmulate) const
@@ -3017,7 +3017,7 @@ std::vector<Form::AddFontResult> Form::ensureFontsForAllCharacters(const GooStri
         bool addFont = false;
         if (ccToUnicode->mapToCharCode(&uChar, &c, 1)) {
             if (f->isCIDFont()) {
-                auto cidFont = static_cast<const GfxCIDFont *>(f.get());
+                const auto *cidFont = static_cast<const GfxCIDFont *>(f.get());
                 if (c < cidFont->getCIDToGIDLen() && c != 0 && c != '\r' && c != '\n') {
                     const int glyph = cidFont->getCIDToGID()[c];
                     if (glyph == 0) {
@@ -3050,7 +3050,7 @@ Form::AddFontResult Form::doGetAddFontToDefaultResources(Unicode uChar, const Gf
                                          true /*This is called when a string contains a uChar that is not present in the font for that string so we find a another font to display it, thus it's always a 'substitute' font*/,
                                          false /*forceName*/);
     }
-    return { pdfFontName, Ref::INVALID() };
+    return { .fontName = pdfFontName, .ref = Ref::INVALID() };
 }
 
 void Form::postWidgetsLoad()
@@ -3078,7 +3078,7 @@ FormWidget *Form::findWidgetByRef(Ref aref)
 
 FormField *Form::findFieldByRef(Ref aref) const
 {
-    for (auto &rootField : rootFields) {
+    for (const auto &rootField : rootFields) {
         FormField *result = rootField->findFieldByRef(aref);
         if (result) {
             return result;
@@ -3089,7 +3089,7 @@ FormField *Form::findFieldByRef(Ref aref) const
 
 FormField *Form::findFieldByFullyQualifiedName(const std::string &name) const
 {
-    for (auto &rootField : rootFields) {
+    for (const auto &rootField : rootFields) {
         FormField *result = rootField->findFieldByFullyQualifiedName(name);
         if (result) {
             return result;
@@ -3203,7 +3203,7 @@ void FormPageWidgets::addWidgets(const std::vector<std::unique_ptr<FormField>> &
         return;
     }
 
-    for (auto &frmField : addedWidgets) {
+    for (const auto &frmField : addedWidgets) {
         FormWidget *frmWidget = frmField->getWidget(0);
         frmWidget->setID(FormWidget::encodeID(page, widgets.size()));
         widgets.push_back(frmWidget);

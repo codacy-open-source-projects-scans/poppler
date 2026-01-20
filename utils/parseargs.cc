@@ -17,6 +17,7 @@
 
  Copyright (C) 2008, 2009, 2018, 2025 Albert Astals Cid <aacid@kde.org>
  Copyright (C) 2011, 2012 Adrian Johnson <ajohnson@redneon.com>
+ Copyright (C) 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 
  To see a description of the changes please see the Changelog file that
  came with your tarball or type make ChangeLog if you are building from git
@@ -50,7 +51,8 @@ bool parseArgs(const ArgDesc *args, int *argc, char *argv[])
                 argv[j] = argv[j + 1];
             }
             break;
-        } else if ((arg = findArg(args, argv[i]))) {
+        }
+        if ((arg = findArg(args, argv[i]))) {
             if (!grabArg(arg, i, argc, argv)) {
                 ok = false;
             }
@@ -166,7 +168,7 @@ static bool grabArg(const ArgDesc *arg, int i, int *argc, char *argv[])
         break;
     case argGooString:
         if (i + 1 < *argc) {
-            ((GooString *)arg->val)->Set(argv[i + 1]);
+            ((GooString *)arg->val)->assign(argv[i + 1]);
             n = 2;
         } else {
             ok = false;
@@ -195,10 +197,7 @@ bool isInt(const char *s)
     while (isdigit(*s)) {
         ++s;
     }
-    if (*s) {
-        return false;
-    }
-    return true;
+    return *s == 0;
 }
 
 bool isFP(const char *s)

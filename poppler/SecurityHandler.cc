@@ -17,7 +17,7 @@
 // Copyright (C) 2013 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2014 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2016 Alok Anand <alok4nand@gmail.com>
-// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -79,9 +79,8 @@ bool SecurityHandler::checkEncryption(const std::optional<GooString> &ownerPassw
     if (!ok) {
         if (!ownerPassword && !userPassword) {
             return checkEncryption(GooString(), GooString());
-        } else {
-            error(errCommandLine, -1, "Incorrect password");
         }
+        error(errCommandLine, -1, "Incorrect password");
     }
     return ok;
 }
@@ -221,7 +220,7 @@ StandardSecurityHandler::StandardSecurityHandler(PDFDoc *docA, Object *encryptDi
                 } else {
                     error(errSyntaxError, -1, "Weird encryption owner/user info");
                 }
-            } else if (!(encVersion == -1 && encRevision == -1)) {
+            } else if (encVersion != -1 || encRevision != -1) {
                 error(errUnimplemented, -1, "Unsupported version/revision ({0:d}/{1:d}) of Standard security handler", encVersion, encRevision);
             }
 
@@ -229,10 +228,10 @@ StandardSecurityHandler::StandardSecurityHandler(PDFDoc *docA, Object *encryptDi
                 // Adobe apparently zero-pads the U value (and maybe the O value?)
                 // if it's short
                 while (ownerKey->size() < 32) {
-                    ownerKey->append((char)0x00);
+                    ownerKey->push_back((char)0x00);
                 }
                 while (userKey->size() < 32) {
-                    userKey->append((char)0x00);
+                    userKey->push_back((char)0x00);
                 }
             }
         } else {

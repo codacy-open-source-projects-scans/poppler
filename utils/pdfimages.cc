@@ -25,6 +25,7 @@
 // Copyright (C) 2019 Hartmut Goebel <h.goebel@crazy-compilers.com>
 // Copyright (C) 2024 Fernando Herrera <fherrera@onirica.com>
 // Copyright (C) 2024 Sebastian J. Bronner <waschtl@sbronner.com>
+// Copyright (C) 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -128,7 +129,7 @@ int main(int argc, char *argv[])
     if (userPassword[0] != '\001') {
         userPW = GooString(userPassword);
     }
-    if (fileName->cmp("-") == 0) {
+    if (fileName->compare("-") == 0) {
         delete fileName;
         fileName = new GooString("fd://0");
     }

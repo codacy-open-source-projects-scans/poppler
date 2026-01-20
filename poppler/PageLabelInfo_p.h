@@ -8,6 +8,7 @@
 // Copyright (C) 2012 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -21,6 +22,7 @@
 
 #include "config.h"
 
+#include "goo/GooLikely.h"
 #include "goo/GooString.h"
 #include "Error.h"
 #include "UTF.h"
@@ -139,23 +141,23 @@ static void toRoman(int number, GooString *str, bool uppercase)
         case 0:
             break;
         case 5:
-            str->append(wh[2 * k + 1]);
+            str->push_back(wh[2 * k + 1]);
             break;
         case 9:
-            str->append(wh[2 * k + 0]);
-            str->append(wh[2 * k + 2]);
+            str->push_back(wh[2 * k + 0]);
+            str->push_back(wh[2 * k + 2]);
             break;
         case 4:
-            str->append(wh[2 * k + 0]);
-            str->append(wh[2 * k + 1]);
+            str->push_back(wh[2 * k + 0]);
+            str->push_back(wh[2 * k + 1]);
             break;
         default:
             if (i > 5) {
-                str->append(wh[2 * k + 1]);
+                str->push_back(wh[2 * k + 1]);
                 i -= 5;
             }
             for (j = 0; j < i; j++) {
-                str->append(wh[2 * k + 0]);
+                str->push_back(wh[2 * k + 0]);
             }
         }
 
@@ -204,7 +206,7 @@ static void toLatin(int number, GooString *str, bool uppercase)
     letter = base + (number - 1) % 26;
 
     for (i = 0; i < count; i++) {
-        str->append(letter);
+        str->push_back(letter);
     }
 }
 

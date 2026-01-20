@@ -42,7 +42,7 @@
 // Copyright (C) 2021 RM <rm+git@arcsin.org>
 // Copyright (C) 2023 Ilaï Deutel <idtl@google.com>
 // Copyright (C) 2024 Hubert Figuiere <hub@figuiere.net>
-// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2025 Aaron Nguyen <aaron.nguyen@veeva.com>
 // Copyright (C) 2025 Trystan Mata <trystan.mata@tytanium.xyz>
 //
@@ -191,7 +191,7 @@ Page *Catalog::getPage(int i)
     catalogLocker();
     if (std::size_t(i) > pages.size()) {
         bool cached = cachePageTree(i);
-        if (cached == false) {
+        if (!cached) {
             return nullptr;
         }
     }
@@ -207,7 +207,7 @@ Ref *Catalog::getPageRef(int i)
     catalogLocker();
     if (std::size_t(i) > pages.size()) {
         bool cached = cachePageTree(i);
-        if (cached == false) {
+        if (!cached) {
             return nullptr;
         }
     }
@@ -499,12 +499,12 @@ std::unique_ptr<FileSpec> Catalog::embeddedFile(int i)
     if (obj->isRef()) {
         Object fsDict = obj->fetch(xref);
         return std::make_unique<FileSpec>(&fsDict);
-    } else if (obj->isDict()) {
-        return std::make_unique<FileSpec>(obj);
-    } else {
-        Object null;
-        return std::make_unique<FileSpec>(&null);
     }
+    if (obj->isDict()) {
+        return std::make_unique<FileSpec>(obj);
+    }
+    Object null;
+    return std::make_unique<FileSpec>(&null);
 }
 
 bool Catalog::hasEmbeddedFile(const std::string &fileName)
@@ -580,7 +580,7 @@ void Catalog::addEmbeddedFile(GooFile *file, const std::string &fileName)
     if (namesObjRef != Ref::INVALID()) {
         xref->setModifiedObject(&namesObj, namesObjRef);
     } else {
-        xref->setModifiedObject(&catDict, { xref->getRootNum(), xref->getRootGen() });
+        xref->setModifiedObject(&catDict, { .num = xref->getRootNum(), .gen = xref->getRootGen() });
     }
 
     // recreate Nametree on next call that uses it
@@ -702,7 +702,7 @@ NameTree::Entry::Entry(const Array &array, int index)
     if (!array.getString(index, &name)) {
         Object aux = array.get(index);
         if (aux.isString()) {
-            name.append(aux.getString());
+            name.append(aux.getString()->toStr());
         } else {
             error(errSyntaxError, -1, "Invalid page tree");
         }
@@ -718,7 +718,7 @@ void NameTree::init(XRef *xrefA, Object *tree)
     RefRecursionChecker seen;
     parse(tree, seen);
     if (!entries.empty()) {
-        std::ranges::sort(entries, [](const auto &first, const auto &second) { return first->name.cmp(&second->name) < 0; });
+        std::ranges::sort(entries, [](const auto &first, const auto &second) { return first->name.compare(second->name.toStr()) < 0; });
     }
 }
 
@@ -760,39 +760,36 @@ void NameTree::parse(const Object *tree, RefRecursionChecker &seen)
 
 struct EntryGooStringComparer
 {
-    static constexpr const GooString *get(const GooString *string) { return string; };
-    static constexpr const GooString *get(const auto &entry) { return &entry->name; }
-    auto operator()(const auto &lhs, const auto &rhs) { return get(lhs)->cmp(get(rhs)) < 0; }
+    static constexpr const std::string &get(const GooString *string) { return string->toStr(); };
+    static constexpr const std::string &get(const auto &entry) { return entry->name.toStr(); }
+    auto operator()(const auto &lhs, const auto &rhs) { return get(lhs).compare(get(rhs)) < 0; }
 };
 
 Object NameTree::lookup(const GooString *name)
 {
     auto entry = std::ranges::lower_bound(entries, name, EntryGooStringComparer {});
 
-    if (entry != entries.end() && (*entry)->name.cmp(name) == 0) {
+    if (entry != entries.end() && (*entry)->name.compare(name->toStr()) == 0) {
         return (*entry)->value.fetch(xref);
-    } else {
-        error(errSyntaxError, -1, "failed to look up ({0:s})", name->c_str());
-        return Object::null();
     }
+    error(errSyntaxError, -1, "failed to look up ({0:s})", name->c_str());
+    return Object::null();
 }
 
 Object *NameTree::getValue(int index)
 {
     if (size_t(index) < entries.size()) {
         return &entries[index]->value;
-    } else {
-        return nullptr;
     }
+    return nullptr;
 }
 
 const GooString *NameTree::getName(int index) const
 {
     if (size_t(index) < entries.size()) {
         return &entries[index]->name;
-    } else {
-        return nullptr;
     }
+    return nullptr;
 }
 
 bool Catalog::labelToIndex(const GooString &label, int *index)
@@ -831,11 +828,10 @@ bool Catalog::indexToLabel(int index, GooString *label)
     PageLabelInfo *pli = getPageLabelInfo();
     if (pli != nullptr) {
         return pli->indexToLabel(index, label);
-    } else {
-        snprintf(buffer, sizeof(buffer), "%d", index + 1);
-        label->append(buffer);
-        return true;
     }
+    snprintf(buffer, sizeof(buffer), "%d", index + 1);
+    label->append(buffer);
+    return true;
 }
 
 int Catalog::getNumPages()
@@ -1024,7 +1020,7 @@ Object *Catalog::getCreateOutline()
 
     const Ref outlineRef = doc->getXRef()->addIndirectObject(outline);
     catDict.dictAdd("Outlines", Object(outlineRef));
-    xref->setModifiedObject(&catDict, { xref->getRootNum(), xref->getRootGen() });
+    xref->setModifiedObject(&catDict, { .num = xref->getRootNum(), .gen = xref->getRootGen() });
 
     return &outline;
 }
@@ -1096,7 +1092,7 @@ Form *Catalog::getCreateForm()
             const Ref newFormRef = xref->addIndirectObject(acroForm);
             catDict.dictSet("AcroForm", Object(newFormRef));
 
-            xref->setModifiedObject(&catDict, { xref->getRootNum(), xref->getRootGen() });
+            xref->setModifiedObject(&catDict, { .num = xref->getRootNum(), .gen = xref->getRootGen() });
         }
     }
 
@@ -1143,7 +1139,7 @@ void Catalog::setAcroFormModified()
         xref->setModifiedObject(&acroForm, acroFormRef);
     } else {
         catDict.dictSet("AcroForm", acroForm.copy());
-        xref->setModifiedObject(&catDict, { xref->getRootNum(), xref->getRootGen() });
+        xref->setModifiedObject(&catDict, { .num = xref->getRootNum(), .gen = xref->getRootGen() });
     }
 }
 

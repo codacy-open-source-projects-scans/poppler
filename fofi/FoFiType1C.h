@@ -17,7 +17,7 @@
 // Copyright (C) 2012 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2018-2020, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2022 Oliver Sander <oliver.sander@tu-dresden.de>
-// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2025, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -185,9 +185,6 @@ public:
     // CIDs in *<nCIDs>.  This is only useful for CID fonts.
     std::vector<int> getCIDToGIDMap() const;
 
-    // Return the font matrix as an array of six numbers.
-    void getFontMatrix(double *mat) const;
-
     // Convert to a Type 1 font, suitable for embedding in a PostScript
     // file.  This is only useful with 8-bit fonts.  If <newEncoding> is
     // not NULL, it will be used in place of the encoding in the Type 1C
@@ -217,17 +214,17 @@ public:
     //     the identity CID-to-GID mapping is used
     void convertToType0(const std::string &psName, const std::vector<int> &codeMap, FoFiOutputFunc outputFunc, void *outputStream);
 
-    explicit FoFiType1C(std::vector<unsigned char> &&fileA, PrivateTag = {});
-    explicit FoFiType1C(std::span<const unsigned char> data, PrivateTag = {});
+    explicit FoFiType1C(std::vector<unsigned char> &&fileA, PrivateTag /*unused*/ = {});
+    explicit FoFiType1C(std::span<const unsigned char> data, PrivateTag /*unused*/ = {});
 
 private:
     void eexecCvtGlyph(Type1CEexecBuf *eb, const char *glyphName, int offset, int nBytes, const Type1CIndex *subrIdx, const Type1CPrivateDict *pDict);
     void cvtGlyph(int offset, int nBytes, GooString *charBuf, const Type1CIndex *subrIdx, const Type1CPrivateDict *pDict, bool top, std::set<int> &offsetBeingParsed);
     void cvtGlyphWidth(bool useOp, GooString *charBuf, const Type1CPrivateDict *pDict);
-    void cvtNum(double x, bool isFP, GooString *charBuf) const;
-    void eexecWrite(Type1CEexecBuf *eb, const char *s) const;
-    void eexecWriteCharstring(Type1CEexecBuf *eb, const unsigned char *s, int n) const;
-    void writePSString(const char *s, FoFiOutputFunc outputFunc, void *outputStream) const;
+    static void cvtNum(double x, bool isFP, GooString *charBuf);
+    static void eexecWrite(Type1CEexecBuf *eb, const char *s);
+    static void eexecWriteCharstring(Type1CEexecBuf *eb, const unsigned char *s, int n);
+    static void writePSString(const char *s, FoFiOutputFunc outputFunc, void *outputStream);
     bool parse();
     void readTopDict();
     void readFD(int offset, int length, Type1CPrivateDict *pDict);

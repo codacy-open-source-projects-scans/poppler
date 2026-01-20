@@ -16,6 +16,7 @@
 // Copyright (C) 2011 Andreas Hartmetz <ahartmetz@gmail.com>
 // Copyright (C) 2017 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2018 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -59,11 +60,11 @@ private:
     FT_Size sizeObj;
     FT_Matrix matrix;
     FT_Matrix textMatrix;
-    SplashCoord textScale;
+    SplashCoord textScale = 0;
     int size;
     bool enableFreeTypeHinting;
     bool enableSlightHinting;
-    bool isOk;
+    bool isOk = false;
 };
 
 #endif

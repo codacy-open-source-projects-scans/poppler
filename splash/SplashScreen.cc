@@ -30,9 +30,9 @@
 #include "SplashScreen.h"
 
 static const SplashScreenParams defaultParams = {
-    splashScreenDispersed, // type
-    2, // size
-    2 // dotRadius
+    .type = splashScreenDispersed, // type
+    .size = 2, // size
+    .dotRadius = 2 // dotRadius
 };
 
 //------------------------------------------------------------------------
@@ -195,7 +195,7 @@ void SplashScreen::buildClusteredMatrix()
 }
 
 // Compute the distance between two points on a toroid.
-int SplashScreen::distance(int x0, int y0, int x1, int y1)
+int SplashScreen::distance(int x0, int y0, int x1, int y1) const
 {
     int dx0, dx1, dx, dy0, dy1, dy;
 

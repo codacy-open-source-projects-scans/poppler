@@ -28,7 +28,7 @@
 // Copyright (C) 2019, 2021, 2023 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2020 Philipp Knechtges <philipp-dev@knechtges.com>
 // Copyright (C) 2021 Hubert Figuiere <hub@figuiere.net>
-// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2025, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -358,7 +358,7 @@ int main(int argc, char *argv[])
     if (userPassword[0] != '\001') {
         userPW = GooString(userPassword);
     }
-    if (fileName->cmp("-") == 0) {
+    if (fileName->compare("-") == 0) {
         delete fileName;
         fileName = new GooString("fd://0");
     }
@@ -382,7 +382,7 @@ int main(int argc, char *argv[])
     // construct PostScript file name
     if (argc == 3) {
         psFileName = std::string(argv[2]);
-    } else if (fileName->cmp("fd://0") == 0) {
+    } else if (fileName->compare("fd://0") == 0) {
         error(errCommandLine, -1, "You have to provide an output filename when reading from stdin.");
         goto err1;
     } else {

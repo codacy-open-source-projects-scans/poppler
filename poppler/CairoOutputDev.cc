@@ -42,7 +42,7 @@
 // Copyright (C) 2024 Vincent Lefevre <vincent@vinc17.net>
 // Copyright (C) 2024 Athul Raj Kollareth <krathul3152@gmail.com>
 // Copyright (C) 2024, 2025 Nelson Benítez León <nbenitezl@gmail.com>
-// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2025, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2025 Jonathan Hähne <jonathan.haehne@hotmail.com>
 // Copyright (C) 2025 Arnav V <arnav0872@gmail.com>
 //
@@ -287,12 +287,12 @@ void CairoOutputDev::startDoc(PDFDoc *docA, CairoFontEngine *parentFontEngine)
 void CairoOutputDev::textStringToQuotedUtf8(const GooString *text, GooString *s)
 {
     std::string utf8 = TextStringToUtf8(text->toStr());
-    s->Set("'");
+    s->assign("'");
     for (char c : utf8) {
         if (c == '\\' || c == '\'') {
             s->append("\\");
         }
-        s->append(c);
+        s->push_back(c);
     }
     s->append("'");
 }
@@ -339,9 +339,9 @@ void CairoOutputDev::startPage(int pageNum, GfxState *state, XRef *xrefA)
     cairo_pattern_destroy(stroke_pattern);
 
     fill_pattern = cairo_pattern_create_rgb(0., 0., 0.);
-    fill_color = { 0, 0, 0 };
+    fill_color = { .r = 0, .g = 0, .b = 0 };
     stroke_pattern = cairo_pattern_reference(fill_pattern);
-    stroke_color = { 0, 0, 0 };
+    stroke_color = { .r = 0, .g = 0, .b = 0 };
 
     if (textPage) {
         textPage->startPage(state);
@@ -2135,7 +2135,7 @@ static cairo_surface_t *cairo_surface_create_similar_clip(cairo_t *cairo, cairo_
     return surface;
 }
 
-void CairoOutputDev::beginTransparencyGroup(GfxState * /*state*/, const std::array<double, 4> & /*bbox*/, GfxColorSpace *blendingColorSpace, bool /*isolated*/, bool knockout, bool forSoftMask)
+void CairoOutputDev::beginTransparencyGroup(GfxState * /*state*/, const std::array<double, 4> & /*bbox*/, GfxColorSpace *blendingColorSpace, bool /*isolated*/, bool knockout, bool /*forSoftMask*/)
 {
     /* push color space */
     ColorSpaceStack *css = new ColorSpaceStack;
@@ -2167,11 +2167,11 @@ void CairoOutputDev::beginTransparencyGroup(GfxState * /*state*/, const std::arr
         /* we need to track the shape */
         cairo_push_group(cairo_shape);
     }
-    if (false && forSoftMask) {
-        cairo_push_group_with_content(cairo, CAIRO_CONTENT_ALPHA);
-    } else {
-        cairo_push_group(cairo);
-    }
+    // if (false && forSoftMask) {
+    //     cairo_push_group_with_content(cairo, CAIRO_CONTENT_ALPHA);
+    // } else {
+    cairo_push_group(cairo);
+    // }
 
     /* push_group has an implicit cairo_save() */
     if (knockout) {
@@ -3453,7 +3453,7 @@ public:
             // Case of transparent JPX images, they contain RGBA data · Issue #1486
             GfxDeviceRGBAColorSpace *rgbaCS = dynamic_cast<GfxDeviceRGBAColorSpace *>(colorMap->getColorSpace());
             if (rgbaCS) {
-                rgbaCS->getARGBPremultipliedLine(pix, row_data, width);
+                GfxDeviceRGBAColorSpace::getARGBPremultipliedLine(pix, row_data, width);
             } else {
                 error(errSyntaxWarning, -1, "CairoOutputDev: Unexpected fallback from RGBA to RGB");
                 colorMap->getRGBLine(pix, row_data, width);

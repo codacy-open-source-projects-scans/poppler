@@ -80,13 +80,13 @@ struct XRefEntry
         DontRewrite // Entry must not be written back in case of full rewrite
     };
 
-    inline bool getFlag(Flag flag) const
+    bool getFlag(Flag flag) const
     {
         const int mask = (1 << (int)flag);
         return (flags & mask) != 0;
     }
 
-    inline void setFlag(Flag flag, bool value)
+    void setFlag(Flag flag, bool value)
     {
         const int mask = (1 << (int)flag);
         if (value) {
@@ -160,7 +160,7 @@ public:
     Object getCatalog();
 
     // Fetch an indirect reference.
-    Object fetch(const Ref ref, int recursion = 0);
+    Object fetch(Ref ref, int recursion = 0);
     // If endPos is not null, returns file position after parsing the object. This will
     // be a few bytes after the end of the object due to the parser reading ahead.
     // Returns -1 if object is in compressed stream.
@@ -184,7 +184,7 @@ public:
     // Return the catalog object reference.
     int getRootNum() const { return rootNum; }
     int getRootGen() const { return rootGen; }
-    Ref getRoot() const { return { rootNum, rootGen }; }
+    Ref getRoot() const { return { .num = rootNum, .gen = rootGen }; }
 
     // Get end position for a stream in a damaged file.
     // Returns false if unknown or file is not damaged.
@@ -249,7 +249,7 @@ private:
     Goffset *streamEnds; // 'endstream' positions - only used in
                          //   damaged files
     int streamEndsLen; // number of valid entries in streamEnds
-    PopplerCache<Goffset, ObjectStream> objStrs; // cached object streams
+    std::unordered_map<Goffset, std::unique_ptr<ObjectStream>> objStrs; // object streams map
     bool encrypted; // true if file is encrypted
     int encRevision;
     int encVersion; // encryption algorithm

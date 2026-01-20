@@ -28,7 +28,7 @@
 // Copyright (C) 2019 Christian Persch <chpe@src.gnome.org>
 // Copyright (C) 2019-2021 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2019 Thomas Fischer <fischer@unix-ag.uni-kl.de>
-// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2025 Jonathan Hähne <jonathan.haehne@hotmail.com>
 //
 // To see a description of the changes please see the Changelog file that
@@ -712,7 +712,7 @@ static void printCustomInfo(PDFDoc *doc, const UnicodeMap *uMap)
                     }
 
                     // print value
-                    auto val_str = obj.getString();
+                    const auto *val_str = obj.getString();
                     printTextString(val_str, uMap);
                     fputc('\n', stdout);
                 }
@@ -974,7 +974,7 @@ int main(int argc, char *argv[])
         userPW = GooString(userPassword);
     }
 
-    if (fileName->cmp("-") == 0) {
+    if (fileName->compare("-") == 0) {
         delete fileName;
         fileName = new GooString("fd://0");
     }
@@ -990,11 +990,7 @@ int main(int argc, char *argv[])
     if (firstPage < 1) {
         firstPage = 1;
     }
-    if (lastPage == 0) {
-        multiPage = false;
-    } else {
-        multiPage = true;
-    }
+    multiPage = lastPage != 0;
     if (lastPage < 1 || lastPage > doc->getNumPages()) {
         lastPage = doc->getNumPages();
     }
@@ -1039,7 +1035,7 @@ int main(int argc, char *argv[])
             fclose(f);
         }
 
-        if (multiPage == false) {
+        if (!multiPage) {
             lastPage = 1;
         }
 

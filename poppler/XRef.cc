@@ -15,7 +15,7 @@
 //
 // Copyright (C) 2005 Dan Sheridan <dan.sheridan@postman.org.uk>
 // Copyright (C) 2005 Brad Hards <bradh@frogmouth.net>
-// Copyright (C) 2006, 2008, 2010, 2012-2014, 2016-2025 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2006, 2008, 2010, 2012-2014, 2016-2026 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2007-2008 Julien Rebetez <julienr@svn.gnome.org>
 // Copyright (C) 2007 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2009, 2010 Ilya Gorenbein <igorenbein@finjan.com>
@@ -89,7 +89,7 @@ public:
     // generation 0.
     ObjectStream(XRef *xref, int objStrNumA, int recursion = 0);
 
-    bool isOk() { return ok; }
+    bool isOk() const { return ok; }
 
     ~ObjectStream();
 
@@ -97,7 +97,7 @@ public:
     ObjectStream &operator=(const ObjectStream &) = delete;
 
     // Return the object number of this object stream.
-    int getObjStrNum() { return objStrNum; }
+    int getObjStrNum() const { return objStrNum; }
 
     // Get the <objIdx>th object from this stream, which should be
     // object number <objNum>, generation 0.
@@ -190,7 +190,7 @@ ObjectStream::ObjectStream(XRef *xref, int objStrNumA, int recursion)
         }
     }
     {
-        auto str = parser->getStream();
+        auto *str = parser->getStream();
         while (str && str->getChar() != EOF) {
             ;
         }
@@ -214,7 +214,7 @@ ObjectStream::ObjectStream(XRef *xref, int objStrNumA, int recursion)
         }
         parser = new Parser(xref, std::move(strPtr), false);
         objs[i] = parser->getObj();
-        auto str = parser->getStream();
+        auto *str = parser->getStream();
         while (str && str->getChar() != EOF) {
             ;
         }
@@ -245,7 +245,7 @@ Object ObjectStream::getObject(int objIdx, int objNum)
 
 #define xrefLocker() const std::scoped_lock locker(mutex)
 
-XRef::XRef() : objStrs { 5 }
+XRef::XRef()
 {
     ok = true;
     errCode = errNone;
@@ -292,57 +292,57 @@ XRef::XRef(BaseStream *strA, Goffset pos, Goffset mainXRefEntriesOffsetA, bool *
     if (reconstruct && !(ok = constructXRef(wasReconstructed))) {
         errCode = errDamaged;
         return;
+    }
+    // if there was a problem with the 'startxref' position, try to
+    // reconstruct the xref table
+    if (prevXRefOffset == 0) {
+        if (!(ok = constructXRef(wasReconstructed))) {
+            errCode = errDamaged;
+            return;
+        }
+
+        // read the xref table
     } else {
-        // if there was a problem with the 'startxref' position, try to
-        // reconstruct the xref table
-        if (prevXRefOffset == 0) {
-            if (!(ok = constructXRef(wasReconstructed))) {
-                errCode = errDamaged;
-                return;
-            }
+        std::vector<Goffset> followedXRefStm;
+        readXRef(&prevXRefOffset, &followedXRefStm, nullptr);
 
-            // read the xref table
-        } else {
-            std::vector<Goffset> followedXRefStm;
-            readXRef(&prevXRefOffset, &followedXRefStm, nullptr);
-
-            // if there was a problem with the xref table,
-            // try to reconstruct it
-            if (!ok) {
-                if (!(ok = constructXRef(wasReconstructed))) {
-                    errCode = errDamaged;
-                    return;
-                }
-            }
-        }
-
-        // set size to (at least) the size specified in trailer dict
-        obj = trailerDict.dictLookupNF("Size").copy();
-        if (!obj.isInt()) {
-            error(errSyntaxWarning, -1, "No valid XRef size in trailer");
-        } else {
-            if (obj.getInt() > size) {
-                if (resize(obj.getInt()) != obj.getInt()) {
-                    if (!(ok = constructXRef(wasReconstructed))) {
-                        errCode = errDamaged;
-                        return;
-                    }
-                }
-            }
-        }
-
-        // get the root dictionary (catalog) object
-        obj = trailerDict.dictLookupNF("Root").copy();
-        if (obj.isRef()) {
-            rootNum = obj.getRefNum();
-            rootGen = obj.getRefGen();
-        } else {
+        // if there was a problem with the xref table,
+        // try to reconstruct it
+        if (!ok) {
             if (!(ok = constructXRef(wasReconstructed))) {
                 errCode = errDamaged;
                 return;
             }
         }
     }
+
+    // set size to (at least) the size specified in trailer dict
+    obj = trailerDict.dictLookupNF("Size").copy();
+    if (!obj.isInt()) {
+        error(errSyntaxWarning, -1, "No valid XRef size in trailer");
+    } else {
+        if (obj.getInt() > size) {
+            if (resize(obj.getInt()) != obj.getInt()) {
+                if (!(ok = constructXRef(wasReconstructed))) {
+                    errCode = errDamaged;
+                    return;
+                }
+            }
+        }
+    }
+
+    // get the root dictionary (catalog) object
+    obj = trailerDict.dictLookupNF("Root").copy();
+    if (obj.isRef()) {
+        rootNum = obj.getRefNum();
+        rootGen = obj.getRefGen();
+    } else {
+        if (!(ok = constructXRef(wasReconstructed))) {
+            errCode = errDamaged;
+            return;
+        }
+    }
+
     // now set the trailer dictionary's xref pointer so we can fetch
     // indirect objects from it
     trailerDict.getDict()->setXRef(this);
@@ -685,7 +685,7 @@ bool XRef::readXRefTable(Parser *parser, Goffset *pos, std::vector<Goffset> *fol
         } else {
             pos2 = obj2.getInt64();
         }
-        for (size_t i = 0; ok == true && i < followedXRefStm->size(); ++i) {
+        for (size_t i = 0; ok && i < followedXRefStm->size(); ++i) {
             if (followedXRefStm->at(i) == pos2) {
                 ok = false;
             }
@@ -1137,15 +1137,14 @@ bool XRef::okToPrintHighRes(bool ignoreOwnerPW) const
     if (encrypted) {
         if (2 == encRevision) {
             return (okToPrint(ignoreOwnerPW));
-        } else if (encRevision >= 3) {
-            return (okToPrint(ignoreOwnerPW) && (permFlags & permHighResPrint));
-        } else {
-            // something weird - unknown security handler version
-            return false;
         }
-    } else {
-        return true;
+        if (encRevision >= 3) {
+            return (okToPrint(ignoreOwnerPW) && (permFlags & permHighResPrint));
+        }
+        // something weird - unknown security handler version
+        return false;
     }
+    return true;
 }
 
 bool XRef::okToChange(bool ignoreOwnerPW) const
@@ -1203,7 +1202,7 @@ Object XRef::fetch(int num, int gen, int recursion, Goffset *endPos)
 
     xrefLocker();
 
-    const Ref ref = { num, gen };
+    const Ref ref = { .num = num, .gen = gen };
 
     if (!refsBeingFetched.insert(ref)) {
         return Object::null();
@@ -1228,7 +1227,11 @@ Object XRef::fetch(int num, int gen, int recursion, Goffset *endPos)
         if (e->gen != gen || e->offset < 0) {
             goto err;
         }
-        Parser parser { this, str->makeSubStream(start + e->offset, false, 0, Object::null()), true };
+        Goffset subStreamOffset;
+        if (checkedAdd(start, e->offset, &subStreamOffset)) {
+            goto err;
+        }
+        Parser parser { this, str->makeSubStream(subStreamOffset, false, 0, Object::null()), true };
         obj1 = parser.getObj(recursion);
         obj2 = parser.getObj(recursion);
         obj3 = parser.getObj(recursion);
@@ -1270,8 +1273,10 @@ Object XRef::fetch(int num, int gen, int recursion, Goffset *endPos)
             goto err;
         }
 
-        ObjectStream *objStr = objStrs.lookup(e->offset);
-        if (!objStr) {
+        ObjectStream *objStr = nullptr;
+        if (const auto it = objStrs.find(e->offset); it != objStrs.end()) {
+            objStr = it->second.get();
+        } else {
             objStr = new ObjectStream(this, static_cast<int>(e->offset), recursion + 1);
             if (!objStr->isOk()) {
                 delete objStr;
@@ -1280,7 +1285,7 @@ Object XRef::fetch(int num, int gen, int recursion, Goffset *endPos)
             } else {
                 // XRef could be reconstructed in constructor of ObjectStream:
                 e = getEntry(num);
-                objStrs.put(e->offset, objStr);
+                objStrs.emplace(e->offset, std::unique_ptr<ObjectStream>(objStr));
             }
         }
         if (endPos) {
@@ -1413,9 +1418,8 @@ int XRef::getNumEntry(Goffset offset)
             }
         }
         return res;
-    } else {
-        return -1;
     }
+    return -1;
 }
 
 void XRef::add(Ref ref, Goffset offs, bool used)
@@ -1652,7 +1656,7 @@ void XRef::XRefPreScanWriter::startSection(int /*first*/, int /*count*/) { }
 
 void XRef::XRefPreScanWriter::writeEntry(Goffset offset, int /*gen*/, XRefEntryType /*type*/)
 {
-    if (offset >= 0x100000000ll) {
+    if (offset >= 0x100000000LL) {
         hasOffsetsBeyond4GB = true;
     }
 }

@@ -42,7 +42,7 @@
 // Copyright (C) 2022 James Cloos <cloos@jhcloos.com>
 // Copyright (C) 2023 Anton Thomasson <antonthomasson@gmail.com>
 // Copyright (C) 2025 Masamichi Hosoda <trueroad@trueroad.jp>
-// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2025, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -257,15 +257,15 @@ struct AntialiasOption
 };
 
 static const AntialiasOption antialiasOptions[] = {
-    { "default", CAIRO_ANTIALIAS_DEFAULT }, { "none", CAIRO_ANTIALIAS_NONE }, { "gray", CAIRO_ANTIALIAS_GRAY }, { "subpixel", CAIRO_ANTIALIAS_SUBPIXEL },
-    { "fast", CAIRO_ANTIALIAS_FAST },       { "good", CAIRO_ANTIALIAS_GOOD }, { "best", CAIRO_ANTIALIAS_BEST }, { nullptr, CAIRO_ANTIALIAS_DEFAULT },
+    { .name = "default", .value = CAIRO_ANTIALIAS_DEFAULT }, { .name = "none", .value = CAIRO_ANTIALIAS_NONE }, { .name = "gray", .value = CAIRO_ANTIALIAS_GRAY }, { .name = "subpixel", .value = CAIRO_ANTIALIAS_SUBPIXEL },
+    { .name = "fast", .value = CAIRO_ANTIALIAS_FAST },       { .name = "good", .value = CAIRO_ANTIALIAS_GOOD }, { .name = "best", .value = CAIRO_ANTIALIAS_BEST }, { .name = nullptr, .value = CAIRO_ANTIALIAS_DEFAULT },
 };
 
 static bool parseAntialiasOption()
 {
     const AntialiasOption *option = antialiasOptions;
     while (option->name) {
-        if (antialias.cmp(option->name) == 0) {
+        if (antialias.compare(option->name) == 0) {
             antialiasEnum = option->value;
             return true;
         }
@@ -290,10 +290,10 @@ static bool parseJpegOptions()
         const char *comma = strchr(nextOpt, ',');
         GooString opt;
         if (comma) {
-            opt.Set(nextOpt, static_cast<int>(comma - nextOpt));
+            opt.assign(nextOpt, static_cast<int>(comma - nextOpt));
             nextOpt = comma + 1;
         } else {
-            opt.Set(nextOpt);
+            opt.assign(nextOpt);
             nextOpt = nullptr;
         }
         // here opt is "<optN>=<valN> "
@@ -307,7 +307,7 @@ static bool parseJpegOptions()
         opt.erase(iequal, opt.size() - iequal);
         // here opt is "<optN>" and value is "<valN>"
 
-        if (opt.cmp("quality") == 0) {
+        if (opt.compare("quality") == 0) {
             if (!isInt(value.c_str())) {
                 fprintf(stderr, "Invalid jpeg quality\n");
                 return false;
@@ -317,19 +317,19 @@ static bool parseJpegOptions()
                 fprintf(stderr, "jpeg quality must be between 0 and 100\n");
                 return false;
             }
-        } else if (opt.cmp("progressive") == 0) {
+        } else if (opt.compare("progressive") == 0) {
             jpegProgressive = false;
-            if (value.cmp("y") == 0) {
+            if (value.compare("y") == 0) {
                 jpegProgressive = true;
-            } else if (value.cmp("n") != 0) {
+            } else if (value.compare("n") != 0) {
                 fprintf(stderr, "jpeg progressive option must be \"y\" or \"n\"\n");
                 return false;
             }
-        } else if (opt.cmp("optimize") == 0 || opt.cmp("optimise") == 0) {
+        } else if (opt.compare("optimize") == 0 || opt.compare("optimise") == 0) {
             jpegOptimize = false;
-            if (value.cmp("y") == 0) {
+            if (value.compare("y") == 0) {
                 jpegOptimize = true;
-            } else if (value.cmp("n") != 0) {
+            } else if (value.compare("n") != 0) {
                 fprintf(stderr, "jpeg optimize option must be \"y\" or \"n\"\n");
                 return false;
             }
@@ -405,7 +405,7 @@ static void writePageImage(GooString *filename)
         return;
     }
 
-    if (filename->cmp("fd://0") == 0) {
+    if (filename->compare("fd://0") == 0) {
 #if defined(_WIN32) || defined(__CYGWIN__)
         _setmode(fileno(stdout), O_BINARY);
 #endif
@@ -575,9 +575,8 @@ static cairo_status_t writeStream(void *closure, const unsigned char *data, unsi
 
     if (fwrite(data, length, 1, file) == 1) {
         return CAIRO_STATUS_SUCCESS;
-    } else {
-        return CAIRO_STATUS_WRITE_ERROR;
     }
+    return CAIRO_STATUS_WRITE_ERROR;
 }
 
 static void beginDocument(GooString *inputFileName, GooString *outputFileName, double w, double h)
@@ -586,7 +585,7 @@ static void beginDocument(GooString *inputFileName, GooString *outputFileName, d
         if (printToWin32) {
             output_file = nullptr;
         } else {
-            if (outputFileName->cmp("fd://0") == 0) {
+            if (outputFileName->compare("fd://0") == 0) {
 #if defined(_WIN32) || defined(__CYGWIN__)
                 _setmode(fileno(stdout), O_BINARY);
 #endif
@@ -822,7 +821,7 @@ static std::unique_ptr<GooString> getImageFileName(const GooString *outputFileNa
         snprintf(buf, sizeof(buf), "-%0*d", numDigits, page);
         imageName->append(buf);
     }
-    if (outputFileName->cmp("fd://0") != 0) {
+    if (outputFileName->compare("fd://0") != 0) {
         if (png) {
             imageName->append(".png");
         } else if (jpeg) {
@@ -842,7 +841,7 @@ static std::unique_ptr<GooString> getOutputFileName(GooString *fileName, GooStri
     std::unique_ptr<GooString> name;
 
     if (outputName) {
-        if (outputName->cmp("-") == 0) {
+        if (outputName->compare("-") == 0) {
             if (printToWin32 || (!printing && !singleFile)) {
                 fprintf(stderr, "Error: stdout may only be used with the ps, eps, pdf, svg output options or if -singlefile is used.\n");
                 exit(99);
@@ -856,7 +855,7 @@ static std::unique_ptr<GooString> getOutputFileName(GooString *fileName, GooStri
         return nullptr; // No output file means print to printer
     }
 
-    if (fileName->cmp("fd://0") == 0) {
+    if (fileName->compare("fd://0") == 0) {
         fprintf(stderr, "Error: an output filename or '-' must be supplied when the PDF file is stdin.\n");
         exit(99);
     }
@@ -963,11 +962,7 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Error: use only one of the output format options (-png, -jpeg, -ps, -eps, -pdf, -printdlg, -print, -svg).\n");
         exit(99);
     }
-    if (png || jpeg || tiff) {
-        printing = false;
-    } else {
-        printing = true;
-    }
+    printing = !(png || jpeg || tiff);
 
     if (printing) {
         checkInvalidPrintOption(mono, "-mono");
@@ -1070,11 +1065,7 @@ int main(int argc, char *argv[])
             exit(99);
         }
     }
-    if (origPageSizes || paperWidth < 0 || paperHeight < 0) {
-        usePDFPageSize = true;
-    } else {
-        usePDFPageSize = false;
-    }
+    usePDFPageSize = origPageSizes || paperWidth < 0 || paperHeight < 0;
 
     if (printdlg) {
         printToWin32 = true;
@@ -1094,7 +1085,7 @@ int main(int argc, char *argv[])
     }
 
     fileName = new GooString(argv[1]);
-    if (fileName->cmp("-") == 0) {
+    if (fileName->compare("-") == 0) {
         delete fileName;
         fileName = new GooString("fd://0");
     }

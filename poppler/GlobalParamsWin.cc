@@ -9,13 +9,13 @@
    // Copyright (C) 2013, 2018, 2019 Adam Reichold <adamreichold@myopera.com>
    // Copyright (C) 2013 Dmytro Morgun <lztoad@gmail.com>
    // Copyright (C) 2017 Christoph Cullmann <cullmann@kde.org>
-   // Copyright (C) 2017, 2018, 2020-2025 Albert Astals Cid <aacid@kde.org>
+   // Copyright (C) 2017, 2018, 2020-2026 Albert Astals Cid <aacid@kde.org>
    // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
    // Copyright (C) 2019 Christian Persch <chpe@src.gnome.org>
    // Copyright (C) 2019 Oliver Sander <oliver.sander@tu-dresden.de>
    // Copyright (C) 2021 Stefan Löffler <st.loeffler@gmail.com>
    // Copyright (C) 2021 sunderme <sunderme@gmx.de>
-   // Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+   // Copyright (C) 2025, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 
 TODO: instead of a fixed mapping defined in displayFontTab, it could
 scan the whole fonts directory, parse TTF files and build font
@@ -212,7 +212,7 @@ void SysFontList::scanWindowsFonts(const std::string &winFontDir)
                     if (!(dataLen >= 3 && data[1] == ':' && data[2] == '\\')) {
                         fontPath->insert(0, "\\");
                         fontPath->insert(0, winFontDir);
-                        fontPath->append('\0');
+                        fontPath->push_back('\0');
                     }
                     p0 = valName;
                     fontNum = 0;
@@ -435,15 +435,15 @@ static const char *findSubstituteName(const GfxFont *font, const std::unordered_
         const GooString *collection = ((GfxCIDFont *)font)->getCollection();
 
         const char *name3 = nullptr;
-        if (!collection->cmp("Adobe-CNS1"))
+        if (!collection->compare("Adobe-CNS1"))
             name3 = DEFAULT_CID_FONT_AC1_MSWIN;
-        else if (!collection->cmp("Adobe-GB1"))
+        else if (!collection->compare("Adobe-GB1"))
             name3 = DEFAULT_CID_FONT_AG1_MSWIN;
-        else if (!collection->cmp("Adobe-Japan1"))
+        else if (!collection->compare("Adobe-Japan1"))
             name3 = DEFAULT_CID_FONT_AJ1_MSWIN;
-        else if (!collection->cmp("Adobe-Japan2"))
+        else if (!collection->compare("Adobe-Japan2"))
             name3 = DEFAULT_CID_FONT_AJ2_MSWIN;
-        else if (!collection->cmp("Adobe-Korea1"))
+        else if (!collection->compare("Adobe-Korea1"))
             name3 = DEFAULT_CID_FONT_AK1_MSWIN;
 
         if (name3 && fontFiles.count(name3) != 0)
@@ -475,7 +475,7 @@ std::optional<std::string> GlobalParams::findSystemFontFile(const GfxFont &font,
         *type = fi->type;
         *fontNum = fi->fontNum;
         if (substituteFontName)
-            substituteFontName->Set(fi->substituteName->c_str());
+            substituteFontName->assign(fi->substituteName->toStr());
     } else {
         GooString *substFontName = new GooString(findSubstituteName(&font, fontFiles, substFiles, fontName->c_str()));
         error(errSyntaxError, -1, "Couldn't find a font for '{0:s}', subst is '{1:t}'", fontName->c_str(), substFontName);
@@ -483,7 +483,7 @@ std::optional<std::string> GlobalParams::findSystemFontFile(const GfxFont &font,
         if (fontFile != fontFiles.end()) {
             path = fontFile->second;
             if (substituteFontName)
-                substituteFontName->Set(path.c_str());
+                substituteFontName->assign(path);
             if (path.ends_with(".ttc")) {
                 *type = sysFontTTC;
             } else {

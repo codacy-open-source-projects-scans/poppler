@@ -7,6 +7,7 @@
  * Copyright (C) 2018, Zsombor Hollay-Horvath <hollay.horvath@gmail.com>
  * Copyright (C) 2018, Aleksey Nikolaev <nae202@gmail.com>
  * Copyright (C) 2020, Jiri Jakes <freedesktop@jirijakes.eu>
+ * Copyright (C) 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -42,7 +43,7 @@
 
 using namespace poppler;
 
-page_private::page_private(document_private *_doc, int _index) : doc(_doc), page(doc->doc->getCatalog()->getPage(_index + 1)), index(_index), transition(nullptr), font_info_cache_initialized(false) { }
+page_private::page_private(document_private *_doc, int _index) : doc(_doc), page(doc->doc->getCatalog()->getPage(_index + 1)), index(_index) { }
 
 page_private::~page_private()
 {
@@ -235,13 +236,13 @@ bool page::search(const ustring &text, rectf &r, search_direction_enum direction
 
     switch (direction) {
     case search_from_top:
-        found = text_page->findText(&u[0], len, true, true, false, false, sCase, false, false, &rect_left, &rect_top, &rect_right, &rect_bottom);
+        found = text_page->findText(u.data(), len, true, true, false, false, sCase, false, false, &rect_left, &rect_top, &rect_right, &rect_bottom);
         break;
     case search_next_result:
-        found = text_page->findText(&u[0], len, false, true, true, false, sCase, false, false, &rect_left, &rect_top, &rect_right, &rect_bottom);
+        found = text_page->findText(u.data(), len, false, true, true, false, sCase, false, false, &rect_left, &rect_top, &rect_right, &rect_bottom);
         break;
     case search_previous_result:
-        found = text_page->findText(&u[0], len, false, true, true, false, sCase, true, false, &rect_left, &rect_top, &rect_right, &rect_bottom);
+        found = text_page->findText(u.data(), len, false, true, true, false, sCase, true, false, &rect_left, &rect_top, &rect_right, &rect_bottom);
         break;
     }
 
@@ -355,18 +356,16 @@ text_box::writing_mode_enum text_box::get_wmode(int i) const
 {
     if (this->has_font_info()) {
         return m_data->text_box_font->wmodes[i];
-    } else {
-        return text_box::invalid_wmode;
     }
+    return text_box::invalid_wmode;
 }
 
 double text_box::get_font_size() const
 {
     if (this->has_font_info()) {
         return m_data->text_box_font->font_size;
-    } else {
-        return -1;
     }
+    return -1;
 }
 
 std::string text_box::get_font_name(int i) const
@@ -418,17 +417,17 @@ std::vector<text_box> page::text_list(int opt_flag) const
         double xMin, yMin, xMax, yMax;
         word->getBBox(&xMin, &yMin, &xMax, &yMax);
 
-        text_box tb { new text_box_data { ustr, { xMin, yMin, xMax - xMin, yMax - yMin }, word->getRotation(), {}, word->hasSpaceAfter() == true, nullptr } };
+        text_box tb { new text_box_data { .text = ustr, .bbox = { xMin, yMin, xMax - xMin, yMax - yMin }, .rotation = word->getRotation(), .char_bboxes = {}, .has_space_after = word->hasSpaceAfter(), .text_box_font = nullptr } };
 
         std::unique_ptr<text_box_font_info_data> tb_font_info = nullptr;
         if (opt_flag & page::text_list_include_font) {
             d->init_font_info_cache();
 
             std::unique_ptr<text_box_font_info_data> tb_font { new text_box_font_info_data {
-                    word->getFontSize(), // double font_size
-                    {}, // std::vector<text_box::writing_mode> wmodes;
-                    d->font_info_cache, // std::vector<font_info> font_info_cache;
-                    {} // std::vector<int> glyph_to_cache_index;
+                    .font_size = word->getFontSize(), // double font_size
+                    .wmodes = {}, // std::vector<text_box::writing_mode> wmodes;
+                    .font_info_cache = d->font_info_cache, // std::vector<font_info> font_info_cache;
+                    .glyph_to_cache_index = {} // std::vector<int> glyph_to_cache_index;
             } };
 
             tb_font_info = std::move(tb_font);

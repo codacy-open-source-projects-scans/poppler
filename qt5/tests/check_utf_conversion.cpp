@@ -16,10 +16,10 @@ class TestUTFConversion : public QObject
 public:
     explicit TestUTFConversion(QObject *parent = nullptr) : QObject(parent) { }
 private Q_SLOTS:
-    void testUTF_data();
-    void testUTF();
-    void testUnicodeToAscii7();
-    void testUnicodeLittleEndian();
+    static void testUTF_data();
+    static void testUTF();
+    static void testUnicodeToAscii7();
+    static void testUnicodeLittleEndian();
 };
 
 static bool compare(const Unicode *a, const char *b, int len)
@@ -81,7 +81,7 @@ void TestUTFConversion::testUTF()
 
     std::string gsUtf16_a(utf8ToUtf16WithBom(str));
     std::unique_ptr<GooString> gsUtf16_b(Poppler::QStringToUnicodeGooString(s));
-    QCOMPARE(gsUtf16_b->cmp(gsUtf16_a), 0);
+    QCOMPARE(gsUtf16_b->compare(gsUtf16_a), 0);
 
     // UTF-16 to UTF-8
 

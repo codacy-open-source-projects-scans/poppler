@@ -12,12 +12,12 @@ class TestOptionalContent : public QObject
 public:
     explicit TestOptionalContent(QObject *parent = nullptr) : QObject(parent) { }
 private Q_SLOTS:
-    void checkVisPolicy();
-    void checkNestedLayers();
-    void checkNoOptionalContent();
-    void checkIsVisible();
-    void checkVisibilitySetting();
-    void checkRadioButtons();
+    static void checkVisPolicy();
+    static void checkNestedLayers();
+    static void checkNoOptionalContent();
+    static void checkIsVisible();
+    static void checkVisibilitySetting();
+    static void checkRadioButtons();
 };
 
 void TestOptionalContent::checkVisPolicy()
@@ -164,20 +164,20 @@ void TestOptionalContent::checkVisibilitySetting()
 
     // In this test, both Ref(21,0) and Ref(28,0) start On,
     // based on the file settings
-    Object ref21obj(Ref { 21, 0 });
+    Object ref21obj(Ref { .num = 21, .gen = 0 });
     Ref ref21 = ref21obj.getRef();
     OptionalContentGroup *ocgA = ocgs->findOcgByRef(ref21);
     QVERIFY(ocgA);
 
-    QVERIFY((ocgA->getName()->cmp("A")) == 0);
+    QVERIFY((ocgA->getName()->compare("A")) == 0);
     QCOMPARE(ocgA->getState(), OptionalContentGroup::On);
 
-    Object ref28obj(Ref { 28, 0 });
+    Object ref28obj(Ref { .num = 28, .gen = 0 });
     Ref ref28 = ref28obj.getRef();
     OptionalContentGroup *ocgB = ocgs->findOcgByRef(ref28);
     QVERIFY(ocgB);
 
-    QVERIFY((ocgB->getName()->cmp("B")) == 0);
+    QVERIFY((ocgB->getName()->compare("B")) == 0);
     QCOMPARE(ocgB->getState(), OptionalContentGroup::On);
 
     // turn one Off

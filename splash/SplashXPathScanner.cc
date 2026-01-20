@@ -11,7 +11,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2008, 2010, 2014, 2018, 2019, 2021, 2022, 2024, 2025 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2008, 2010, 2014, 2018, 2019, 2021, 2022, 2024-2026 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2010 Paweł Wiejacha <pawel.wiejacha@gmail.com>
 // Copyright (C) 2013, 2014, 2021 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2018, 2025 Stefan Brüns <stefan.bruens@rwth-aachen.de>
@@ -40,7 +40,7 @@
 //------------------------------------------------------------------------
 
 SplashXPathScanner::SplashXPathScanner(const SplashXPath &xPath, bool eoA, int clipYMin, int clipYMax) //
-    : eo(eoA), xMin(1), yMin(1), xMax(0), yMax(0)
+    : eo(eoA)
 {
     // compute the bbox
     if (xPath.length == 0) {
@@ -105,6 +105,11 @@ SplashXPathScanner::SplashXPathScanner(const SplashXPath &xPath, bool eoA, int c
     }
     if (clipYMax < yMax) {
         yMax = clipYMax;
+    }
+
+    if (yMin > yMax) {
+        // This means the splashFloors overflowed/underflowed
+        return;
     }
 
     computeIntersections(xPath);
@@ -193,8 +198,7 @@ bool SplashXPathScanIterator::getNextSpan(int *x0, int *x1)
     return true;
 }
 
-SplashXPathScanIterator::SplashXPathScanIterator(const SplashXPathScanner &scanner, int y)
-    : line((y < scanner.yMin || y > scanner.yMax) ? scanner.allIntersections[0] : scanner.allIntersections[y - scanner.yMin]), interIdx(0), interCount(0), eo(scanner.eo)
+SplashXPathScanIterator::SplashXPathScanIterator(const SplashXPathScanner &scanner, int y) : line((y < scanner.yMin || y > scanner.yMax) ? scanner.allIntersections[0] : scanner.allIntersections[y - scanner.yMin]), eo(scanner.eo)
 {
     if (y < scanner.yMin || y > scanner.yMax) {
         // set index to line end

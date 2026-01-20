@@ -16,7 +16,7 @@
 // Copyright (C) 2019 Marek Kasik <mkasik@redhat.com>
 // Copyright (C) 2019, 2023 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2022 crt <chluo@cse.cuhk.edu.hk>
-// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2025, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -48,11 +48,11 @@ static void doMergeNameTree(PDFDoc *doc, XRef *srcXRef, XRef *countRef, int oldR
                     const Object &mkey = mergeNameArray.arrayGetNF(j);
                     const Object &mvalue = mergeNameArray.arrayGetNF(j + 1);
                     if (mkey.isString() && mvalue.isRef()) {
-                        if (mkey.getString()->cmp(key.getString()) < 0) {
+                        if (mkey.getString()->compare(key.getString()->toStr()) < 0) {
                             newNameArray->add(Object(mkey.getString()->copy()));
-                            newNameArray->add(Object(Ref { mvalue.getRef().num + numOffset, mvalue.getRef().gen }));
+                            newNameArray->add(Object(Ref { .num = mvalue.getRef().num + numOffset, .gen = mvalue.getRef().gen }));
                             j += 2;
-                        } else if (mkey.getString()->cmp(key.getString()) == 0) {
+                        } else if (mkey.getString()->compare(key.getString()->toStr()) == 0) {
                             j += 2;
                         } else {
                             break;
@@ -70,7 +70,7 @@ static void doMergeNameTree(PDFDoc *doc, XRef *srcXRef, XRef *countRef, int oldR
             const Object &mvalue = mergeNameArray.arrayGetNF(j + 1);
             if (mkey.isString() && mvalue.isRef()) {
                 newNameArray->add(Object(mkey.getString()->copy()));
-                newNameArray->add(Object(Ref { mvalue.getRef().num + numOffset, mvalue.getRef().gen }));
+                newNameArray->add(Object(Ref { .num = mvalue.getRef().num + numOffset, .gen = mvalue.getRef().gen }));
             }
             j += 2;
         }
@@ -83,7 +83,7 @@ static void doMergeNameTree(PDFDoc *doc, XRef *srcXRef, XRef *countRef, int oldR
             const Object &value = mergeNameArray.arrayGetNF(i + 1);
             if (key.isString() && value.isRef()) {
                 newNameArray->add(Object(key.getString()->copy()));
-                newNameArray->add(Object(Ref { value.getRef().num + numOffset, value.getRef().gen }));
+                newNameArray->add(Object(Ref { .num = value.getRef().num + numOffset, .gen = value.getRef().gen }));
             }
         }
         srcNameTree->add("Names", Object(newNameArray));
@@ -118,7 +118,7 @@ static bool doMergeFormDict(Dict *srcFormDict, Dict *mergeFormDict, int numOffse
                 error(errSyntaxError, -1, "Fields object is not a Ref.");
                 return false;
             }
-            srcFields.arrayAdd(Object(Ref { value.getRef().num + numOffset, value.getRef().gen }));
+            srcFields.arrayAdd(Object(Ref { .num = value.getRef().num + numOffset, .gen = value.getRef().gen }));
         }
     }
     return true;
@@ -175,7 +175,8 @@ int main(int argc, char *argv[])
             if (doc->isEncrypted()) {
                 error(errUnimplemented, -1, "Could not merge encrypted files ('{0:s}')", argv[i]);
                 return -1;
-            } else if (!doc->getXRef()->getCatalog().isDict()) {
+            }
+            if (!doc->getXRef()->getCatalog().isDict()) {
                 error(errSyntaxError, -1, "XRef's Catalog is not a dictionary ('{0:s}')", argv[i]);
                 return -1;
             }
@@ -245,7 +246,7 @@ int main(int argc, char *argv[])
                                         Object pgidf = pgintent.dictLookup("OutputConditionIdentifier");
                                         if (pgidf.isString()) {
                                             const GooString *gpgidf = pgidf.getString();
-                                            if (gpgidf->cmp(gidf) == 0) {
+                                            if (gpgidf->compare(gidf->toStr()) == 0) {
                                                 removeIntent = false;
                                                 break;
                                             }

@@ -15,6 +15,7 @@
 // Copyright 2021 Theofilos Intzoglou <int.teo@gmail.com>
 // Copyright 2021 Marek Kasik <mkasik@redhat.com>
 // Copyright 2023-2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2026 Juraj Šarinay <juraj@sarinay.com>
 //
 //========================================================================
 
@@ -53,7 +54,7 @@ class HashContext
     };
 
 public:
-    HashContext(HashAlgorithm algorithm, private_tag);
+    HashContext(HashAlgorithm algorithm, private_tag /*unused*/);
     void updateHash(unsigned char *data_block, int data_len);
     std::vector<unsigned char> endHash();
     HashAlgorithm getHashAlgorithm() const;
@@ -72,7 +73,7 @@ private:
 class NSSSignatureVerification final : public CryptoSign::VerificationInterface
 {
 public:
-    explicit NSSSignatureVerification(std::vector<unsigned char> &&p7data, CryptoSign::SignatureType);
+    explicit NSSSignatureVerification(std::vector<unsigned char> &&p7data, CryptoSign::SignatureType subfilter);
     ~NSSSignatureVerification() final;
     SignatureValidationStatus validateSignature() final;
     std::chrono::system_clock::time_point getSigningTime() const final;
@@ -92,14 +93,15 @@ public:
 private:
     std::vector<unsigned char> p7;
     CryptoSign::SignatureType type;
-    NSSCMSMessage *CMSMessage;
-    NSSCMSSignedData *CMSSignedData;
-    NSSCMSSignerInfo *CMSSignerInfo;
+    NSSCMSMessage *CMSMessage = nullptr;
+    NSSCMSSignedData *CMSSignedData = nullptr;
+    NSSCMSSignerInfo *CMSSignerInfo = nullptr;
     SECItem CMSitem;
     std::unique_ptr<HashContext> hashContext;
     HashAlgorithm innerHashAlgorithm;
     std::future<CertificateValidationStatus> validationStatus;
     std::optional<CertificateValidationStatus> cachedValidationStatus;
+    bool signingCertificateAvailable();
 };
 
 class NSSSignatureCreation final : public CryptoSign::SigningInterface
@@ -117,7 +119,7 @@ public:
 
 private:
     std::unique_ptr<HashContext> hashContext;
-    CERTCertificate *signing_cert;
+    CERTCertificate *signing_cert = nullptr;
 };
 
 class POPPLER_PRIVATE_EXPORT NSSSignatureConfiguration
@@ -143,7 +145,7 @@ private:
 class NSSCryptoSignBackend final : public CryptoSign::Backend
 {
 public:
-    std::unique_ptr<CryptoSign::VerificationInterface> createVerificationHandler(std::vector<unsigned char> &&pkcs7, CryptoSign::SignatureType) final;
+    std::unique_ptr<CryptoSign::VerificationInterface> createVerificationHandler(std::vector<unsigned char> &&pkcs7, CryptoSign::SignatureType type) final;
     std::unique_ptr<CryptoSign::SigningInterface> createSigningHandler(const std::string &certID, HashAlgorithm digestAlgTag) final;
     std::vector<std::unique_ptr<X509CertificateInfo>> getAvailableSigningCertificates() final;
     ~NSSCryptoSignBackend() final;

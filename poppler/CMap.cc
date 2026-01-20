@@ -19,7 +19,7 @@
 // Copyright (C) 2017 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019 LE GARREC Vincent <legarrec.vincent@gmail.com>
-// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2025, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2025 Arnav V <arnav0872@gmail.com>
 //
 // To see a description of the changes please see the Changelog file that
@@ -164,7 +164,7 @@ void CMap::parse2(CMapCache *cache, int (*getCharFunc)(void *), void *data)
                     error(errSyntaxError, -1, "Illegal entry in cidchar block in CMap");
                     break;
                 }
-                if (!(tok1[0] == '<' && tok1[n1 - 1] == '>' && n1 >= 4 && (n1 & 1) == 0)) {
+                if (tok1[0] != '<' || tok1[n1 - 1] != '>' || n1 < 4 || (n1 & 1) != 0) {
                     error(errSyntaxError, -1, "Illegal entry in cidchar block in CMap");
                     continue;
                 }
@@ -336,7 +336,7 @@ void CMap::freeCMapVector(CMapVectorEntry *vec)
 
 bool CMap::match(const std::string &collectionA, const std::string &cMapNameA)
 {
-    return !collection->cmp(collectionA) && !cMapName->cmp(cMapNameA);
+    return !collection->compare(collectionA) && !cMapName->compare(cMapNameA);
 }
 
 CID CMap::getCID(const char *s, int len, CharCode *c, int *nUsed)
@@ -391,7 +391,8 @@ void CMap::setReverseMapVector(unsigned int startCode, CMapVectorEntry *vec, uns
                     if (rmap[idx] == 0) {
                         rmap[idx] = code;
                         break;
-                    } else if (rmap[idx] == code) {
+                    }
+                    if (rmap[idx] == code) {
                         break;
                     }
                 }

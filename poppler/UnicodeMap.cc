@@ -14,7 +14,7 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2010 Jakub Wilk <jwilk@jwilk.net>
-// Copyright (C) 2017-2020, 2022, 2025 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2017-2020, 2022, 2025, 2026 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2017 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2017 Jean Ghali <jghali@libertysurf.fr>
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
@@ -185,13 +185,14 @@ int UnicodeMap::mapUnicode(Unicode u, char *buf, int bufSize) const
                     }
                     for (const UnicodeMapExt &ext : eMaps) {
                         if (ext.u == u) {
-                            if (int(ext.code.size()) >= bufSize) {
+                            const int codeSize = ext.code.size();
+                            if (codeSize > bufSize) {
                                 return 0;
                             }
-                            for (int j = 0; j < std::min(int(ext.code.size()), bufSize); ++j) {
+                            for (int j = 0; j < codeSize; ++j) {
                                 buf[j] = ext.code[j];
                             }
-                            return int(ext.code.size());
+                            return codeSize;
                         }
                     }
                     return 0;
