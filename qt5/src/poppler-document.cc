@@ -1,7 +1,7 @@
 /* poppler-document.cc: qt interface to poppler
  * Copyright (C) 2005, Net Integration Technologies, Inc.
  * Copyright (C) 2005, 2008, Brad Hards <bradh@frogmouth.net>
- * Copyright (C) 2005-2010, 2012, 2013, 2015, 2017-2022, 2024, 2025, Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2005-2010, 2012, 2013, 2015, 2017-2022, 2024-2026, Albert Astals Cid <aacid@kde.org>
  * Copyright (C) 2006-2010, Pino Toscano <pino@kde.org>
  * Copyright (C) 2010, 2011 Hib Eris <hib@hiberis.nl>
  * Copyright (C) 2012 Koji Otani <sho@bbr.jp>
@@ -73,20 +73,20 @@ namespace Poppler {
 
 Document *Document::load(const QString &filePath, const QByteArray &ownerPassword, const QByteArray &userPassword)
 {
-    DocumentData *doc = new DocumentData(filePath, GooString(ownerPassword.data()), GooString(userPassword.data()));
+    auto *doc = new DocumentData(filePath, GooString(ownerPassword.data()), GooString(userPassword.data()));
     return DocumentData::checkDocument(doc);
 }
 
 Document *Document::load(QIODevice *device, const QByteArray &ownerPassword, const QByteArray &userPassword)
 {
-    DocumentData *doc = new DocumentData(device, GooString(ownerPassword.data()), GooString(userPassword.data()));
+    auto *doc = new DocumentData(device, GooString(ownerPassword.data()), GooString(userPassword.data()));
     return DocumentData::checkDocument(doc);
 }
 
 Document *Document::loadFromData(const QByteArray &fileContents, const QByteArray &ownerPassword, const QByteArray &userPassword)
 {
     // create stream
-    DocumentData *doc = new DocumentData(fileContents, GooString(ownerPassword.data()), GooString(userPassword.data()));
+    auto *doc = new DocumentData(fileContents, GooString(ownerPassword.data()), GooString(userPassword.data()));
     return DocumentData::checkDocument(doc);
 }
 
@@ -604,7 +604,7 @@ QDomDocument *Document::toc() const
         return nullptr;
     }
 
-    QDomDocument *toc = new QDomDocument();
+    auto *toc = new QDomDocument();
     m_doc->addTocChildren(toc, toc, items);
 
     return toc;
@@ -616,8 +616,8 @@ QVector<OutlineItem> Document::outline() const
 
     if (::Outline *outline = m_doc->doc->getOutline()) {
         if (const std::vector<::OutlineItem *> *items = outline->getItems()) {
-            for (void *item : *items) {
-                result.push_back(OutlineItem { new OutlineItemData { static_cast<::OutlineItem *>(item), m_doc } });
+            for (::OutlineItem *item : *items) {
+                result.push_back(OutlineItem { new OutlineItemData { item, m_doc } });
             }
         }
     }
@@ -629,7 +629,7 @@ LinkDestination *Document::linkDestination(const QString &name)
 {
     const std::unique_ptr<GooString> namedDest = QStringToGooString(name);
     LinkDestinationData ldd(nullptr, namedDest.get(), m_doc, false);
-    LinkDestination *ld = new LinkDestination(ldd);
+    auto *ld = new LinkDestination(ldd);
     return ld;
 }
 

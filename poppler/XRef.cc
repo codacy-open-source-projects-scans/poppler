@@ -69,15 +69,15 @@
 // Note that the PDF spec uses 1 base (eg bit 3 is 1<<2)
 //------------------------------------------------------------------------
 
-#define permPrint (1 << 2) // bit 3
-#define permChange (1 << 3) // bit 4
-#define permCopy (1 << 4) // bit 5
-#define permNotes (1 << 5) // bit 6
-#define permFillForm (1 << 8) // bit 9
-#define permAccessibility (1 << 9) // bit 10
-#define permAssemble (1 << 10) // bit 11
-#define permHighResPrint (1 << 11) // bit 12
-#define defPermFlags 0xfffc
+constexpr int permPrint = 1 << 2; // bit 3
+constexpr int permChange = 1 << 3; // bit 4
+constexpr int permCopy = 1 << 4; // bit 5
+constexpr int permNotes = 1 << 5; // bit 6
+constexpr int permFillForm = 1 << 8; // bit 9
+constexpr int permAccessibility = 1 << 9; // bit 10
+constexpr int permAssemble = 1 << 10; // bit 11
+constexpr int permHighResPrint = 1 << 11; // bit 12
+constexpr int defPermFlags = 0xfffc;
 
 //------------------------------------------------------------------------
 // ObjectStream
@@ -1660,7 +1660,7 @@ void XRef::XRefPreScanWriter::writeEntry(Goffset offset, int /*gen*/, XRefEntryT
 
 void XRef::writeStreamToBuffer(GooString *stmBuf, Dict *xrefDict, XRef *xref)
 {
-    Array *index = new Array(xref);
+    auto *index = new Array(xref);
     stmBuf->clear();
 
     // First pass: determine whether all offsets fit in 4 bytes or not
@@ -1674,7 +1674,7 @@ void XRef::writeStreamToBuffer(GooString *stmBuf, Dict *xrefDict, XRef *xref)
 
     xrefDict->set("Type", Object(objName, "XRef"));
     xrefDict->set("Index", Object(index));
-    Array *wArray = new Array(xref);
+    auto *wArray = new Array(xref);
     wArray->add(Object(1));
     wArray->add(Object(offsetSize));
     wArray->add(Object(2));

@@ -488,9 +488,9 @@ bool SplashAxialPattern::getParameter(double xc, double yc, double *t) const
 
 //------------------------------------------------------------------------
 // Type 3 font cache size parameters
-#define type3FontCacheAssoc 8
-#define type3FontCacheMaxSets 8
-#define type3FontCacheSize (128 * 1024)
+constexpr int type3FontCacheAssoc = 8;
+constexpr int type3FontCacheMaxSets = 8;
+constexpr int type3FontCacheSize = 128 * 1024;
 
 //------------------------------------------------------------------------
 // Divide a 16-bit value (in [0, 255*255]) by 255, returning an 8-bit result.
@@ -1381,8 +1381,8 @@ void SplashOutputDev::startPage(int /*pageNum*/, GfxState *state, XRef *xrefA)
     }
     splash->setStrokePattern(new SplashSolidColor(color));
     splash->setFillPattern(new SplashSolidColor(color));
-    splash->setLineCap(splashLineCapButt);
-    splash->setLineJoin(splashLineJoinMiter);
+    splash->setLineCap(SplashLineCap::Butt);
+    splash->setLineJoin(SplashLineJoin::Miter);
     splash->setLineDash({}, 0);
     splash->setMiterLimit(10);
     splash->setFlatness(1);
@@ -1474,12 +1474,18 @@ void SplashOutputDev::updateFlatness(GfxState * /*state*/)
 
 void SplashOutputDev::updateLineJoin(GfxState *state)
 {
-    splash->setLineJoin(state->getLineJoin());
+    static_assert(static_cast<SplashLineJoin>(GfxState::LineJoinMitre) == SplashLineJoin::Miter);
+    static_assert(static_cast<SplashLineJoin>(GfxState::LineJoinRound) == SplashLineJoin::Round);
+    static_assert(static_cast<SplashLineJoin>(GfxState::LineJoinBevel) == SplashLineJoin::Bevel);
+    splash->setLineJoin(static_cast<SplashLineJoin>(state->getLineJoin()));
 }
 
 void SplashOutputDev::updateLineCap(GfxState *state)
 {
-    splash->setLineCap(state->getLineCap());
+    static_assert(static_cast<SplashLineCap>(GfxState::LineCapButt) == SplashLineCap::Butt);
+    static_assert(static_cast<SplashLineCap>(GfxState::LineCapRound) == SplashLineCap::Round);
+    static_assert(static_cast<SplashLineCap>(GfxState::LineCapProjecting) == SplashLineCap::Projecting);
+    splash->setLineCap(static_cast<SplashLineCap>(state->getLineCap()));
 }
 
 void SplashOutputDev::updateMiterLimit(GfxState *state)
@@ -1694,10 +1700,10 @@ void SplashOutputDev::setOverprintMask(GfxColorSpace *colorSpace, bool overprint
         if (grayIndexed && colorSpace->getMode() != csDeviceN) {
             mask &= ~7;
         } else if (colorSpace->getMode() == csSeparation) {
-            GfxSeparationColorSpace *deviceSep = (GfxSeparationColorSpace *)colorSpace;
+            auto *deviceSep = (GfxSeparationColorSpace *)colorSpace;
             additive = deviceSep->getName()->compare("All") != 0 && mask == 0x0f && !deviceSep->isNonMarking();
         } else if (colorSpace->getMode() == csDeviceN) {
-            GfxDeviceNColorSpace *deviceNCS = (GfxDeviceNColorSpace *)colorSpace;
+            auto *deviceNCS = (GfxDeviceNColorSpace *)colorSpace;
             additive = mask == 0x0f && !deviceNCS->isNonMarking();
             for (i = 0; i < deviceNCS->getNComps() && additive; i++) {
                 if (deviceNCS->getColorantName(i) == "Cyan") {
@@ -2552,7 +2558,7 @@ struct SplashOutImageMaskData
 
 bool SplashOutputDev::imageMaskSrc(void *data, SplashColorPtr line)
 {
-    SplashOutImageMaskData *imgMaskData = (SplashOutImageMaskData *)data;
+    auto *imgMaskData = (SplashOutImageMaskData *)data;
     unsigned char *p;
     SplashColorPtr q;
     int x;
@@ -2706,10 +2712,10 @@ struct SplashOutImageData
 #if USE_CMS
 bool SplashOutputDev::useIccImageSrc(void *data)
 {
-    SplashOutImageData *imgData = (SplashOutImageData *)data;
+    auto *imgData = (SplashOutImageData *)data;
 
     if (!imgData->lookup && imgData->colorMap->getColorSpace()->getMode() == csICCBased && imgData->colorMap->getBits() != 1) {
-        GfxICCBasedColorSpace *colorSpace = (GfxICCBasedColorSpace *)imgData->colorMap->getColorSpace();
+        auto *colorSpace = (GfxICCBasedColorSpace *)imgData->colorMap->getColorSpace();
         switch (imgData->colorMode) {
         case splashModeMono1:
         case splashModeMono8:
@@ -2749,7 +2755,7 @@ static inline unsigned char clip255(int x)
 
 bool SplashOutputDev::imageSrc(void *data, SplashColorPtr colorLine, unsigned char * /*alphaLine*/)
 {
-    SplashOutImageData *imgData = (SplashOutImageData *)data;
+    auto *imgData = (SplashOutImageData *)data;
     unsigned char *p;
     SplashColorPtr q, col;
     GfxRGB rgb;
@@ -2902,7 +2908,7 @@ bool SplashOutputDev::imageSrc(void *data, SplashColorPtr colorLine, unsigned ch
 #if USE_CMS
 bool SplashOutputDev::iccImageSrc(void *data, SplashColorPtr colorLine, unsigned char * /*alphaLine*/)
 {
-    SplashOutImageData *imgData = (SplashOutImageData *)data;
+    auto *imgData = (SplashOutImageData *)data;
     unsigned char *p;
     int nComps;
 
@@ -2944,10 +2950,10 @@ bool SplashOutputDev::iccImageSrc(void *data, SplashColorPtr colorLine, unsigned
 
 void SplashOutputDev::iccTransform(void *data, SplashBitmap *bitmap)
 {
-    SplashOutImageData *imgData = (SplashOutImageData *)data;
+    auto *imgData = (SplashOutImageData *)data;
     int nComps = imgData->colorMap->getNumPixelComps();
 
-    unsigned char *colorLine = (unsigned char *)gmalloc(nComps * bitmap->getWidth());
+    auto *colorLine = (unsigned char *)gmalloc(nComps * bitmap->getWidth());
     unsigned char *rgbxLine = (imgData->colorMode == splashModeXBGR8) ? (unsigned char *)gmalloc(3 * bitmap->getWidth()) : nullptr;
     for (int i = 0; i < bitmap->getHeight(); i++) {
         unsigned char *p = bitmap->getDataPtr() + i * bitmap->getRowSize();
@@ -2998,7 +3004,7 @@ void SplashOutputDev::iccTransform(void *data, SplashBitmap *bitmap)
 
 bool SplashOutputDev::alphaImageSrc(void *data, SplashColorPtr colorLine, unsigned char *alphaLine)
 {
-    SplashOutImageData *imgData = (SplashOutImageData *)data;
+    auto *imgData = (SplashOutImageData *)data;
     unsigned char *p, *aq;
     SplashColorPtr q, col;
     GfxRGB rgb;
@@ -3113,7 +3119,7 @@ struct TilingSplashOutBitmap
 
 bool SplashOutputDev::tilingBitmapSrc(void *data, SplashColorPtr colorLine, unsigned char *alphaLine)
 {
-    TilingSplashOutBitmap *imgData = (TilingSplashOutBitmap *)data;
+    auto *imgData = (TilingSplashOutBitmap *)data;
 
     if (imgData->y == imgData->bitmap->getHeight()) {
         imgData->repeatY--;
@@ -3353,7 +3359,7 @@ struct SplashOutMaskedImageData
 
 bool SplashOutputDev::maskedImageSrc(void *data, SplashColorPtr colorLine, unsigned char *alphaLine)
 {
-    SplashOutMaskedImageData *imgData = (SplashOutMaskedImageData *)data;
+    auto *imgData = (SplashOutMaskedImageData *)data;
     unsigned char *p, *aq;
     SplashColorPtr q, col;
     GfxRGB rgb;
@@ -4068,7 +4074,7 @@ void SplashOutputDev::setSoftMask(GfxState * /*state*/, const std::array<double,
         }
     }
 
-    SplashBitmap *softMask = new SplashBitmap(bitmap->getWidth(), bitmap->getHeight(), 1, splashModeMono8, false);
+    auto *softMask = new SplashBitmap(bitmap->getWidth(), bitmap->getHeight(), 1, splashModeMono8, false);
     if (!softMask->getDataPtr()) {
         delete softMask;
         softMask = new SplashBitmap(1, 1, 1, splashModeMono8, false);
@@ -4403,7 +4409,7 @@ bool SplashOutputDev::tilingPatternFill(GfxState *state, Gfx *gfxA, Catalog * /*
         }
         retValue = true;
     } else {
-        retValue = splash->drawImage(&tilingBitmapSrc, nullptr, &imgData, colorMode, true, result_width, result_height, matc, false, true) == splashOk;
+        retValue = splash->drawImage(&tilingBitmapSrc, nullptr, &imgData, colorMode, true, result_width, result_height, matc, false, true) == SplashError::NoError;
     }
     delete tBitmap;
     if (!retValue) {
@@ -4491,7 +4497,7 @@ bool SplashOutputDev::univariateShadedFill(GfxState *state, SplashUnivariatePatt
     setOverprintMask(pattern->getShading()->getColorSpace(), state->getFillOverprint(), state->getOverprintMode(), nullptr);
     // If state->getStrokePattern() is set, then the current clipping region
     // is a stroke path.
-    retVal = (splash->shadedFill(path, pattern->getShading()->getHasBBox(), pattern, (state->getStrokePattern() != nullptr)) == splashOk);
+    retVal = (splash->shadedFill(path, pattern->getShading()->getHasBBox(), pattern, (state->getStrokePattern() != nullptr)) == SplashError::NoError);
     state->clearPath();
     setVectorAntialias(vaa);
 
@@ -4500,7 +4506,7 @@ bool SplashOutputDev::univariateShadedFill(GfxState *state, SplashUnivariatePatt
 
 bool SplashOutputDev::functionShadedFill(GfxState *state, GfxFunctionShading *shading)
 {
-    SplashFunctionPattern *pattern = new SplashFunctionPattern(colorMode, state, shading);
+    auto *pattern = new SplashFunctionPattern(colorMode, state, shading);
     double xMin, yMin, xMax, yMax;
     bool vaa = getVectorAntialias();
     // restore vector antialias because we support it here
@@ -4554,7 +4560,7 @@ bool SplashOutputDev::functionShadedFill(GfxState *state, GfxFunctionShading *sh
     setOverprintMask(pattern->getShading()->getColorSpace(), state->getFillOverprint(), state->getOverprintMode(), nullptr);
     // If state->getStrokePattern() is set, then the current clipping region
     // is a stroke path.
-    retVal = (splash->shadedFill(path, pattern->getShading()->getHasBBox(), pattern, (state->getStrokePattern() != nullptr)) == splashOk);
+    retVal = (splash->shadedFill(path, pattern->getShading()->getHasBBox(), pattern, (state->getStrokePattern() != nullptr)) == SplashError::NoError);
     state->clearPath();
     setVectorAntialias(vaa);
 
@@ -4565,7 +4571,7 @@ bool SplashOutputDev::functionShadedFill(GfxState *state, GfxFunctionShading *sh
 
 bool SplashOutputDev::axialShadedFill(GfxState *state, GfxAxialShading *shading, double /*tMin*/, double /*tMax*/)
 {
-    SplashAxialPattern *pattern = new SplashAxialPattern(colorMode, state, shading);
+    auto *pattern = new SplashAxialPattern(colorMode, state, shading);
     bool retVal = univariateShadedFill(state, pattern);
 
     delete pattern;
@@ -4575,7 +4581,7 @@ bool SplashOutputDev::axialShadedFill(GfxState *state, GfxAxialShading *shading,
 
 bool SplashOutputDev::radialShadedFill(GfxState *state, GfxRadialShading *shading, double /*tMin*/, double /*tMax*/)
 {
-    SplashRadialPattern *pattern = new SplashRadialPattern(colorMode, state, shading);
+    auto *pattern = new SplashRadialPattern(colorMode, state, shading);
     bool retVal = univariateShadedFill(state, pattern);
 
     delete pattern;
