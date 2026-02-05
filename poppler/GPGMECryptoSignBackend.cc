@@ -203,7 +203,7 @@ static std::unique_ptr<X509CertificateInfo> getCertificateInfoFromKey(const GpgM
         certificateInfo->setKeyLocation(KeyLocation::Computer);
     }
 
-    certificateInfo->setQualified(subkey.isQualified());
+    certificateInfo->setQualified(key.isQualified());
 
     return certificateInfo;
 }
@@ -241,6 +241,8 @@ std::vector<std::unique_ptr<X509CertificateInfo>> GpgSignatureBackend::getAvaila
     std::vector<std::unique_ptr<X509CertificateInfo>> certificates;
     for (auto type : allowedTypes()) {
         const auto context = GpgME::Context::create(type);
+        context->setOffline(true); /* This avoids a subset of expensive checks that Validate keylist mode enables*/
+        context->addKeyListMode(GpgME::Validate); /* We need the validate option to be able to list qualified keys  */
         auto err = context->startKeyListing(static_cast<const char *>(nullptr), true /*secretOnly*/);
         while (isSuccess(err)) {
             const auto key = context->nextKey(err);
@@ -313,11 +315,11 @@ std::variant<std::vector<unsigned char>, CryptoSign::SigningErrorMessage> GpgSig
                 (char)0xff,
         } };
 
-        if (CryptoSign::maxSupportedSignatureSize - prefixandsize <= signatureString.size()) {
+        if (CryptoSign::defaultMaxSignatureSize - prefixandsize <= signatureString.size()) {
             return CryptoSign::SigningErrorMessage { .type = CryptoSign::SigningError::InternalError, .message = ERROR_IN_CODE_LOCATION };
         }
         std::array<unsigned char, 4> bytes;
-        int n = CryptoSign::maxSupportedSignatureSize - prefixandsize - signatureString.size();
+        int n = CryptoSign::defaultMaxSignatureSize - prefixandsize - signatureString.size();
 
         bytes[0] = (n >> 24) & 0xFF;
         bytes[1] = (n >> 16) & 0xFF;
@@ -346,6 +348,11 @@ std::unique_ptr<X509CertificateInfo> GpgSignatureCreation::getCertificateInfo() 
         return nullptr;
     }
     return getCertificateInfoFromKey(*key, protocol);
+}
+
+unsigned int GpgSignatureCreation::estimateSize() const
+{
+    return CryptoSign::defaultMaxSignatureSize;
 }
 
 GpgSignatureVerification::GpgSignatureVerification(const std::vector<unsigned char> &p7data, GpgME::Protocol protocol_)

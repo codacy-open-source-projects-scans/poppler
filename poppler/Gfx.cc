@@ -242,11 +242,11 @@ GfxResources::GfxResources(XRef *xrefA, Dict *resDictA, GfxResources *nextA) : g
     if (resDictA) {
 
         // build font dictionary
-        Dict *resDict = resDictA->copy(xref);
+        std::unique_ptr<Dict> resDict = resDictA->copy(xref);
         Ref fontDictRef;
         const Object &fontDictObj = resDict->lookup("Font", &fontDictRef);
         if (fontDictObj.isDict()) {
-            fonts = std::make_unique<GfxFontDict>(xref, fontDictRef, fontDictObj.getDict());
+            fonts = std::make_unique<GfxFontDict>(xref, fontDictRef, *fontDictObj.getDict());
         }
 
         // get XObject dictionary
@@ -267,7 +267,6 @@ GfxResources::GfxResources(XRef *xrefA, Dict *resDictA, GfxResources *nextA) : g
         // get properties dictionary
         propertiesDict = resDict->lookup("Properties");
 
-        delete resDict;
     } else {
         fonts = nullptr;
         xObjDict.setToNull();
@@ -1177,7 +1176,7 @@ void Gfx::opSetExtGState(Object args[], int /*numArgs*/)
                 Object fobj = fargs0.fetch(xref);
                 if (fobj.isDict()) {
                     Ref r = fargs0.getRef();
-                    std::shared_ptr<GfxFont> font = GfxFont::makeFont(xref, args[0].getName(), r, fobj.getDict());
+                    std::shared_ptr<GfxFont> font = GfxFont::makeFont(xref, args[0].getName(), r, *fobj.getDict());
                     state->setFont(font, fargs1.getNum());
                     fontChanged = true;
                 }
@@ -4967,7 +4966,7 @@ void Gfx::opBeginImage(Object /*args*/[], int /*numArgs*/)
 std::unique_ptr<Stream> Gfx::buildImageStream()
 {
     // build dictionary
-    Object dict(new Dict(xref));
+    Object dict(std::make_unique<Dict>(xref));
     Object obj = parser->getObj();
     while (!obj.isCmd("ID") && !obj.isEOF()) {
         if (!obj.isName()) {
