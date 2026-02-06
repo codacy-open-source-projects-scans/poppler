@@ -213,7 +213,7 @@ bool PageAttrs::readBox(Dict *dict, const char *key, PDFRectangle *box)
     bool ok;
 
     obj1 = dict->lookup(key);
-    if (obj1.isArray() && obj1.arrayGetLength() == 4) {
+    if (obj1.isArrayOfLength(4)) {
         ok = true;
         obj2 = obj1.arrayGet(0);
         if (obj2.isNum()) {
@@ -312,13 +312,13 @@ Page::Page(PDFDoc *docA, int numA, Object &&pageDict, Ref pageRefA, std::unique_
         annotsObj.setToNull();
     }
 
-    if (annotsObj.isArray() && annotsObj.arrayGetLength() > 10000) {
+    if (annotsObj.isArrayOfLengthAtLeast(10000)) {
         error(errSyntaxError, -1, "Page annotations object (page {0:d}) is likely malformed. Too big: ({1:d})", num, annotsObj.arrayGetLength());
         goto err2;
     }
     if (annotsObj.isRef()) {
         auto resolvedObj = getAnnotsObject();
-        if (resolvedObj.isArray() && resolvedObj.arrayGetLength() > 10000) {
+        if (resolvedObj.isArrayOfLengthAtLeast(10000)) {
             error(errSyntaxError, -1, "Page annotations object (page {0:d}) is likely malformed. Too big: ({1:d})", num, resolvedObj.arrayGetLength());
             goto err2;
         }
