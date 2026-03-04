@@ -1971,12 +1971,14 @@ std::unique_ptr<Dict> Annot::createResourcesDict(const char *formName, Object &&
     }
     auto stateDict = std::make_unique<Dict>(doc->getXRef());
     stateDict->set(stateName, Object(std::move(gsDict)));
-    auto formDict = std::make_unique<Dict>(doc->getXRef());
-    formDict->set(formName, std::move(formStream));
 
     auto resDict = std::make_unique<Dict>(doc->getXRef());
     resDict->set("ExtGState", Object(std::move(stateDict)));
-    resDict->set("XObject", Object(std::move(formDict)));
+    if (formName) {
+        auto formDict = std::make_unique<Dict>(doc->getXRef());
+        formDict->set(formName, std::move(formStream));
+        resDict->set("XObject", Object(std::move(formDict)));
+    }
 
     return resDict;
 }
@@ -6686,6 +6688,9 @@ void AnnotInk::generateInkAppearance()
     appearBBox = std::make_unique<AnnotAppearanceBBox>(rect.get());
 
     AnnotAppearanceBuilder appearBuilder;
+    if (opacity != 1 || drawBelow) {
+        appearBuilder.append("/GS0 gs\n");
+    }
     appearBuilder.append("q\n");
 
     if (color) {
@@ -6729,12 +6734,8 @@ void AnnotInk::generateInkAppearance()
     if (opacity == 1 && !drawBelow) {
         newAppearance = createForm(appearBuilder.buffer(), bbox, false, Object {});
     } else {
-        Object aStream = createForm(appearBuilder.buffer(), bbox, true, Object {});
-
-        GooString appearBuf("/GS0 gs\n/Fm0 Do");
-
-        std::unique_ptr<Dict> resDict = createResourcesDict("Fm0", std::move(aStream), "GS0", opacity, drawBelow ? "Multiply" : nullptr);
-        newAppearance = createForm(&appearBuf, bbox, false, std::move(resDict));
+        std::unique_ptr<Dict> resDict = createResourcesDict(nullptr, Object::null(), "GS0", opacity, drawBelow ? "Multiply" : nullptr);
+        newAppearance = createForm(appearBuilder.buffer(), bbox, false, std::move(resDict));
     }
 
     /* If the annotation is drawn below (highlighting), we must save the
@@ -6799,9 +6800,9 @@ void AnnotFileAttachment::initialize(Dict *dict)
 
     Object objName = dict->lookup("Name");
     if (objName.isName()) {
-        name = std::make_unique<GooString>(objName.getNameString());
+        iconName = std::make_unique<GooString>(objName.getNameString());
     } else {
-        name = std::make_unique<GooString>("PushPin");
+        iconName = std::make_unique<GooString>("PushPin");
     }
 }
 
@@ -6937,13 +6938,13 @@ void AnnotFileAttachment::draw(Gfx *gfx, bool printing)
         } else {
             appearBuilder.append("1 1 1 rg\n");
         }
-        if (!name->compare("PushPin")) {
+        if (!iconName->compare("PushPin")) {
             appearBuilder.append(ANNOT_FILE_ATTACHMENT_AP_PUSHPIN);
-        } else if (!name->compare("Paperclip")) {
+        } else if (!iconName->compare("Paperclip")) {
             appearBuilder.append(ANNOT_FILE_ATTACHMENT_AP_PAPERCLIP);
-        } else if (!name->compare("Graph")) {
+        } else if (!iconName->compare("Graph")) {
             appearBuilder.append(ANNOT_FILE_ATTACHMENT_AP_GRAPH);
-        } else if (!name->compare("Tag")) {
+        } else if (!iconName->compare("Tag")) {
             appearBuilder.append(ANNOT_FILE_ATTACHMENT_AP_TAG);
         }
         appearBuilder.append("Q\n");
@@ -6998,9 +6999,9 @@ void AnnotSound::initialize(Dict *dict)
 
     obj1 = dict->lookup("Name");
     if (obj1.isName()) {
-        name = std::make_unique<GooString>(obj1.getName());
+        iconName = std::make_unique<GooString>(obj1.getName());
     } else {
-        name = std::make_unique<GooString>("Speaker");
+        iconName = std::make_unique<GooString>("Speaker");
     }
 }
 
@@ -7088,9 +7089,9 @@ void AnnotSound::draw(Gfx *gfx, bool printing)
         } else {
             appearBuilder.append("1 1 1 rg\n");
         }
-        if (!name->compare("Speaker")) {
+        if (!iconName->compare("Speaker")) {
             appearBuilder.append(ANNOT_SOUND_AP_SPEAKER);
-        } else if (!name->compare("Mic")) {
+        } else if (!iconName->compare("Mic")) {
             appearBuilder.append(ANNOT_SOUND_AP_MIC);
         }
         appearBuilder.append("Q\n");
