@@ -252,7 +252,7 @@ QByteArray Document::fontData(const FontInfo &fi) const
         if (strObj.isStream() && strObj.streamRewind()) {
             int c;
             while ((c = strObj.streamGetChar()) != EOF) {
-                result.append((char)c);
+                result.append(static_cast<char>(c));
             }
             strObj.streamClose();
         }
@@ -692,7 +692,7 @@ void Document::setRenderHint(Document::RenderHint hint, bool on)
 
     int hintForOperation = hint;
     if (touchesOverprinting && !isOverprintPreviewAvailable()) {
-        hintForOperation = hintForOperation & ~(int)Document::OverprintPreview;
+        hintForOperation = hintForOperation & ~static_cast<int>(Document::OverprintPreview);
     }
 
     if (on) {
@@ -742,7 +742,7 @@ OptContentModel *Document::optionalContentModel()
     if (m_doc->m_optContentModel.isNull()) {
         m_doc->m_optContentModel = new OptContentModel(m_doc->doc->getOptContentConfig(), nullptr);
     }
-    return (OptContentModel *)m_doc->m_optContentModel;
+    return m_doc->m_optContentModel.get();
 }
 
 void Document::applyResetFormsLink(const LinkResetForm &link)
