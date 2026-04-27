@@ -97,13 +97,18 @@ FoFiType1C::FoFiType1C(std::span<const unsigned char> data, PrivateTag /*unused*
     charsetLength = 0;
 }
 
+static void deleteEncodingAndFreeContents(const std::array<const char *, 256> *encoding)
+{
+    for (const char *glyphName : *encoding) {
+        gfree(const_cast<char *>(glyphName));
+    }
+    delete encoding;
+}
+
 FoFiType1C::~FoFiType1C()
 {
     if (encoding && encoding != &fofiType1StandardEncoding && encoding != &fofiType1ExpertEncoding) {
-        for (const char *glyphName : *encoding) {
-            gfree(const_cast<char *>(glyphName));
-        }
-        delete encoding;
+        deleteEncodingAndFreeContents(encoding);
     }
     if (privateDicts) {
         gfree(privateDicts);
@@ -2235,11 +2240,15 @@ void FoFiType1C::readFDSelect()
     }
 }
 
+template<typename PointerType, typename DeleterType>
+auto unique_ptr_with_deleter(PointerType *pointer, DeleterType deleter)
+{
+    return std::unique_ptr<PointerType, DeleterType>(pointer, deleter);
+}
+
 void FoFiType1C::buildEncoding()
 {
     char buf[256];
-    int nCodes, nRanges, encFormat;
-    int pos, c, sid, nLeft, nSups, i, j;
 
     if (topDict.encodingOffset == 0) {
         encoding = &fofiType1StandardEncoding;
@@ -2248,23 +2257,23 @@ void FoFiType1C::buildEncoding()
         encoding = &fofiType1ExpertEncoding;
 
     } else {
-        auto customEncoding = std::make_unique<std::array<const char *, 256>>();
+        auto customEncoding = unique_ptr_with_deleter(new std::array<const char *, 256>(), &deleteEncodingAndFreeContents);
         customEncoding->fill(nullptr);
-        pos = topDict.encodingOffset;
-        encFormat = getU8(pos++, &parsedOk);
+        int pos = topDict.encodingOffset;
+        const int encFormat = getU8(pos++, &parsedOk);
         if (!parsedOk) {
             return;
         }
         if ((encFormat & 0x7f) == 0) {
-            nCodes = 1 + getU8(pos++, &parsedOk);
+            int nCodes = 1 + getU8(pos++, &parsedOk);
             if (!parsedOk) {
                 return;
             }
             if (nCodes > nGlyphs) {
                 nCodes = nGlyphs;
             }
-            for (i = 1; i < nCodes && i < charsetLength; ++i) {
-                c = getU8(pos++, &parsedOk);
+            for (int i = 1; i < nCodes && i < charsetLength; ++i) {
+                const int c = getU8(pos++, &parsedOk);
                 if (!parsedOk) {
                     return;
                 }
@@ -2272,18 +2281,18 @@ void FoFiType1C::buildEncoding()
                 (*customEncoding)[c] = copyString(getString(charset[i], buf, &parsedOk));
             }
         } else if ((encFormat & 0x7f) == 1) {
-            nRanges = getU8(pos++, &parsedOk);
+            const int nRanges = getU8(pos++, &parsedOk);
             if (!parsedOk) {
                 return;
             }
-            nCodes = 1;
-            for (i = 0; i < nRanges; ++i) {
-                c = getU8(pos++, &parsedOk);
-                nLeft = getU8(pos++, &parsedOk);
+            int nCodes = 1;
+            for (int i = 0; i < nRanges; ++i) {
+                int c = getU8(pos++, &parsedOk);
+                const int nLeft = getU8(pos++, &parsedOk);
                 if (!parsedOk) {
                     return;
                 }
-                for (j = 0; j <= nLeft && nCodes < nGlyphs && nCodes < charsetLength; ++j) {
+                for (int j = 0; j <= nLeft && nCodes < nGlyphs && nCodes < charsetLength; ++j) {
                     if (c < 256) {
                         gfree(const_cast<char *>((*customEncoding)[c]));
                         (*customEncoding)[c] = copyString(getString(charset[nCodes], buf, &parsedOk));
@@ -2294,18 +2303,16 @@ void FoFiType1C::buildEncoding()
             }
         }
         if (encFormat & 0x80) {
-            nSups = getU8(pos++, &parsedOk);
+            const int nSups = getU8(pos++, &parsedOk);
             if (!parsedOk) {
                 return;
             }
-            for (i = 0; i < nSups; ++i) {
-                c = getU8(pos++, &parsedOk);
-                ;
+            for (int i = 0; i < nSups; ++i) {
+                const int c = getU8(pos++, &parsedOk);
                 if (!parsedOk) {
                     return;
-                    ;
                 }
-                sid = getU16BE(pos, &parsedOk);
+                const int sid = getU16BE(pos, &parsedOk);
                 pos += 2;
                 if (!parsedOk) {
                     return;

@@ -89,46 +89,44 @@ static const double s_minLineWidth = 0.0;
 
 static inline void convertGfxColor(SplashColorPtr dest, const SplashColorMode colorMode, const GfxColorSpace *colorSpace, const GfxColor *src)
 {
-    SplashColor color;
-    GfxGray gray;
-    GfxRGB rgb;
-    GfxCMYK cmyk;
-    GfxColor deviceN;
-
-    // make gcc happy
-    color[0] = color[1] = color[2] = 0;
-    color[3] = 0;
     switch (colorMode) {
     case splashModeMono1:
-    case splashModeMono8:
+    case splashModeMono8: {
+        GfxGray gray;
         colorSpace->getGray(src, &gray);
-        color[0] = colToByte(gray);
+        dest[0] = colToByte(gray);
         break;
+    }
     case splashModeXBGR8:
-        color[3] = 255;
+        dest[3] = 255;
         // fallthrough
     case splashModeBGR8:
-    case splashModeRGB8:
+    case splashModeRGB8: {
+        GfxRGB rgb;
         colorSpace->getRGB(src, &rgb);
-        color[0] = colToByte(rgb.r);
-        color[1] = colToByte(rgb.g);
-        color[2] = colToByte(rgb.b);
+        dest[0] = colToByte(rgb.r);
+        dest[1] = colToByte(rgb.g);
+        dest[2] = colToByte(rgb.b);
         break;
-    case splashModeCMYK8:
+    }
+    case splashModeCMYK8: {
+        GfxCMYK cmyk;
         colorSpace->getCMYK(src, &cmyk);
-        color[0] = colToByte(cmyk.c);
-        color[1] = colToByte(cmyk.m);
-        color[2] = colToByte(cmyk.y);
-        color[3] = colToByte(cmyk.k);
+        dest[0] = colToByte(cmyk.c);
+        dest[1] = colToByte(cmyk.m);
+        dest[2] = colToByte(cmyk.y);
+        dest[3] = colToByte(cmyk.k);
         break;
-    case splashModeDeviceN8:
+    }
+    case splashModeDeviceN8: {
+        GfxColor deviceN;
         colorSpace->getDeviceN(src, &deviceN);
         for (int i = 0; i < SPOT_NCOMPS + 4; i++) {
-            color[i] = colToByte(deviceN.c[i]);
+            dest[i] = colToByte(deviceN.c[i]);
         }
         break;
     }
-    splashColorCopy(dest, color);
+    }
 }
 
 // Copy a color according to the color mode.
@@ -2667,7 +2665,7 @@ void SplashOutputDev::unsetSoftMaskFromImageMask(GfxState *state, std::array<dou
     // memset(maskBitmap->getDataPtr(), 0, bitmap->getRowSize() * bitmap->getHeight());
     if (transpGroupStack->softmask != nullptr) {
         unsigned char *dest = bitmap->getAlphaPtr();
-        unsigned char *src = transpGroupStack->softmask->getDataPtr();
+        const unsigned char *src = transpGroupStack->softmask->getDataPtr();
         for (int c = 0; c < transpGroupStack->softmask->getRowSize() * transpGroupStack->softmask->getHeight(); c++) {
             dest[c] = src[c];
         }
@@ -3127,7 +3125,7 @@ bool SplashOutputDev::tilingBitmapSrc(void *data, SplashColorPtr colorLine, unsi
             }
         } else {
             const int n = imgData->bitmap->getRowSize();
-            SplashColorPtr p;
+            SplashColorConstPtr p;
             for (int m = 0; m < imgData->repeatX; m++) {
                 p = imgData->bitmap->getDataPtr() + imgData->y * imgData->bitmap->getRowSize();
                 for (int x = 0; x < n; ++x) {
@@ -3351,7 +3349,7 @@ bool SplashOutputDev::maskedImageSrc(void *data, SplashColorPtr colorLine, unsig
     GfxCMYK cmyk;
     GfxColor deviceN;
     unsigned char alpha;
-    unsigned char *maskPtr;
+    const unsigned char *maskPtr;
     int maskBit;
     int nComps, x;
 
