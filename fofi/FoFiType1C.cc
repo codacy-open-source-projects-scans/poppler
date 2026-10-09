@@ -20,7 +20,8 @@
 // Copyright (C) 2019 Volker Krause <vkrause@kde.org>
 // Copyright (C) 2022, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2025, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
-// Copyright (C) 2026  Zekun Shen <bruceshenzk@gmail.com>
+// Copyright (C) 2026 Zekun Shen <bruceshenzk@gmail.com>
+// Copyright (C) 2026 William Bader <william@newspapersystems.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -454,12 +455,19 @@ void FoFiType1C::convertToCIDType0(const std::string &psName, const std::vector<
             ok = true;
             getIndexVal(charStringsIdx, gid, &val, &ok);
             if (ok) {
-                getIndex(privateDicts[fdSelect ? fdSelect[gid] : 0].subrsOffset, &subrIdx, &ok);
+
+                const unsigned char fd = fdSelect ? fdSelect[gid] : 0;
+
+                if (fd >= nFDs) {
+                    continue;
+                }
+
+                getIndex(privateDicts[fd].subrsOffset, &subrIdx, &ok);
                 if (!ok) {
                     subrIdx.pos = -1;
                 }
                 std::set<int> offsetBeingParsed;
-                cvtGlyph(val.pos, val.len, charStrings, &subrIdx, &privateDicts[fdSelect ? fdSelect[gid] : 0], true, offsetBeingParsed);
+                cvtGlyph(val.pos, val.len, charStrings, &subrIdx, &privateDicts[fd], true, offsetBeingParsed);
             }
         }
     }
@@ -1612,7 +1620,7 @@ void FoFiType1C::cvtGlyph(int offset, int nBytes, std::string &charBuf, const Ty
         for (size_t i = start; i < charBuf.size(); ++i) {
             byte = charBuf[i] ^ (r2 >> 8);
             charBuf[i] = byte;
-            r2 = (byte + r2) * 52845 + 22719;
+            r2 = static_cast<unsigned short>((byte + r2) * 52845U + 22719U);
         }
     }
 
@@ -1700,7 +1708,7 @@ void FoFiType1C::eexecWrite(Type1CEexecBuf *eb, const char *s)
 
     for (p = reinterpret_cast<const unsigned char *>(s); *p; ++p) {
         x = *p ^ (eb->r1 >> 8);
-        eb->r1 = (x + eb->r1) * 52845 + 22719;
+        eb->r1 = static_cast<unsigned short>((x + eb->r1) * 52845U + 22719U);
         (*eb->outputFunc)(eb->outputStream, std::string_view(&hexChars[x >> 4], 1));
         (*eb->outputFunc)(eb->outputStream, std::string_view(&hexChars[x & 0x0f], 1));
         eb->line += 2;
@@ -1719,7 +1727,7 @@ void FoFiType1C::eexecWriteCharstring(Type1CEexecBuf *eb, const unsigned char *s
     // eexec encryption
     for (i = 0; i < n; ++i) {
         x = s[i] ^ (eb->r1 >> 8);
-        eb->r1 = (x + eb->r1) * 52845 + 22719;
+        eb->r1 = static_cast<unsigned short>((x + eb->r1) * 52845U + 22719U);
         (*eb->outputFunc)(eb->outputStream, std::string_view(&hexChars[x >> 4], 1));
         (*eb->outputFunc)(eb->outputStream, std::string_view(&hexChars[x & 0x0f], 1));
         eb->line += 2;

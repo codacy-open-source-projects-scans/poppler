@@ -598,14 +598,15 @@ int FoFiTrueType::mapCodeToGID(int i, unsigned int c) const
         gid = getU16BE(pos + 10 + 2 * (c - cmapFirst), &ok);
         break;
     case 12:
-    case 13:
+    case 13: {
         segCnt = getU32BE(pos + 12, &ok);
         a = -1;
         b = segCnt - 1;
-        if (b > std::numeric_limits<int>::max() / 12) {
+        int b12;
+        if (checkedMultiply(b, 12, &b12)) {
             return 0;
         }
-        segEnd = getU32BE(pos + 16 + 12 * b + 4, &ok);
+        segEnd = getU32BE(pos + 16 + b12 + 4, &ok);
         if (c > segEnd) {
             return 0;
         }
@@ -629,6 +630,7 @@ int FoFiTrueType::mapCodeToGID(int i, unsigned int c) const
         // for an entire segment.
         gid = segDelta + (cmaps[i].fmt == 12 ? (c - segStart) : 0);
         break;
+    }
     default:
         return 0;
     }
@@ -698,7 +700,7 @@ int FoFiTrueType::getEmbeddingRights() const
     return 3;
 }
 
-void FoFiTrueType::convertToType42(const char *psName, const std::array<const char *, 256> *encoding, const std::vector<int> &codeToGID, FoFiOutputFunc outputFunc, void *outputStream) const
+void FoFiTrueType::convertToType42(const std::string &psName, const std::array<const char *, 256> *encoding, const std::vector<int> &codeToGID, FoFiOutputFunc outputFunc, void *outputStream) const
 {
     int maxUsedGlyph;
     bool ok;
@@ -745,7 +747,7 @@ void FoFiTrueType::convertToType1(const char *psName, FoFiOutputFunc outputFunc,
     ff->convertToType1(psName, outputFunc, outputStream);
 }
 
-void FoFiTrueType::convertToCIDType2(const char *psName, const std::vector<int> &cidMap, bool needVerticalMetrics, FoFiOutputFunc outputFunc, void *outputStream) const
+void FoFiTrueType::convertToCIDType2(const std::string &psName, const std::vector<int> &cidMap, bool needVerticalMetrics, FoFiOutputFunc outputFunc, void *outputStream) const
 {
     bool ok;
 
@@ -1056,9 +1058,6 @@ void FoFiTrueType::cvtSfnts(FoFiOutputFunc outputFunc, void *outputStream, const
     TrueTypeTable newTables[nT42Tables];
     unsigned char tableDir[12 + nT42Tables * 16];
     bool ok;
-    unsigned int checksum;
-    int nNewTables;
-    int glyfTableLen, length, glyfPos, j, k;
     std::array<unsigned char, 36> vheaTab = {
         0, 1, 0, 0, // table version number
         0, 0, // ascent
@@ -1079,8 +1078,6 @@ void FoFiTrueType::cvtSfnts(FoFiOutputFunc outputFunc, void *outputStream, const
         0, 1 // number of advance heights in vmtx table
     };
     std::vector<unsigned char> vmtxTab;
-    bool needVhea, needVmtx;
-    int advance;
 
     *maxUsedGlyph = -1;
 
@@ -1114,7 +1111,7 @@ void FoFiTrueType::cvtSfnts(FoFiOutputFunc outputFunc, void *outputStream, const
     i = seekTable("loca");
     pos = tables[i].offset;
     i = seekTable("glyf");
-    glyfTableLen = tables[i].len;
+    const int glyfTableLen = tables[i].len;
     ok = true;
     for (i = 0; i <= nGlyphs; ++i) {
         locaTable[i].idx = i;
@@ -1167,16 +1164,16 @@ void FoFiTrueType::cvtSfnts(FoFiOutputFunc outputFunc, void *outputStream, const
     }
 
     // count the number of tables
-    nNewTables = 0;
+    int nNewTables = 0;
     for (i = 0; i < nT42Tables; ++i) {
         if (t42Tables[i].required || seekTable(t42Tables[i].tag) >= 0) {
             ++nNewTables;
         }
     }
-    advance = 0; // make gcc happy
+    int advance = 0; // make gcc happy
     if (needVerticalMetrics) {
-        needVhea = seekTable("vhea") < 0;
-        needVmtx = seekTable("vmtx") < 0;
+        const bool needVhea = seekTable("vhea") < 0;
+        const bool needVmtx = seekTable("vmtx") < 0;
         if (needVhea || needVmtx) {
             i = seekTable("head");
             advance = getU16BE(tables[i].offset + 18, &ok); // units per em
@@ -1192,10 +1189,10 @@ void FoFiTrueType::cvtSfnts(FoFiOutputFunc outputFunc, void *outputStream, const
     // construct the new table headers, including table checksums
     // (pad each table out to a multiple of 4 bytes)
     pos = 12 + nNewTables * 16;
-    k = 0;
+    int k = 0;
     for (i = 0; i < nT42Tables; ++i) {
-        length = -1;
-        checksum = 0; // make gcc happy
+        int length = -1;
+        unsigned int checksum = 0; // make gcc happy
         if (i == t42HeadTable) {
             length = 54;
             checksum = computeTableChecksum(headData);
@@ -1205,9 +1202,13 @@ void FoFiTrueType::cvtSfnts(FoFiOutputFunc outputFunc, void *outputStream, const
         } else if (i == t42GlyfTable) {
             length = 0;
             checksum = 0;
-            glyfPos = tables[seekTable("glyf")].offset;
-            for (j = 0; j < nGlyphs; ++j) {
-                length += locaTable[j].len;
+            const int glyfPos = tables[seekTable("glyf")].offset;
+            for (int j = 0; j < nGlyphs; ++j) {
+                if (unlikely(checkedAdd(length, locaTable[j].len, &length))) {
+                    error(errSyntaxError, -1, "Integer overflow in glyph table length calculation");
+                    ok = false;
+                    break;
+                }
                 if (length & 3) {
                     length += 4 - (length & 3);
                 }
@@ -1216,7 +1217,8 @@ void FoFiTrueType::cvtSfnts(FoFiOutputFunc outputFunc, void *outputStream, const
                 }
             }
         } else {
-            if ((j = seekTable(t42Tables[i].tag)) >= 0) {
+            const int j = seekTable(t42Tables[i].tag);
+            if (j >= 0) {
                 length = tables[j].len;
                 if (checkRegion(tables[j].offset, length)) {
                     checksum = computeTableChecksum(std::span(file.data() + tables[j].offset, length));
@@ -1296,7 +1298,7 @@ void FoFiTrueType::cvtSfnts(FoFiOutputFunc outputFunc, void *outputStream, const
     }
 
     // compute the font checksum and store it in the head table
-    checksum = computeTableChecksum(std::span(tableDir, 12 + nNewTables * 16));
+    unsigned int checksum = computeTableChecksum(std::span(tableDir, 12 + nNewTables * 16));
     for (i = 0; i < nNewTables; ++i) {
         checksum += newTables[i].checksum;
     }
@@ -1323,11 +1325,10 @@ void FoFiTrueType::cvtSfnts(FoFiOutputFunc outputFunc, void *outputStream, const
         if (i == t42HeadTable) {
             dumpString(headData, outputFunc, outputStream);
         } else if (i == t42LocaTable) {
-            length = (nGlyphs + 1) * (locaFmt ? 4 : 2);
             dumpString(locaData, outputFunc, outputStream);
         } else if (i == t42GlyfTable) {
-            glyfPos = tables[seekTable("glyf")].offset;
-            for (j = 0; j < nGlyphs; ++j) {
+            const int glyfPos = tables[seekTable("glyf")].offset;
+            for (int j = 0; j < nGlyphs; ++j) {
                 if (locaTable[j].len > 0 && checkRegion(glyfPos + locaTable[j].origOffset, locaTable[j].len)) {
                     dumpString(std::span(file.data() + glyfPos + locaTable[j].origOffset, locaTable[j].len), outputFunc, outputStream);
                 }
@@ -1336,13 +1337,14 @@ void FoFiTrueType::cvtSfnts(FoFiOutputFunc outputFunc, void *outputStream, const
             // length == 0 means the table is missing and the error was
             // already reported during the construction of the table
             // headers
-            if ((length = newTables[i].len) > 0) {
-                if ((j = seekTable(t42Tables[i].tag)) >= 0 && checkRegion(tables[j].offset, tables[j].len)) {
+            const int length = newTables[i].len;
+            if (length > 0) {
+                const int j = seekTable(t42Tables[i].tag);
+                if (j >= 0 && checkRegion(tables[j].offset, tables[j].len)) {
                     dumpString(std::span(file.data() + tables[j].offset, tables[j].len), outputFunc, outputStream);
                 } else if (needVerticalMetrics && i == t42VheaTable) {
                     if (unlikely(static_cast<size_t>(length) > sizeof(vheaTab))) {
                         error(errSyntaxWarning, -1, "length bigger than vheaTab size");
-                        length = sizeof(vheaTab);
                     }
                     dumpString(vheaTab, outputFunc, outputStream);
                 } else if (needVerticalMetrics && i == t42VmtxTable) {

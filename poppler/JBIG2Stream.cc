@@ -82,6 +82,18 @@ struct JBIG2HuffmanTable
     unsigned int prefix;
 };
 
+static inline bool validateRangeLen(unsigned int rangeLen)
+{
+    switch (rangeLen) {
+    case jbig2HuffmanEOT:
+    case jbig2HuffmanOOB:
+    case jbig2HuffmanLOW:
+        return true;
+    default:
+        return rangeLen <= 32;
+    }
+}
+
 static const JBIG2HuffmanTable huffTableA[] = { { .val = 0, .prefixLen = 1, .rangeLen = 4, .prefix = 0x000 },
                                                 { .val = 16, .prefixLen = 2, .rangeLen = 8, .prefix = 0x002 },
                                                 { .val = 272, .prefixLen = 3, .rangeLen = 16, .prefix = 0x006 },
@@ -1212,7 +1224,7 @@ bool JBIG2Stream::rewind()
     mmrDecoder->setStream(curStr);
     rewindSuccess = rewindSuccess && readSegments();
 
-    if (pageBitmap) {
+    if (pageBitmap && pageBitmap->isOk()) {
         dataPtr = pageBitmap->getDataPtr();
         dataEnd = dataPtr + pageBitmap->getDataSize();
     } else {
@@ -1621,6 +1633,9 @@ bool JBIG2Stream::readSymbolDictSeg(unsigned int segNum, const std::vector<unsig
     }
 
     const unsigned int symCodeLen = calculateSymCodeLen(numInputSyms, numNewSyms, huff);
+    if (symCodeLen >= 31) {
+        return false;
+    }
 
     // get the input symbol bitmaps
     if (sizeIsBiggerThanVectorMaxSize(numInputSyms + numNewSyms, bitmaps)) {
@@ -1852,7 +1867,9 @@ bool JBIG2Stream::readSymbolDictSeg(unsigned int segNum, const std::vector<unsig
         // read the collective bitmap
         if (huff && !refAgg) {
             int bmSize;
-            huffDecoder->decodeInt(&bmSize, huffBMSizeTable);
+            if (!huffDecoder->decodeInt(&bmSize, huffBMSizeTable)) {
+                return false;
+            }
             huffDecoder->reset();
             std::unique_ptr<JBIG2Bitmap> collBitmap;
             if (bmSize == 0) {
@@ -2278,6 +2295,13 @@ std::unique_ptr<JBIG2Bitmap> JBIG2Stream::readTextRegion(bool huff, bool refine,
     int rdw, rdh, rdx, rdy, ri = 0, refDX, refDY, bmSize;
     unsigned int symID, inst, bw, bh;
 
+    if (symCodeLen >= 32) {
+        return nullptr;
+    }
+    if (logStrips >= 32) {
+        return nullptr;
+    }
+
     strips = 1 << logStrips;
 
     // allocate the bitmap
@@ -2676,6 +2700,9 @@ bool JBIG2Stream::readHalftoneRegionSeg(unsigned int segNum, bool imm, const std
 
     // allocate the bitmap
     bitmap = std::make_unique<JBIG2Bitmap>(segNum, w, h);
+    if (!bitmap->isOk()) {
+        return false;
+    }
     if (flags & 0x80) { // HDEFPIXEL
         bitmap->clearToOne();
     } else {
@@ -2685,6 +2712,9 @@ bool JBIG2Stream::readHalftoneRegionSeg(unsigned int segNum, bool imm, const std
     // compute the skip bitmap
     if (enableSkip) {
         skipBitmap = std::make_unique<JBIG2Bitmap>(0, gridW, gridH);
+        if (!skipBitmap->isOk()) {
+            return false;
+        }
         skipBitmap->clearToZero();
         for (m = 0; m < gridH; ++m) {
             for (n = 0; n < gridW; ++n) {
@@ -4061,7 +4091,13 @@ bool JBIG2Stream::readCodeTableSeg(unsigned int segNum)
         }
         huffTab[i].val = val;
         huffTab[i].prefixLen = huffDecoder->readBits(prefixBits, &eof);
-        huffTab[i].rangeLen = huffDecoder->readBits(rangeBits, &eof);
+        unsigned int rangeLen = huffDecoder->readBits(rangeBits, &eof);
+        if (!validateRangeLen(rangeLen)) {
+            error(errInternal, curStr->getPos(), "Unexpected data in JBIG2 stream");
+            free(huffTab);
+            return false;
+        }
+        huffTab[i].rangeLen = rangeLen;
 
         const int shiftBits = huffTab[i].rangeLen % intNBits;
 
@@ -4079,7 +4115,12 @@ bool JBIG2Stream::readCodeTableSeg(unsigned int segNum)
             return false;
         }
     }
-    huffTab[i].val = lowVal - 1;
+    int lowValMinusOne;
+    if (unlikely(checkedSubtraction(lowVal, 1, &lowValMinusOne))) {
+        free(huffTab);
+        return false;
+    }
+    huffTab[i].val = lowValMinusOne;
     huffTab[i].prefixLen = huffDecoder->readBits(prefixBits);
     huffTab[i].rangeLen = jbig2HuffmanLOW;
     ++i;

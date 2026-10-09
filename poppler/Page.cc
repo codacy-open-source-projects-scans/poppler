@@ -15,7 +15,7 @@
 //
 // Copyright (C) 2005 Kristian Høgsberg <krh@redhat.com>
 // Copyright (C) 2005 Jeff Muizelaar <jeff@infidigm.net>
-// Copyright (C) 2005-2013, 2016-2025 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005-2013, 2016-2026 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2006-2008 Pino Toscano <pino@kde.org>
 // Copyright (C) 2006 Nickolay V. Shmyrev <nshmyrev@yandex.ru>
 // Copyright (C) 2006 Scott Turner <scotty1024@mac.com>
@@ -31,14 +31,14 @@
 // Copyright (C) 2015 Philipp Reinkemeier <philipp.reinkemeier@offis.de>
 // Copyright (C) 2018, 2019 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2020 Oliver Sander <oliver.sander@tu-dresden.de>
-// Copyright (C) 2020, 2021, 2025 Nelson Benítez León <nbenitezl@gmail.com>
+// Copyright (C) 2020, 2021, 2025, 2026 Nelson Benítez León <nbenitezl@gmail.com>
 // Copyright (C) 2020 Philipp Knechtges <philipp-dev@knechtges.com>
 // Copyright (C) 2024 Pablo Correa Gómez <ablocorrea@hotmail.com>
 // Copyright (C) 2024-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2025 Stefan Brüns <stefan.bruens@rwth-aachen.de>
 // Copyright (C) 2025 Arnav V <arnav0872@gmail.com>
 // Copyright (C) 2026 Adam Sampson <ats@offog.org>
-// Copyright (C) 2026 lbaudin <lbaudin@gnome.org>
+// Copyright (C) 2026 Lucas Baudin <lbaudin@gnome.org>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -84,22 +84,22 @@ constexpr PDFRectangle r2 { 2, 2, 4, 4 };
 constexpr PDFRectangle r3 { 0, 3, 3, 3 };
 constexpr PDFRectangle r4 { 2, 3, 3, 3 };
 static_assert(r1.isValid());
-static_assert([]() {
+static_assert([] {
     auto r = r1;
     r.clipTo(r1);
     return r == r1;
 }());
-static_assert([]() {
+static_assert([] {
     auto r = r1;
     r.clipTo(r2);
     return r == r2;
 }());
-static_assert([]() {
+static_assert([] {
     auto r = r2;
     r.clipTo(r1);
     return r == r2;
 }());
-static_assert([]() {
+static_assert([] {
     auto r = r2;
     r.clipTo(r3);
     return r == r4;
@@ -324,8 +324,10 @@ Page::Page(PDFDoc *docA, int numA, Object &&pageDict, Ref pageRefA, std::unique_
             error(errSyntaxError, -1, "Page annotations object (page {0:d}) is likely malformed. Too big: ({1:d})", num, resolvedObj.arrayGetLength());
             goto err2;
         }
-        if (!resolvedObj.isArray() && !resolvedObj.isNull()) {
-            error(errSyntaxError, -1, "Page annotations object (page {0:d}) is wrong type ({1:s})", num, resolvedObj.getTypeName());
+        if (!resolvedObj.isArray()) {
+            if (!resolvedObj.isNull()) {
+                error(errSyntaxError, -1, "Page annotations object (page {0:d}) is wrong type ({1:s})", num, resolvedObj.getTypeName());
+            }
             annotsObj.setToNull();
         }
     }
@@ -433,15 +435,17 @@ void Page::loadStandaloneFields(Form *form)
     }
 }
 
-Annots *Page::getAnnots(XRef *xrefA)
+void Page::initializeAnnots()
 {
-    pageLocker();
-    if (!annots) {
-        Object obj = getAnnotsObject(xrefA);
-        annots = std::make_unique<Annots>(doc, num, &obj);
-        // Load standalone fields once for the page
-        loadStandaloneFields(doc->getCatalog()->getForm());
-    }
+    Object obj = getAnnotsObject();
+    annots = std::make_unique<Annots>(doc, num, &obj);
+    // Load standalone fields once for the page
+    loadStandaloneFields(doc->getCatalog()->getForm());
+}
+
+Annots *Page::getAnnots()
+{
+    std::call_once(annotsInitializationFlag, std::mem_fn(&Page::initializeAnnots), this);
 
     return annots.get();
 }
@@ -477,7 +481,7 @@ bool Page::addAnnot(const std::shared_ptr<Annot> &annot)
     } else {
         Object obj1 = getAnnotsObject();
         if (obj1.isArray()) {
-            obj1.arrayAdd(Object(annotRef));
+            obj1.getArray()->add(Object(annotRef));
             if (annotsObj.isRef()) {
                 xref->setModifiedObject(&obj1, annotsObj.getRef());
             } else {
@@ -510,12 +514,13 @@ void Page::removeAnnot(const std::shared_ptr<Annot> &annot)
     Ref annotRef = annot->getRef();
 
     pageLocker();
-    Object annArray = getAnnotsObject();
-    if (annArray.isArray()) {
+    Object annArrayObj = getAnnotsObject();
+    if (annArrayObj.isArray()) {
+        Array *annArray = annArrayObj.getArray();
         int idx = -1;
         // Get annotation position
-        for (int i = 0; idx == -1 && i < annArray.arrayGetLength(); ++i) {
-            const Object &tmp = annArray.arrayGetNF(i);
+        for (int i = 0; idx == -1 && i < annArray->getLength(); ++i) {
+            const Object &tmp = annArray->getNF(i);
             if (tmp.isRef()) {
                 const Ref currAnnot = tmp.getRef();
                 if (currAnnot == annotRef) {
@@ -529,16 +534,16 @@ void Page::removeAnnot(const std::shared_ptr<Annot> &annot)
             return;
         }
         annots->removeAnnot(annot); // Gracefully fails on popup windows
-        annArray.arrayRemove(idx);
+        annArray->remove(idx);
 
         if (annotsObj.isRef()) {
-            xref->setModifiedObject(&annArray, annotsObj.getRef());
+            xref->setModifiedObject(&annArrayObj, annotsObj.getRef());
         } else {
             xref->setModifiedObject(&pageObj, pageRef);
         }
     }
     annot->removeReferencedObjects(); // Note: Might recurse in removeAnnot again
-    if (annArray.isArray()) {
+    if (annArrayObj.isArray()) {
         xref->removeIndirectObject(annotRef);
     }
     annot->setPage(0, false);
@@ -565,7 +570,8 @@ void Page::display(OutputDev *out, double hDPI, double vDPI, int rotate, bool us
 
 std::unique_ptr<Gfx> Page::createGfx(OutputDev *out, double hDPI, double vDPI, int rotate, bool useMediaBox, bool crop, int sliceX, int sliceY, int sliceW, int sliceH, bool (*abortCheckCbk)(void *data), void *abortCheckCbkData, XRef *xrefA)
 {
-    const PDFRectangle *mediaBox, *cropBox;
+    const PDFRectangle &mediaBox = getMediaBox();
+    const PDFRectangle &cropBox = getCropBox();
     PDFRectangle box;
 
     rotate += getRotate();
@@ -576,19 +582,16 @@ std::unique_ptr<Gfx> Page::createGfx(OutputDev *out, double hDPI, double vDPI, i
     }
 
     makeBox(hDPI, vDPI, rotate, useMediaBox, out->upsideDown(), sliceX, sliceY, sliceW, sliceH, &box, &crop);
-    cropBox = getCropBox();
-    mediaBox = getMediaBox();
-
     if (globalParams->getPrintCommands()) {
-        printf("***** MediaBox = ll:%g,%g ur:%g,%g\n", mediaBox->x1, mediaBox->y1, mediaBox->x2, mediaBox->y2);
-        printf("***** CropBox = ll:%g,%g ur:%g,%g\n", cropBox->x1, cropBox->y1, cropBox->x2, cropBox->y2);
+        printf("***** MediaBox = ll:%g,%g ur:%g,%g\n", mediaBox.x1, mediaBox.y1, mediaBox.x2, mediaBox.y2);
+        printf("***** CropBox = ll:%g,%g ur:%g,%g\n", cropBox.x1, cropBox.y1, cropBox.x2, cropBox.y2);
         printf("***** Rotate = %d\n", attrs->getRotate());
     }
 
     if (!crop) {
-        crop = (box == *cropBox) && out->needClipToCropBox();
+        crop = (box == cropBox) && out->needClipToCropBox();
     }
-    return std::make_unique<Gfx>(doc, out, num, attrs->getResourceDict(), hDPI, vDPI, &box, crop ? cropBox : nullptr, rotate, abortCheckCbk, abortCheckCbkData, xrefA);
+    return std::make_unique<Gfx>(doc, out, num, attrs->getResourceDict(), hDPI, vDPI, box, crop ? &cropBox : nullptr, rotate, abortCheckCbk, abortCheckCbkData, xrefA);
 }
 
 void Page::displaySlice(OutputDev *out, double hDPI, double vDPI, int rotate, bool useMediaBox, bool crop, int sliceX, int sliceY, int sliceW, int sliceH, bool printing, bool (*abortCheckCbk)(void *data), void *abortCheckCbkData,
@@ -600,10 +603,12 @@ void Page::displaySlice(OutputDev *out, double hDPI, double vDPI, int rotate, bo
         return;
     }
     pageLocker();
-    XRef *localXRef = copyXRef ? xref->copy() : xref;
+    std::unique_ptr<XRef> copiedXRefIfNeeded;
     if (copyXRef) {
-        replaceXRef(localXRef);
+        copiedXRefIfNeeded = xref->copy();
+        replaceXRef(copiedXRefIfNeeded.get());
     }
+    XRef *localXRef = copyXRef ? copiedXRefIfNeeded.get() : xref;
 
     std::unique_ptr<Gfx> gfx = createGfx(out, hDPI, vDPI, rotate, useMediaBox, crop, sliceX, sliceY, sliceW, sliceH, abortCheckCbk, abortCheckCbkData, localXRef);
 
@@ -635,7 +640,6 @@ void Page::displaySlice(OutputDev *out, double hDPI, double vDPI, int rotate, bo
 
     if (copyXRef) {
         replaceXRef(doc->getXRef());
-        delete localXRef;
     }
 }
 
@@ -664,8 +668,8 @@ bool Page::loadThumb(unsigned char **data_out, int *width_out, int *height_out, 
         return false;
     }
 
-    dict = fetched_thumb.streamGetDict();
     str = fetched_thumb.getStream();
+    dict = str->getDict();
 
     if (!dict->lookupInt("Width", "W", &width)) {
         return false;
@@ -694,7 +698,7 @@ bool Page::loadThumb(unsigned char **data_out, int *width_out, int *height_out, 
     // Just initialize some dummy GfxState for GfxColorSpace::parse.
     // This will set a sRGB profile for ICC-based colorspaces.
     auto pdfrectangle = std::make_shared<PDFRectangle>();
-    auto state = std::make_shared<GfxState>(72.0, 72.0, pdfrectangle.get(), 0, false);
+    auto state = std::make_shared<GfxState>(72.0, 72.0, *pdfrectangle, 0, false);
     std::unique_ptr<GfxColorSpace> colorSpace = GfxColorSpace::parse(nullptr, &obj1, nullptr, state.get());
     if (!colorSpace) {
         fprintf(stderr, "Error: Cannot parse color space\n");
@@ -749,13 +753,12 @@ bool Page::loadThumb(unsigned char **data_out, int *width_out, int *height_out, 
 
 void Page::makeBox(double hDPI, double vDPI, int rotate, bool useMediaBox, bool upsideDown, double sliceX, double sliceY, double sliceW, double sliceH, PDFRectangle *box, bool *crop) const
 {
-    const PDFRectangle *mediaBox, *cropBox, *baseBox;
+    const PDFRectangle &mediaBox = getMediaBox();
+    const PDFRectangle &cropBox = getCropBox();
+    const PDFRectangle *baseBox;
     double kx, ky;
-
-    mediaBox = getMediaBox();
-    cropBox = getCropBox();
     if (sliceW >= 0 && sliceH >= 0) {
-        baseBox = useMediaBox ? mediaBox : cropBox;
+        baseBox = useMediaBox ? &mediaBox : &cropBox;
         kx = 72.0 / hDPI;
         ky = 72.0 / vDPI;
         if (rotate == 90) {
@@ -800,9 +803,9 @@ void Page::makeBox(double hDPI, double vDPI, int rotate, bool useMediaBox, bool 
             }
         }
     } else if (useMediaBox) {
-        *box = *mediaBox;
+        *box = mediaBox;
     } else {
-        *box = *cropBox;
+        *box = cropBox;
         *crop = false;
     }
 }

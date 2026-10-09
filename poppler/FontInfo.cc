@@ -31,6 +31,8 @@
 //
 //========================================================================
 
+#include "FontInfo.h"
+
 #include "config.h"
 #include "GlobalParams.h"
 #include "Object.h"
@@ -38,7 +40,6 @@
 #include "GfxFont.h"
 #include "Annot.h"
 #include "PDFDoc.h"
-#include "FontInfo.h"
 
 FontInfoScanner::FontInfoScanner(PDFDoc *docA, int firstPage)
 {
@@ -65,11 +66,14 @@ std::vector<FontInfo *> FontInfoScanner::scan(int nPages)
         lastPage = doc->getNumPages() + 1;
     }
 
-    std::unique_ptr<XRef> xrefA(doc->getXRef()->copy());
+    std::unique_ptr<XRef> xrefA;
     for (int pg = currentPage; pg < lastPage; ++pg) {
         page = doc->getPage(pg);
         if (!page) {
             continue;
+        }
+        if (!xrefA) {
+            xrefA = doc->getXRef()->copy();
         }
 
         if (std::unique_ptr<Dict> resDict = page->getResourceDictCopy(xrefA.get())) {
@@ -128,7 +132,7 @@ void FontInfoScanner::scanFonts(XRef *xrefA, Dict *resDict, std::vector<FontInfo
 
                 if (obj2.isStream()) {
                     Ref resourcesRef;
-                    const Object resObj = obj2.streamGetDict()->lookup("Resources", &resourcesRef);
+                    const Object resObj = obj2.getStream()->getDict()->lookup("Resources", &resourcesRef);
                     if (!visitedObjects.insert(resourcesRef)) {
                         continue;
                     }

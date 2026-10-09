@@ -16,10 +16,11 @@
  * Copyright (C) 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
  * Copyright (C) 2021 Theofilos Intzoglou <int.teo@gmail.com>
  * Copyright (C) 2022 Alexander Sulfrian <asulfrian@zedat.fu-berlin.de>
- * Copyright (C) 2023-2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+ * Copyright (C) 2023-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  * Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
  * Copyright (C) 2024 Stefan Brüns <stefan.bruens@rwth-aachen.de>
  * Copyright (C) 2025 Blair Bonnett <blair.bonnett@gmail.com>
+ * Copyright (C) 2026 Sune Stolborg Vuorela <sune@vuorela.dk>, work sponsored by the Direction Interministérielle du Numérique
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,6 +40,7 @@
 #include "poppler-form.h"
 #include "poppler-converter.h"
 
+#include <chrono>
 #include <config.h>
 
 #include <QtCore/QSizeF>
@@ -236,7 +238,7 @@ void FormField::setPrintable(bool value)
 
 std::unique_ptr<Link> FormField::activationAction() const
 {
-    if (::LinkAction *act = m_formData->fm->getActivationAction()) {
+    if (const ::LinkAction *act = m_formData->fm->getActivationAction()) {
         return PageData::convertLinkActionToLink(act, m_formData->doc, QRectF());
     }
 
@@ -498,10 +500,10 @@ QStringList FormFieldChoice::choices() const
 {
     auto *fwc = static_cast<FormWidgetChoice *>(m_formData->fm);
     QStringList ret;
-    int num = fwc->getNumChoices();
-    ret.reserve(num);
-    for (int i = 0; i < num; ++i) {
-        ret.append(UnicodeParsedString(fwc->getChoice(i)));
+    const std::vector<FormFieldChoiceOption> &choices = fwc->getChoices();
+    ret.reserve(choices.size());
+    for (const FormFieldChoiceOption &choice : choices) {
+        ret.append(UnicodeParsedString(choice.optionName.get()));
     }
     return ret;
 }
@@ -510,14 +512,15 @@ QVector<QPair<QString, QString>> FormFieldChoice::choicesWithExportValues() cons
 {
     auto *fwc = static_cast<FormWidgetChoice *>(m_formData->fm);
     QVector<QPair<QString, QString>> ret;
-    const int num = fwc->getNumChoices();
-    ret.reserve(num);
-    for (int i = 0; i < num; ++i) {
-        const QString display = UnicodeParsedString(fwc->getChoice(i));
-        const GooString *exportValueG = fwc->getExportVal(i);
+    const std::vector<FormFieldChoiceOption> &choices = fwc->getChoices();
+    ret.reserve(choices.size());
+    for (const FormFieldChoiceOption &choice : choices) {
+        const QString display = UnicodeParsedString(choice.optionName.get());
+        const GooString *exportValueG = choice.exportVal.get();
         const QString exportValue = exportValueG ? UnicodeParsedString(exportValueG) : display;
         ret.append({ display, exportValue });
     }
+
     return ret;
 }
 
@@ -536,7 +539,7 @@ bool FormFieldChoice::multiSelect() const
 QList<int> FormFieldChoice::currentChoices() const
 {
     auto *fwc = static_cast<FormWidgetChoice *>(m_formData->fm);
-    int num = fwc->getNumChoices();
+    const int num = fwc->getChoices().size();
     QList<int> choices;
     for (int i = 0; i < num; ++i) {
         if (fwc->isSelected(i)) {
@@ -621,6 +624,7 @@ public:
     bool is_qualified;
     CertificateInfo::CertificateType certificateType;
     CertificateInfo::KeyLocation keyLocation;
+    QVector<SMimeSignatureType> supportedSignatureTypes;
 };
 
 CertificateInfo::CertificateInfo() : d_ptr(new CertificateInfoPrivate())
@@ -764,6 +768,12 @@ CertificateInfo::KeyLocation CertificateInfo::keyLocation() const
     return d->keyLocation;
 }
 
+QVector<Poppler::SMimeSignatureType> CertificateInfo::supportedSMimeSignatureTypes() const
+{
+    Q_D(const CertificateInfo);
+    return d->supportedSignatureTypes;
+}
+
 QByteArray CertificateInfo::publicKey() const
 {
     Q_D(const CertificateInfo);
@@ -811,7 +821,10 @@ bool CertificateInfo::checkPassword(const QString &password) const
         return false;
     }
     Q_D(const CertificateInfo);
-    auto sigHandler = backend->createSigningHandler(d->nick_name.toStdString(), HashAlgorithm::Sha256);
+    auto sigHandler = backend->createSigningHandler(d->nick_name.toStdString(), HashAlgorithm::Sha256, CryptoSign::SMimeSignatureType::none);
+    if (sigHandler->checkOk()) {
+        return false;
+    }
     unsigned char buffer[5];
     memcpy(buffer, "test", 5);
     sigHandler->addData(buffer, 5);
@@ -1059,20 +1072,33 @@ static CertificateInfoPrivate *createCertificateInfoPrivate(const X509Certificat
 
         certPriv->nick_name = QString::fromStdString(ci->getNickName().toStr());
 
-        X509CertificateInfo::Validity certValidity = ci->getValidity();
-        certPriv->validity_start = QDateTime::fromSecsSinceEpoch(certValidity.notBefore, QTimeZone::utc());
-        certPriv->validity_end = QDateTime::fromSecsSinceEpoch(certValidity.notAfter, QTimeZone::utc());
+        const X509CertificateInfo::Validity &certValidity = ci->getValidity();
+#if __cpp_lib_chrono >= 201907L // gcc-13 fails this (ubuntu 24.04) - gcc-14 succeeds
+        certPriv->validity_start = QDateTime::fromStdTimePoint(certValidity.notBefore);
+        if (certValidity.notAfter != Certificate::timePointSeconds {}) {
+            certPriv->validity_end = QDateTime::fromStdTimePoint(certValidity.notAfter);
+        }
+#else
+        certPriv->validity_start = QDateTime::fromSecsSinceEpoch(std::chrono::duration_cast<std::chrono::seconds>(certValidity.notBefore.time_since_epoch()).count(), QTimeZone::utc());
+        if (certValidity.notAfter != Certificate::timePointSeconds {}) {
+            certPriv->validity_end = QDateTime::fromSecsSinceEpoch(std::chrono::duration_cast<std::chrono::seconds>(certValidity.notAfter.time_since_epoch()).count(), QTimeZone::utc());
+        }
+#endif
 
         const X509CertificateInfo::PublicKeyInfo &pkInfo = ci->getPublicKeyInfo();
         certPriv->public_key = QByteArray(pkInfo.publicKey.c_str(), pkInfo.publicKey.size());
         certPriv->public_key_type = static_cast<int>(pkInfo.publicKeyType);
         certPriv->public_key_strength = pkInfo.publicKeyStrength;
 
-        const GooString &certDer = ci->getCertificateDER();
-        certPriv->certificate_der = QByteArray(certDer.c_str(), certDer.size());
+        const std::vector<unsigned char> &certDer = ci->getCertificateDER();
+        certPriv->certificate_der = QByteArray(reinterpret_cast<const char *>(certDer.data()), certDer.size());
 
         certPriv->is_null = false;
         certPriv->is_qualified = ci->isQualified();
+
+        for (auto type : ci->supportedSMimeSignatureTypes()) {
+            certPriv->supportedSignatureTypes.push_back(fromPopplerCore(type));
+        }
     }
 
     return certPriv;
@@ -1134,8 +1160,8 @@ static SignatureValidationInfo fromInternal(SignatureInfo *si, FormWidgetSignatu
     priv->signer_name = QString::fromStdString(si->getSignerName());
     priv->signer_subject_dn = QString::fromStdString(si->getSubjectDN());
     priv->hash_algorithm = si->getHashAlgorithm();
-    priv->location = UnicodeParsedString(si->getLocation().toStr());
-    priv->reason = UnicodeParsedString(si->getReason().toStr());
+    priv->location = UnicodeParsedString(si->getLocation());
+    priv->reason = UnicodeParsedString(si->getReason());
 
     priv->signing_time = si->getSigningTime();
     const std::vector<Goffset> ranges = fws->getSignedRangeBounds();
@@ -1147,7 +1173,7 @@ static SignatureValidationInfo fromInternal(SignatureInfo *si, FormWidgetSignatu
     std::optional<std::vector<unsigned char>> checkedSignature;
     std::tie(checkedSignature, priv->docLength) = fws->getCheckedSignature();
     if (priv->range_bounds.size() == 4 && checkedSignature) {
-        priv->signature = QByteArray::fromRawData(reinterpret_cast<const char *>(checkedSignature->data()), checkedSignature->size());
+        priv->signature = QByteArray { reinterpret_cast<const char *>(checkedSignature->data()), static_cast<qsizetype>(checkedSignature->size()) };
     }
 
     return SignatureValidationInfo(priv);
@@ -1174,13 +1200,13 @@ std::pair<SignatureValidationInfo, std::shared_ptr<Poppler::AsyncObject>> FormFi
     auto *fws = static_cast<FormWidgetSignature *>(m_formData->fm);
     const time_t validationTimeT = validationTime.isValid() ? validationTime.toSecsSinceEpoch() : -1;
     SignatureInfo *si = fws->validateSignatureAsync(opt & ValidateVerifyCertificate, opt & ValidateForceRevalidation, validationTimeT, !(opt & ValidateWithoutOCSPRevocationCheck), opt & ValidateUseAIACertFetch,
-                                                    [obj = std::weak_ptr<AsyncObject>(object)]() {
+                                                    [obj = std::weak_ptr<AsyncObject>(object)] {
                                                         if (auto l = obj.lock()) {
                                                             // We need to roundtrip over the eventloop
                                                             // to ensure callers have a chance of connecting to AsyncObject::done
                                                             QMetaObject::invokeMethod(
                                                                     l.get(),
-                                                                    [innerObj = std::weak_ptr<AsyncObject>(l)]() {
+                                                                    [innerObj = std::weak_ptr<AsyncObject>(l)] {
                                                                         if (auto innerLocked = innerObj.lock()) {
                                                                             Q_EMIT innerLocked->done();
                                                                         }
@@ -1217,8 +1243,13 @@ FormFieldSignature::SigningResult FormFieldSignature::sign(const QString &output
     const auto gSignatureText = std::unique_ptr<GooString>(QStringToUnicodeGooString(data.signatureText()));
     const auto gSignatureLeftText = std::unique_ptr<GooString>(QStringToUnicodeGooString(data.signatureLeftText()));
 
-    const auto failure = fws->signDocumentWithAppearance(outputFileName.toStdString(), data.certNickname().toStdString(), data.password().toStdString(), reason.get(), location.get(), ownerPwd, userPwd, *gSignatureText, *gSignatureLeftText,
-                                                         data.fontSize(), data.leftFontSize(), convertQColor(data.fontColor()), data.borderWidth(), convertQColor(data.borderColor()), convertQColor(data.backgroundColor()));
+    CryptoSign::SigningOperationData signingData;
+    signingData.nickName = data.certNickname().toStdString();
+    signingData.possiblePassword = data.password().toStdString();
+    signingData.type = toPopplerCore(data.requestedSignatureType());
+
+    const auto failure = fws->signDocumentWithAppearance(outputFileName.toStdString(), signingData, reason.get(), location.get(), ownerPwd, userPwd, *gSignatureText, *gSignatureLeftText, data.fontSize(), data.leftFontSize(),
+                                                         convertQColor(data.fontColor()), data.borderWidth(), convertQColor(data.borderColor()), convertQColor(data.backgroundColor()));
     if (failure) {
         m_formData->lastSigningErrorDetails = fromPopplerCore(failure.value().message);
         switch (failure.value().type) {
@@ -1234,6 +1265,8 @@ FormFieldSignature::SigningResult FormFieldSignature::sign(const QString &output
             return WriteFailed;
         case CryptoSign::SigningError::BadPassphrase:
             return BadPassphrase;
+        case CryptoSign::SigningError::UnsupportedSignatureType:
+            return UnsupportedSignatureType;
         }
         return GenericSigningError;
     }
@@ -1336,7 +1369,11 @@ static bool hasNSSBackendFeature(CryptoSignBackendFeature feature)
 {
     switch (feature) {
     case CryptoSignBackendFeature::BackendAsksPassphrase:
+#if ENABLE_NSS3
+        return NSSSignatureConfiguration::hasNSSPasswordCallback();
+#else
         return false;
+#endif
     }
     return false;
 }

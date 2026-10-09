@@ -8,7 +8,7 @@
 // Copyright 2004 Klarälvdalens Datakonsult AB
 // Copyright 2021 g10 Code GmbH
 // Copyright 2023, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
-// Copyright 2024 Albert Astals Cid <aacid@kde.org>
+// Copyright 2024, 2026 Albert Astals Cid <aacid@kde.org>
 // Copyright 2025 Ingo Klöcker <dev@ingo-kloecker.de>
 //
 // Derived from libkleopatra (KDE key management library) dn.cpp
@@ -190,7 +190,7 @@ static std::pair<std::optional<std::string_view>, std::pair<std::string, std::st
             // we have reached end of string, but never an actual ", so error out
             return {};
         }
-        dnPair.second = value;
+        dnPair.second = std::move(value);
     } else {
         std::string value;
         bool stop = false;
@@ -256,7 +256,7 @@ static std::pair<std::optional<std::string_view>, std::pair<std::string, std::st
             }
         }
         if (lastAddedEscapedSpace) {
-            dnPair.second = value;
+            dnPair.second = std::move(value);
         } else {
             dnPair.second = std::string { removeTrailingSpaces(value) };
         }

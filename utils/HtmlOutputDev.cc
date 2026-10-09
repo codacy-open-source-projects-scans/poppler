@@ -49,11 +49,14 @@
 // Copyright (C) 2022 Brian Rosenfield <brosenfi@yahoo.com>
 // Copyright (C) 2024-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2025 Arnav V <arnav0872@gmail.com>
+// Copyright (C) 2026 Stefan Brüns <stefan.bruens@rwth-aachen.de>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
 //
 //========================================================================
+
+#define ENABLE_HTMLOUTPUTDEV_DEBUGGING 0
 
 #include "config.h"
 #include <cstdio>
@@ -120,18 +123,6 @@ extern bool noMerge;
 extern double wordBreakThreshold;
 
 static bool debug = false;
-
-#if 0
-static GooString* Dirname(GooString* str){
-
-  char *p=str->c_str();
-  int len=str->getLength();
-  for (int i=len-1;i>=0;i--)
-    if (*(p+i)==SLASH)
-      return new GooString(p,i+1);
-  return new GooString();
-}
-#endif
 
 static std::string print_matrix(const std::array<double, 4> &mat)
 {
@@ -413,14 +404,6 @@ void HtmlPage::endString()
 
     curStr->endString();
 
-#if 0 //~tmp
-  if (curStr->yMax - curStr->yMin > 20) {
-    delete curStr;
-    curStr = NULL;
-    return;
-  }
-#endif
-
     // insert string in y-major list
     h = curStr->yMax - curStr->yMin;
     y1 = curStr->yMin + 0.5 * h;
@@ -493,17 +476,15 @@ void HtmlPage::coalesce()
     int n, i;
     double curX, curY;
 
-#if 0 //~ for debugging
-  for (str1 = yxStrings; str1; str1 = str1->yxNext) {
-    printf("x=%f..%f  y=%f..%f  size=%2d '",
-	   str1->xMin, str1->xMax, str1->yMin, str1->yMax,
-	   (int)(str1->yMax - str1->yMin));
-    for (i = 0; i < str1->len; ++i) {
-      fputc(str1->text[i] & 0xff, stdout);
+#if ENABLE_HTMLOUTPUTDEV_DEBUGGING
+    for (str1 = yxStrings; str1; str1 = str1->yxNext) {
+        printf("x=%f..%f  y=%f..%f  size=%2d '", str1->xMin, str1->xMax, str1->yMin, str1->yMax, (int)(str1->yMax - str1->yMin));
+        for (i = 0; i < str1->len; ++i) {
+            fputc(str1->text[i] & 0xff, stdout);
+        }
+        printf("'\n");
     }
-    printf("'\n");
-  }
-  printf("\n------------------------------------------------------------\n\n");
+    printf("\n------------------------------------------------------------\n\n");
 #endif
     str1 = yxStrings;
 
@@ -692,14 +673,12 @@ void HtmlPage::coalesce()
     bool finish_a = str1->getLink() != nullptr;
     CloseTags(str1->htext.get(), finish_a, finish_italic, finish_bold);
 
-#if 0 //~ for debugging
-  for (str1 = yxStrings; str1; str1 = str1->yxNext) {
-    printf("x=%3d..%3d  y=%3d..%3d  size=%2d ",
-	   (int)str1->xMin, (int)str1->xMax, (int)str1->yMin, (int)str1->yMax,
-	   (int)(str1->yMax - str1->yMin));
-    printf("'%s'\n", str1->htext->c_str());
-  }
-  printf("\n------------------------------------------------------------\n\n");
+#if ENABLE_HTMLOUTPUTDEV_DEBUGGING
+    for (str1 = yxStrings; str1; str1 = str1->yxNext) {
+        printf("x=%3d..%3d  y=%3d..%3d  size=%2d ", (int)str1->xMin, (int)str1->xMax, (int)str1->yMin, (int)str1->yMax, (int)(str1->yMax - str1->yMin));
+        printf("'%s'\n", str1->htext->c_str());
+    }
+    printf("\n------------------------------------------------------------\n\n");
 #endif
 }
 
@@ -818,7 +797,7 @@ int HtmlPage::dumpComplexHeaders(FILE *const file, FILE *&pageFile, int page)
         }
 
         if (!pageFile) {
-            error(errIO, -1, "Couldn't open html file '{0:s}'", pageFileName.c_str());
+            error(errIO, -1, "Couldn't open html file '{0:r}'", &pageFileName);
             return 1;
         }
 
@@ -1177,25 +1156,6 @@ HtmlOutputDev::~HtmlOutputDev()
 
 void HtmlOutputDev::startPage(int pageNumA, GfxState *state, XRef * /*xref*/)
 {
-#if 0
-  if (mode&&!xml){
-    if (write){
-      write=false;
-      GooString* fname=Dirname(Docname);
-      fname->append("image.log");
-      if((tin=fopen(getFileNameFromPath(fname->c_str(),fname->getLength()),"w"))==NULL){
-	printf("Error : can not open %s",fname);
-	exit(1);
-      }
-      delete fname;
-    // if(state->getRotation()!=0)
-    //  fprintf(tin,"ROTATE=%d rotate %d neg %d neg translate\n",state->getRotation(),state->getX1(),-state->getY1());
-    // else
-      fprintf(tin,"ROTATE=%d neg %d neg translate\n",state->getX1(),state->getY1());
-    }
-  }
-#endif
-
     pageNum = pageNumA;
     const std::string str = gbasename(Docname->c_str());
     pages->clear();
@@ -1275,7 +1235,7 @@ void HtmlOutputDev::drawJpegImage(GfxState *state, Stream *str)
     std::string fName = createImageFileName("jpg");
     f1 = dataUrls ? ims.open("wb") : fopen(fName.c_str(), "wb");
     if (!f1) {
-        error(errIO, -1, "Couldn't open image file '{0:s}'", fName.c_str());
+        error(errIO, -1, "Couldn't open image file '{0:r}'", &fName);
         return;
     }
 
@@ -1321,14 +1281,14 @@ void HtmlOutputDev::drawPngImage(GfxState *state, Stream *str, int width, int he
     std::string fName = createImageFileName("png");
     f1.reset(dataUrls ? ims.open("wb") : fopen(fName.c_str(), "wb"));
     if (!f1) {
-        error(errIO, -1, "Couldn't open image file '{0:s}'", fName.c_str());
+        error(errIO, -1, "Couldn't open image file '{0:r}'", &fName);
         return;
     }
 
     PNGWriter writer { isMask ? PNGWriter::MONOCHROME : PNGWriter::RGB };
     // TODO can we calculate the resolution of the image?
     if (!writer.init(f1.get(), width, height, 72, 72)) {
-        error(errInternal, -1, "Can't init PNG for image '{0:s}'", fName.c_str());
+        error(errInternal, -1, "Can't init PNG for image '{0:r}'", &fName);
         return;
     }
 
@@ -1351,7 +1311,7 @@ void HtmlOutputDev::drawPngImage(GfxState *state, Stream *str, int width, int he
             // Convert into a PNG row
             p = imgStr.getLine();
             if (!p) {
-                error(errIO, -1, "Failed to read PNG. '{0:s}' will be incorrect", fName.c_str());
+                error(errIO, -1, "Failed to read PNG. '{0:r}' will be incorrect", &fName);
                 gfree(row);
                 return;
             }
@@ -1365,7 +1325,7 @@ void HtmlOutputDev::drawPngImage(GfxState *state, Stream *str, int width, int he
             }
 
             if (!writer.writeRow(row_pointer)) {
-                error(errIO, -1, "Failed to write into PNG '{0:s}'", fName.c_str());
+                error(errIO, -1, "Failed to write into PNG '{0:r}'", &fName);
                 gfree(row);
                 return;
             }
@@ -1402,7 +1362,7 @@ void HtmlOutputDev::drawPngImage(GfxState *state, Stream *str, int width, int he
             }
 
             if (!writer.writeRow(&png_row)) {
-                error(errIO, -1, "Failed to write into PNG '{0:s}'", fName.c_str());
+                error(errIO, -1, "Failed to write into PNG '{0:r}'", &fName);
                 gfree(png_row);
                 return;
             }
@@ -1416,6 +1376,8 @@ void HtmlOutputDev::drawPngImage(GfxState *state, Stream *str, int width, int he
     writer.close();
 
     if (dataUrls) {
+        // Need to reset f1 here so the contents get flushed to ims
+        f1.reset();
         fName = std::string("data:image/png;base64,") + gbase64Encode(ims.getBuffer());
     }
     pages->addImage(std::move(fName), state);

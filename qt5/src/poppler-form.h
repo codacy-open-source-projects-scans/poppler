@@ -13,8 +13,9 @@
  * Copyright (C) 2020, Thorsten Behrens <Thorsten.Behrens@CIB.de>
  * Copyright (C) 2020, Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
  * Copyright (C) 2021, Theofilos Intzoglou <int.teo@gmail.com>
- * Copyright (C) 2023-2025, g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+ * Copyright (C) 2023-2026, g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  * Copyright (C) 2024, Pratham Gandhi <ppg.1382@gmail.com>
+ * Copyright (C) 2026 Sune Stolborg Vuorela <sune@vuorela.dk>, work sponsored by the Direction Interministérielle du Numérique
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -625,9 +626,14 @@ public:
     KeyUsageExtensions keyUsageExtensions() const;
 
     /**
-      The public key value.
+      The raw public key value, though it might also be empty depending
+      on the signature types involved
+
+      There should be no need for any normal applications to present
+      the raw public key anywhere, though should it be needed it can be
+      parsed out of \ref certificateData
      */
-    QByteArray publicKey() const;
+    POPPLER_QT5_DEPRECATED QByteArray publicKey() const;
 
     /**
       The public key type.
@@ -958,7 +964,7 @@ public:
         WriteFailed, ///< Write failed (permissions, faulty disk, ...) \since 25.07
         UserCancelled, ///< User cancelled the process \since 25.07
         BadPassphrase, ///< User entered bad passphrase \since 25.07
-
+        UnsupportedSignatureType, ///< User asked for a signature type that the current backend/key combo can't deliver
     };
 
     /**

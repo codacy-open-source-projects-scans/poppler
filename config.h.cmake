@@ -5,8 +5,11 @@
 /* Build against libcurl. */
 #cmakedefine01 ENABLE_LIBCURL
 
-/* Use libopenjpeg instead of builtin jpeg2000 decoder. */
+/* Build with libopenjpeg support. */
 #cmakedefine01 ENABLE_LIBOPENJPEG
+
+/* Build with brotli support. */
+#cmakedefine01 ENABLE_BROTLI
 
 /* Do not hardcode the library location */
 #cmakedefine01 ENABLE_RELOCATABLE
@@ -25,12 +28,6 @@
 
 /* Default signature backend */
 #cmakedefine DEFAULT_SIGNATURE_BACKEND "${DEFAULT_SIGNATURE_BACKEND}"
-
-/* Do we have any DCT decoder?. */
-#cmakedefine01 HAVE_DCT_DECODER
-
-/* Do we have any JPX decoder?. */
-#cmakedefine01 HAVE_JPX_DECODER
 
 /* Define to 1 if you have the `fseek64' function. */
 #cmakedefine01 HAVE_FSEEK64
@@ -121,3 +118,6 @@
 
 /* Define for large files, on AIX-style hosts. */
 /* TODO This is wrong, port if needed #undef _LARGE_FILES */
+
+/* Build with support for font subsetting (uses Harfbuzz) */
+#cmakedefine01 ENABLE_HARFBUZZ

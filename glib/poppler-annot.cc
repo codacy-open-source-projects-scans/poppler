@@ -182,6 +182,13 @@ struct _PopplerAnnotInkClass
 };
 using PopplerAnnotInkClass = _PopplerAnnotInkClass;
 
+#pragma clang diagnostic push
+#if defined(__clang__) && defined(__has_warning)
+#    if __has_warning("-Wunused-but-set-global")
+#        pragma clang diagnostic ignored "-Wunused-but-set-global"
+#    endif
+#endif
+
 G_DEFINE_TYPE(PopplerAnnot, poppler_annot, G_TYPE_OBJECT)
 G_DEFINE_TYPE(PopplerAnnotMarkup, poppler_annot_markup, POPPLER_TYPE_ANNOT)
 G_DEFINE_TYPE(PopplerAnnotTextMarkup, poppler_annot_text_markup, POPPLER_TYPE_ANNOT_MARKUP)
@@ -195,6 +202,8 @@ G_DEFINE_TYPE(PopplerAnnotCircle, poppler_annot_circle, POPPLER_TYPE_ANNOT_MARKU
 G_DEFINE_TYPE(PopplerAnnotSquare, poppler_annot_square, POPPLER_TYPE_ANNOT_MARKUP)
 G_DEFINE_TYPE(PopplerAnnotStamp, poppler_annot_stamp, POPPLER_TYPE_ANNOT_MARKUP)
 G_DEFINE_TYPE(PopplerAnnotInk, poppler_annot_ink, POPPLER_TYPE_ANNOT_MARKUP)
+
+#pragma clang diagnostic pop
 
 static PopplerAnnot *_poppler_create_annot(GType annot_type, std::shared_ptr<Annot> annot)
 {
@@ -261,7 +270,7 @@ PopplerAnnot *poppler_annot_text_new(PopplerDocument *doc, PopplerRectangle *rec
 {
     PDFRectangle pdf_rect(rect->x1, rect->y1, rect->x2, rect->y2);
 
-    auto annot = std::make_shared<AnnotText>(doc->doc.get(), &pdf_rect);
+    auto annot = std::make_shared<AnnotText>(doc->doc.get(), pdf_rect);
 
     return _poppler_annot_text_new(annot);
 }
@@ -287,7 +296,7 @@ static AnnotQuadrilaterals *create_annot_quads_from_poppler_quads(GArray *quads)
 
 /* If @crop_box parameter is non null, it will substract the crop_box offset
  * from the coordinates of the returned #PopplerQuadrilateral array */
-static GArray *create_poppler_quads_from_annot_quads(AnnotQuadrilaterals *quads_array, const PDFRectangle *crop_box)
+static GArray *create_poppler_quads_from_annot_quads(const AnnotQuadrilaterals *quads_array, const PDFRectangle *crop_box)
 {
     GArray *quads;
     guint quads_len;
@@ -341,7 +350,7 @@ PopplerAnnot *poppler_annot_text_markup_new_highlight(PopplerDocument *doc, Popp
     PopplerAnnot *poppler_annot;
     PDFRectangle pdf_rect(rect->x1, rect->y1, rect->x2, rect->y2);
 
-    auto annot = std::make_shared<AnnotTextMarkup>(doc->doc.get(), &pdf_rect, Annot::typeHighlight);
+    auto annot = std::make_shared<AnnotTextMarkup>(doc->doc.get(), pdf_rect, Annot::typeHighlight);
 
     poppler_annot = _poppler_annot_text_markup_new(annot);
     poppler_annot_text_markup_set_quadrilaterals(POPPLER_ANNOT_TEXT_MARKUP(poppler_annot), quadrilaterals);
@@ -369,7 +378,7 @@ PopplerAnnot *poppler_annot_text_markup_new_squiggly(PopplerDocument *doc, Poppl
 
     g_return_val_if_fail(quadrilaterals != nullptr && quadrilaterals->len > 0, NULL);
 
-    auto annot = std::make_shared<AnnotTextMarkup>(doc->doc.get(), &pdf_rect, Annot::typeSquiggly);
+    auto annot = std::make_shared<AnnotTextMarkup>(doc->doc.get(), pdf_rect, Annot::typeSquiggly);
 
     poppler_annot = _poppler_annot_text_markup_new(annot);
     poppler_annot_text_markup_set_quadrilaterals(POPPLER_ANNOT_TEXT_MARKUP(poppler_annot), quadrilaterals);
@@ -397,7 +406,7 @@ PopplerAnnot *poppler_annot_text_markup_new_strikeout(PopplerDocument *doc, Popp
 
     g_return_val_if_fail(quadrilaterals != nullptr && quadrilaterals->len > 0, NULL);
 
-    auto annot = std::make_shared<AnnotTextMarkup>(doc->doc.get(), &pdf_rect, Annot::typeStrikeOut);
+    auto annot = std::make_shared<AnnotTextMarkup>(doc->doc.get(), pdf_rect, Annot::typeStrikeOut);
 
     poppler_annot = _poppler_annot_text_markup_new(annot);
     poppler_annot_text_markup_set_quadrilaterals(POPPLER_ANNOT_TEXT_MARKUP(poppler_annot), quadrilaterals);
@@ -425,7 +434,7 @@ PopplerAnnot *poppler_annot_text_markup_new_underline(PopplerDocument *doc, Popp
 
     g_return_val_if_fail(quadrilaterals != nullptr && quadrilaterals->len > 0, NULL);
 
-    auto annot = std::make_shared<AnnotTextMarkup>(doc->doc.get(), &pdf_rect, Annot::typeUnderline);
+    auto annot = std::make_shared<AnnotTextMarkup>(doc->doc.get(), pdf_rect, Annot::typeUnderline);
 
     poppler_annot = _poppler_annot_text_markup_new(annot);
     poppler_annot_text_markup_set_quadrilaterals(POPPLER_ANNOT_TEXT_MARKUP(poppler_annot), quadrilaterals);
@@ -625,7 +634,7 @@ PopplerAnnot *poppler_annot_free_text_new(PopplerDocument *doc, PopplerRectangle
 {
     PDFRectangle pdf_rect(rect->x1, rect->y1, rect->x2, rect->y2);
 
-    auto annot = std::make_shared<AnnotFreeText>(doc->doc.get(), &pdf_rect);
+    auto annot = std::make_shared<AnnotFreeText>(doc->doc.get(), pdf_rect);
 
     PopplerAnnot *poppler_annot = _poppler_annot_free_text_new(annot);
 
@@ -699,7 +708,7 @@ PopplerAnnot *_poppler_annot_screen_new(PopplerDocument *doc, const std::shared_
 {
     PopplerAnnot *poppler_annot;
     AnnotScreen *annot_screen;
-    LinkAction *action;
+    const LinkAction *action;
 
     poppler_annot = _poppler_create_annot(POPPLER_TYPE_ANNOT_SCREEN, annot);
     annot_screen = static_cast<AnnotScreen *>(poppler_annot->annot.get());
@@ -740,7 +749,7 @@ PopplerAnnot *poppler_annot_line_new(PopplerDocument *doc, PopplerRectangle *rec
     PopplerAnnot *poppler_annot;
     PDFRectangle pdf_rect(rect->x1, rect->y1, rect->x2, rect->y2);
 
-    auto annot = std::make_shared<AnnotLine>(doc->doc.get(), &pdf_rect);
+    auto annot = std::make_shared<AnnotLine>(doc->doc.get(), pdf_rect);
 
     poppler_annot = _poppler_annot_line_new(annot);
     poppler_annot_line_set_vertices(POPPLER_ANNOT_LINE(poppler_annot), start, end);
@@ -773,7 +782,7 @@ PopplerAnnot *poppler_annot_circle_new(PopplerDocument *doc, PopplerRectangle *r
 {
     PDFRectangle pdf_rect(rect->x1, rect->y1, rect->x2, rect->y2);
 
-    auto annot = std::make_shared<AnnotGeometry>(doc->doc.get(), &pdf_rect, Annot::typeCircle);
+    auto annot = std::make_shared<AnnotGeometry>(doc->doc.get(), pdf_rect, Annot::typeCircle);
 
     return _poppler_annot_circle_new(annot);
 }
@@ -804,7 +813,7 @@ PopplerAnnot *poppler_annot_square_new(PopplerDocument *doc, PopplerRectangle *r
 {
     PDFRectangle pdf_rect(rect->x1, rect->y1, rect->x2, rect->y2);
 
-    auto annot = std::make_shared<AnnotGeometry>(doc->doc.get(), &pdf_rect, Annot::typeSquare);
+    auto annot = std::make_shared<AnnotGeometry>(doc->doc.get(), pdf_rect, Annot::typeSquare);
 
     return _poppler_annot_square_new(annot);
 }
@@ -849,7 +858,7 @@ PopplerAnnot *poppler_annot_stamp_new(PopplerDocument *doc, PopplerRectangle *re
 {
     PDFRectangle pdf_rect(rect->x1, rect->y1, rect->x2, rect->y2);
 
-    auto annot = std::make_shared<AnnotStamp>(doc->doc.get(), &pdf_rect);
+    auto annot = std::make_shared<AnnotStamp>(doc->doc.get(), pdf_rect);
 
     return _poppler_annot_stamp_new(annot);
 }
@@ -931,10 +940,11 @@ std::unique_ptr<AnnotStampImageHelper> _poppler_convert_cairo_image_to_stamp_ima
     }
 
     if (sMaskData->len > 0) {
-        AnnotStampImageHelper sMask(doc, width, height, ColorSpace::DeviceGray, 8, reinterpret_cast<char *>(sMaskData->data), static_cast<int>(sMaskData->len));
-        annotImg = std::make_unique<AnnotStampImageHelper>(doc, width, height, colorSpace, bitsPerComponent, reinterpret_cast<char *>(data->data), static_cast<int>(data->len), sMask.getRef());
+        AnnotStampImageHelper sMask(doc, width, height, ColorSpace::DeviceGray, 8, std::vector<char> { reinterpret_cast<char *>(sMaskData->data), reinterpret_cast<char *>(sMaskData->data) + static_cast<int>(sMaskData->len) });
+        annotImg = std::make_unique<AnnotStampImageHelper>(doc, width, height, colorSpace, bitsPerComponent, std::vector<char> { reinterpret_cast<char *>(data->data), reinterpret_cast<char *>(data->data) + static_cast<int>(data->len) },
+                                                           sMask.getRef());
     } else {
-        annotImg = std::make_unique<AnnotStampImageHelper>(doc, width, height, colorSpace, bitsPerComponent, reinterpret_cast<char *>(data->data), static_cast<int>(data->len));
+        annotImg = std::make_unique<AnnotStampImageHelper>(doc, width, height, colorSpace, bitsPerComponent, std::vector<char> { reinterpret_cast<char *>(data->data), reinterpret_cast<char *>(data->data) + static_cast<int>(data->len) });
     }
 
     g_byte_array_unref(data);
@@ -1025,13 +1035,12 @@ PopplerAnnotType poppler_annot_get_annot_type(PopplerAnnot *poppler_annot)
  **/
 gchar *poppler_annot_get_contents(PopplerAnnot *poppler_annot)
 {
-    const GooString *contents;
 
     g_return_val_if_fail(POPPLER_IS_ANNOT(poppler_annot), NULL);
 
-    contents = poppler_annot->annot->getContents();
+    const GooString &contents = poppler_annot->annot->getContents();
 
-    return contents && !contents->empty() ? _poppler_goo_string_to_utf8(contents->toStr()) : nullptr;
+    return !contents.empty() ? _poppler_goo_string_to_utf8(contents.toStr()) : nullptr;
 }
 
 /**
@@ -1204,7 +1213,7 @@ const PDFRectangle *_poppler_annot_get_cropbox_and_page(PopplerAnnot *poppler_an
                 *page_out = page;
             }
 
-            return page->getCropBox();
+            return &page->getCropBox();
         }
     }
 
@@ -1376,7 +1385,7 @@ void poppler_annot_markup_set_popup(PopplerAnnotMarkup *poppler_annot, PopplerRe
     g_return_if_fail(POPPLER_IS_ANNOT_MARKUP(poppler_annot));
 
     annot = static_cast<AnnotMarkup *>(POPPLER_ANNOT(poppler_annot)->annot.get());
-    annot->setPopup(std::make_shared<AnnotPopup>(annot->getDoc(), &pdf_rect));
+    annot->setPopup(std::make_shared<AnnotPopup>(annot->getDoc(), pdf_rect));
 }
 
 /**
@@ -1889,7 +1898,7 @@ GArray *poppler_annot_text_markup_get_quadrilaterals(PopplerAnnotTextMarkup *pop
 
     annot = static_cast<AnnotTextMarkup *>(POPPLER_ANNOT(poppler_annot)->annot.get());
     crop_box = _poppler_annot_get_cropbox(POPPLER_ANNOT(poppler_annot));
-    AnnotQuadrilaterals *quads = annot->getQuadrilaterals();
+    const AnnotQuadrilaterals *quads = annot->getQuadrilaterals();
 
     return create_poppler_quads_from_annot_quads(quads, crop_box);
 }
@@ -1939,14 +1948,14 @@ PopplerAnnotFreeTextQuadding poppler_annot_free_text_get_quadding(PopplerAnnotFr
 PopplerAnnotCalloutLine *poppler_annot_free_text_get_callout_line(PopplerAnnotFreeText *poppler_annot)
 {
     AnnotFreeText *annot;
-    AnnotCalloutLine *line;
+    const AnnotCalloutLine *line;
 
     g_return_val_if_fail(POPPLER_IS_ANNOT_FREE_TEXT(poppler_annot), NULL);
 
     annot = static_cast<AnnotFreeText *>(POPPLER_ANNOT(poppler_annot)->annot.get());
 
     if ((line = annot->getCalloutLine())) {
-        AnnotCalloutMultiLine *multiline;
+        const AnnotCalloutMultiLine *multiline;
         auto *callout = g_new0(PopplerAnnotCalloutLine, 1);
 
         callout->x1 = line->getX1();
@@ -1954,7 +1963,7 @@ PopplerAnnotCalloutLine *poppler_annot_free_text_get_callout_line(PopplerAnnotFr
         callout->x2 = line->getX2();
         callout->y2 = line->getY2();
 
-        if ((multiline = dynamic_cast<AnnotCalloutMultiLine *>(line))) {
+        if ((multiline = dynamic_cast<const AnnotCalloutMultiLine *>(line))) {
             callout->multiline = TRUE;
             callout->x3 = multiline->getX3();
             callout->y3 = multiline->getY3();
@@ -1974,7 +1983,7 @@ static std::string poppler_font_description_to_style(PopplerFontDescription *fon
     std::function<void(const char *)> add_style = [&style](const char *a) {
         if (strcmp(a, "") != 0) {
             if (!style.empty()) {
-                style += " ";
+                style += ' ';
             }
             style += a;
         }
@@ -2034,7 +2043,7 @@ static void poppler_annot_free_text_set_da_to_native(PopplerAnnotFreeText *poppl
             }
 
             if (!font_name.empty()) {
-                form->ensureFontsForAllCharacters(annot->getContents(), font_name);
+                form->ensureFontsForAllCharacters(annot->getContents().toStr(), font_name);
             }
         }
         size = poppler_annot->font_desc->size_pt;
@@ -2545,7 +2554,7 @@ gboolean poppler_annot_stamp_set_custom_image(PopplerAnnotStamp *poppler_annot, 
  */
 gboolean poppler_annot_get_border_width(PopplerAnnot *poppler_annot, double *width)
 {
-    AnnotBorder *b = poppler_annot->annot->getBorder();
+    const AnnotBorder *b = poppler_annot->annot->getBorder();
     if (b) {
         *width = b->getWidth();
         return TRUE;
@@ -2877,7 +2886,7 @@ PopplerAnnot *poppler_annot_ink_new(PopplerDocument *doc, PopplerRectangle *rect
 {
     PDFRectangle pdf_rect(rect->x1, rect->y1, rect->x2, rect->y2);
 
-    auto annot = std::make_shared<AnnotInk>(doc->doc.get(), &pdf_rect);
+    auto annot = std::make_shared<AnnotInk>(doc->doc.get(), pdf_rect);
 
     return _poppler_annot_ink_new(annot);
 }

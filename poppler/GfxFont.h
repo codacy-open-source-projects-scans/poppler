@@ -26,6 +26,7 @@
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2021, 2022, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2024-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2026 Stefan Brüns <stefan.bruens@rwth-aachen.de>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -182,7 +183,7 @@ public:
     };
 
     // Build a GfxFont object.
-    static std::unique_ptr<GfxFont> makeFont(XRef *xref, const char *tagA, Ref idA, const Dict &fontDict);
+    static std::unique_ptr<GfxFont> makeFont(XRef *xref, std::string_view tagA, Ref idA, const Dict &fontDict);
 
     GfxFont(const GfxFont &) = delete;
     GfxFont &operator=(const GfxFont &other) = delete;
@@ -197,7 +198,7 @@ public:
     const Ref *getID() const { return &id; }
 
     // Does this font match the tag?
-    bool matches(const char *tagA) const { return tag == tagA; }
+    bool matches(std::string_view tagA) const { return tag == tagA; }
 
     // Get font family name.
     const std::optional<std::string> &getFamily() const { return family; }
@@ -290,6 +291,8 @@ public:
     // the char code.
     virtual int getNextChar(const char *s, int len, CharCode *code, Unicode const **u, int *uLen, double *dx, double *dy, double *ox, double *oy) const = 0;
 
+    virtual double getWidth(CID code) const = 0;
+
     // Does this font have a toUnicode map?
     bool hasToUnicodeCMap() const { return hasToUnicode; }
 
@@ -304,7 +307,7 @@ public:
     static bool isBase14Font(std::string_view family, std::string_view style);
 
 protected:
-    GfxFont(const char *tagA, Ref idA, std::optional<std::string> &&nameA, GfxFontType typeA, Ref embFontIDA);
+    GfxFont(std::string_view tagA, Ref idA, std::optional<std::string> &&nameA, GfxFontType typeA, Ref embFontIDA);
 
     static GfxFontType getFontType(XRef *xref, const Dict &fontDict, Ref *embID);
     void readFontDescriptor(const Dict &fontDict);
@@ -338,7 +341,7 @@ protected:
 class POPPLER_PRIVATE_EXPORT Gfx8BitFont : public GfxFont
 {
 public:
-    Gfx8BitFont(XRef *xref, const char *tagA, Ref idA, std::optional<std::string> &&nameA, GfxFontType typeA, Ref embFontIDA, const Dict &fontDict);
+    Gfx8BitFont(XRef *xref, std::string_view tagA, Ref idA, std::optional<std::string> &&nameA, GfxFontType typeA, Ref embFontIDA, const Dict &fontDict);
 
     int getNextChar(const char *s, int len, CharCode *code, Unicode const **u, int *uLen, double *dx, double *dy, double *ox, double *oy) const override;
 
@@ -358,7 +361,11 @@ public:
     bool getUsesMacRomanEnc() const { return usesMacRomanEnc; }
 
     // Get width of a character.
-    double getWidth(unsigned char c) const { return widths[c]; }
+    double getWidth(CID code) const override
+    {
+        assert(code < 256);
+        return widths[code];
+    }
 
     // Return a char code-to-GID mapping for the provided font file.
     // (This is only useful for TrueType fonts.)
@@ -398,7 +405,7 @@ private:
 class POPPLER_PRIVATE_EXPORT GfxCIDFont : public GfxFont
 {
 public:
-    GfxCIDFont(const char *tagA, Ref idA, std::optional<std::string> &&nameA, GfxFontType typeA, Ref embFontIDA, const Dict &fontDict);
+    GfxCIDFont(std::string_view tagA, Ref idA, std::optional<std::string> &&nameA, GfxFontType typeA, Ref embFontIDA, const Dict &fontDict);
 
     bool isCIDFont() const override { return true; }
 
@@ -421,14 +428,13 @@ public:
     std::vector<int> getCodeToGIDMap(FoFiTrueType *ff);
 
     double getWidth(char *s, int len) const;
+    double getWidth(CID cid) const override;
 
     ~GfxCIDFont() override;
 
 private:
     static int mapCodeToGID(FoFiTrueType *ff, int cmapi, Unicode unicode, GfxFont::WritingMode wmode);
-    double getWidth(CID cid) const; // Get width of a character.
 
-    std::unique_ptr<GooString> collection; // collection name
     std::shared_ptr<CMap> cMap; // char code --> CID
     std::shared_ptr<CharCodeToUnicode> ctu; // CID --> Unicode
     bool ctuUsesCharCode; // true: ctu maps char code to Unicode;
@@ -452,7 +458,7 @@ public:
     GfxFontDict &operator=(const GfxFontDict &) = delete;
 
     // Get the specified font.
-    std::shared_ptr<GfxFont> lookup(const char *tag) const;
+    std::shared_ptr<GfxFont> lookup(std::string_view tag) const;
 
     // Iterative access.
     int getNumFonts() const { return fonts.size(); }

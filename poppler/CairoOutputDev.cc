@@ -45,6 +45,7 @@
 // Copyright (C) 2025, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2025 Jonathan Hähne <jonathan.haehne@hotmail.com>
 // Copyright (C) 2025 Arnav V <arnav0872@gmail.com>
+// Copyright (C) 2026 Stefan Brüns <stefan.bruens@rwth-aachen.de>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -59,7 +60,6 @@
 #include <cassert>
 #include <cairo.h>
 
-#include "goo/gfile.h"
 #include "GlobalParams.h"
 #include "Error.h"
 #include "Object.h"
@@ -68,7 +68,6 @@
 #include "GfxFont.h"
 #include "Page.h"
 #include "Link.h"
-#include "PDFDocEncoding.h"
 #include <fofi/FoFiTrueType.h>
 #include <goo/gmem.h>
 #include <splash/SplashBitmap.h>
@@ -81,6 +80,7 @@
 //------------------------------------------------------------------------
 
 // #define LOG_CAIRO
+#define CHECK_ICC_BASED_COLOR_SPACE_IDENTITY_TRANSFORM 0
 
 // To limit memory usage and improve performance when printing, limit
 // cairo images to this size. 8192 is sufficient for an A2 sized
@@ -404,7 +404,7 @@ void CairoOutputDev::beginForm(Object *obj, Ref /*id*/)
     if (logicalStruct && isPDF()) {
         structParentsStack.push_back(currentStructParents);
 
-        const Object tmp = obj->streamGetDict()->lookup("StructParents");
+        const Object tmp = obj->getStream()->getDict()->lookup("StructParents");
         if (!(tmp.isInt() || tmp.isNull())) {
             error(errSyntaxError, -1, "XObject StructParents object is wrong type ({0:s})", tmp.getTypeName());
         } else if (tmp.isInt()) {
@@ -421,7 +421,7 @@ void CairoOutputDev::endForm(Object * /*obj*/, Ref /*id*/)
     }
 }
 
-void CairoOutputDev::quadToCairoRect(AnnotQuadrilaterals *quads, int idx, double pageHeight, cairo_rectangle_t *rect)
+void CairoOutputDev::quadToCairoRect(const AnnotQuadrilaterals *quads, int idx, double pageHeight, cairo_rectangle_t *rect)
 {
     double x1, x2, y1, y2;
     x1 = x2 = quads->getX1(idx);
@@ -490,7 +490,7 @@ bool CairoOutputDev::beginLinkTag(AnnotLink *annotLink)
 
     auto attrib = GooString::format("link_page={0:d} ", page_num);
     attrib.append("rect=[");
-    AnnotQuadrilaterals *quads = annotLink->getQuadrilaterals();
+    const AnnotQuadrilaterals *quads = annotLink->getQuadrilaterals();
     if (quads && quads->getQuadrilateralsLength() > 0) {
         for (int i = 0; i < quads->getQuadrilateralsLength(); i++) {
             cairo_rectangle_t rect;
@@ -560,7 +560,7 @@ AnnotLink *CairoOutputDev::findLinkObject(const StructElement *elem)
     if (elem->isObjectRef()) {
         Ref ref = elem->getObjectRef();
         for (const std::shared_ptr<Annot> &annot : annotations) {
-            if (annot->getType() == Annot::typeLink && annot->match(&ref)) {
+            if (annot->getType() == Annot::typeLink && annot->match(ref)) {
                 return static_cast<AnnotLink *>(annot.get());
             }
         }
@@ -591,7 +591,8 @@ bool CairoOutputDev::beginLink(const StructElement *linkElem)
 void CairoOutputDev::getStructElemAttributeString(const StructElement *elem)
 {
     (void)elem;
-#if 0
+#define GENERATE_STRUCT_ELEMENT_ATTRIBUTE_STRING 0
+#if GENERATE_STRUCT_ELEMENT_ATTRIBUTE_STRING
     int mcid = 0;
     GooString attribs;
     Ref ref = elem->getObjectRef();
@@ -608,7 +609,7 @@ int CairoOutputDev::getContentElementStructParents(const StructElement *element)
     if (element->hasStmRef()) {
         element->getStmRef(ref);
         Object xobjectObj = xref->fetch(ref);
-        const Object &spObj = xobjectObj.streamGetDict()->lookup("StructParents");
+        const Object &spObj = xobjectObj.getStream()->getDict()->lookup("StructParents");
         if (spObj.isInt()) {
             structParents = spObj.getInt();
         }
@@ -1441,7 +1442,7 @@ bool CairoOutputDev::tilingPatternFill(GfxState *state, Gfx *gfxA, Catalog * /*c
     adjusted_stroke_width_tmp = adjusted_stroke_width;
     maskTmp = mask;
     mask = nullptr;
-    gfx = new Gfx(doc, this, resDict, &box, nullptr, nullptr, nullptr, gfxA);
+    gfx = new Gfx(doc, this, resDict, box, nullptr, nullptr, nullptr, gfxA);
     if (paintType == 2) {
         inUncoloredPattern = true;
     }
@@ -1568,19 +1569,19 @@ bool CairoOutputDev::functionShadedFill(GfxState *state, GfxFunctionShading *sha
             cairo_mesh_pattern_line_to(fill_pattern, x1, y2);
 
             shading->getColor(x1, y1, &color);
-            shading->getColorSpace()->getRGB(&color, &rgb);
+            shading->getColorSpace()->getRGB(color, &rgb);
             cairo_mesh_pattern_set_corner_color_rgb(fill_pattern, 0, colToDbl(rgb.r), colToDbl(rgb.g), colToDbl(rgb.b));
 
             shading->getColor(x2, y1, &color);
-            shading->getColorSpace()->getRGB(&color, &rgb);
+            shading->getColorSpace()->getRGB(color, &rgb);
             cairo_mesh_pattern_set_corner_color_rgb(fill_pattern, 1, colToDbl(rgb.r), colToDbl(rgb.g), colToDbl(rgb.b));
 
             shading->getColor(x2, y2, &color);
-            shading->getColorSpace()->getRGB(&color, &rgb);
+            shading->getColorSpace()->getRGB(color, &rgb);
             cairo_mesh_pattern_set_corner_color_rgb(fill_pattern, 2, colToDbl(rgb.r), colToDbl(rgb.g), colToDbl(rgb.b));
 
             shading->getColor(x1, y2, &color);
-            shading->getColorSpace()->getRGB(&color, &rgb);
+            shading->getColorSpace()->getRGB(color, &rgb);
             cairo_mesh_pattern_set_corner_color_rgb(fill_pattern, 3, colToDbl(rgb.r), colToDbl(rgb.g), colToDbl(rgb.b));
 
             cairo_mesh_pattern_end_patch(fill_pattern);
@@ -1698,7 +1699,7 @@ bool CairoOutputDev::gouraudTriangleShadedFill(GfxState *state, GfxGouraudTriang
         cairo_mesh_pattern_line_to(fill_pattern, x2, y2);
 
         for (j = 0; j < 3; j++) {
-            shading->getColorSpace()->getRGB(&color[j], &rgb);
+            shading->getColorSpace()->getRGB(color[j], &rgb);
             cairo_mesh_pattern_set_corner_color_rgb(fill_pattern, j, colToDbl(rgb.r), colToDbl(rgb.g), colToDbl(rgb.b));
         }
 
@@ -1778,7 +1779,7 @@ bool CairoOutputDev::patchMeshShadedFill(GfxState *state, GfxPatchMeshShading *s
                 }
             }
 
-            shading->getColorSpace()->getRGB(&color, &rgb);
+            shading->getColorSpace()->getRGB(color, &rgb);
             cairo_mesh_pattern_set_corner_color_rgb(fill_pattern, j, colToDbl(rgb.r), colToDbl(rgb.g), colToDbl(rgb.b));
         }
         cairo_mesh_pattern_end_patch(fill_pattern);
@@ -2258,7 +2259,7 @@ static int luminocity(uint32_t x)
 }
 
 /* XXX: do we need to deal with shape here? */
-void CairoOutputDev::setSoftMask(GfxState * /*state*/, const std::array<double, 4> & /*bbox*/, bool alpha, Function *transferFunc, GfxColor *backdropColor)
+void CairoOutputDev::setSoftMask(GfxState * /*state*/, const std::array<double, 4> & /*bbox*/, bool alpha, Function *transferFunc, const GfxColor &backdropColor)
 {
     cairo_pattern_destroy(mask);
 
@@ -2540,7 +2541,7 @@ void CairoOutputDev::drawImageMask(GfxState *state, Object * /*ref*/, Stream *st
     drawImageMaskRegular(state, str, width, height, invert, interpolate);
 }
 
-void CairoOutputDev::setSoftMaskFromImageMask(GfxState *state, Object * /*ref*/, Stream *str, int width, int height, bool invert, bool /*inlineImg*/, std::array<double, 6> & /*baseMatrix*/)
+bool CairoOutputDev::setSoftMaskFromImageMask(GfxState *state, Object * /*ref*/, Stream *str, int width, int height, bool invert, bool /*inlineImg*/, std::array<double, 6> & /*baseMatrix*/)
 {
 
     /* FIXME: Doesn't the image mask support any colorspace? */
@@ -2600,6 +2601,8 @@ void CairoOutputDev::setSoftMaskFromImageMask(GfxState *state, Object * /*ref*/,
     saveState(state);
     static constexpr std::array<double, 4> bbox = { 0, 0, 1, 1 }; // dummy
     beginTransparencyGroup(state, bbox, state->getFillColorSpace(), true, false, false);
+
+    return true;
 }
 
 void CairoOutputDev::unsetSoftMaskFromImageMask(GfxState *state, std::array<double, 6> & /*baseMatrix*/)
@@ -2778,13 +2781,11 @@ void CairoOutputDev::drawMaskedImage(GfxState * /*state*/, Object * /*ref*/, Str
         return;
     }
 
-#if 0
-  /* ICCBased color space doesn't do any color correction
-   * so check its underlying color space as well */
-  int is_identity_transform;
-  is_identity_transform = colorMap->getColorSpace()->getMode() == csDeviceRGB ||
-		  (colorMap->getColorSpace()->getMode() == csICCBased &&
-		   ((GfxICCBasedColorSpace*)colorMap->getColorSpace())->getAlt()->getMode() == csDeviceRGB);
+#if CHECK_ICC_BASED_COLOR_SPACE_IDENTITY_TRANSFORM
+    /* ICCBased color space doesn't do any color correction
+     * so check its underlying color space as well */
+    int is_identity_transform;
+    is_identity_transform = colorMap->getColorSpace()->getMode() == csDeviceRGB || (colorMap->getColorSpace()->getMode() == csICCBased && ((GfxICCBasedColorSpace *)colorMap->getColorSpace())->getAlt()->getMode() == csDeviceRGB);
 #endif
 
     /* TODO: Do we want to cache these? */
@@ -2874,7 +2875,7 @@ cleanup:
     imgStr.close();
 }
 
-static inline void getMatteColorRgb(GfxImageColorMap *colorMap, const GfxColor *matteColorIn, GfxRGB *matteColorRgb)
+static inline void getMatteColorRgb(GfxImageColorMap *colorMap, const GfxColor &matteColorIn, GfxRGB *matteColorRgb)
 {
     colorMap->getColorSpace()->getRGB(matteColorIn, matteColorRgb);
     matteColorRgb->r = colToByte(matteColorRgb->r);
@@ -2927,7 +2928,7 @@ void CairoOutputDev::drawSoftMaskedImage(GfxState *state, Object *ref, Stream *s
 
     const GfxColor *matteColor = maskColorMap->getMatteColor();
     if (matteColor != nullptr) {
-        getMatteColorRgb(colorMap, matteColor, &matteColorRgb);
+        getMatteColorRgb(colorMap, *matteColor, &matteColorRgb);
     }
 
     ImageStream maskImgStr(maskStr, maskWidth, maskColorMap->getNumPixelComps(), maskColorMap->getBits());
@@ -2962,13 +2963,11 @@ void CairoOutputDev::drawSoftMaskedImage(GfxState *state, Object *ref, Stream *s
         return;
     }
 
-#if 0
-  /* ICCBased color space doesn't do any color correction
-   * so check its underlying color space as well */
-  int is_identity_transform;
-  is_identity_transform = colorMap->getColorSpace()->getMode() == csDeviceRGB ||
-		  (colorMap->getColorSpace()->getMode() == csICCBased &&
-		   ((GfxICCBasedColorSpace*)colorMap->getColorSpace())->getAlt()->getMode() == csDeviceRGB);
+#if CHECK_ICC_BASED_COLOR_SPACE_IDENTITY_TRANSFORM
+    /* ICCBased color space doesn't do any color correction
+     * so check its underlying color space as well */
+    int is_identity_transform;
+    is_identity_transform = colorMap->getColorSpace()->getMode() == csDeviceRGB || (colorMap->getColorSpace()->getMode() == csICCBased && ((GfxICCBasedColorSpace *)colorMap->getColorSpace())->getAlt()->getMode() == csDeviceRGB);
 #endif
 
     /* TODO: Do we want to cache these? */
@@ -3326,13 +3325,11 @@ public:
             return image;
         }
 
-#if 0
-    /* ICCBased color space doesn't do any color correction
-     * so check its underlying color space as well */
-    int is_identity_transform;
-    is_identity_transform = colorMap->getColorSpace()->getMode() == csDeviceRGB ||
-      (colorMap->getColorSpace()->getMode() == csICCBased &&
-       ((GfxICCBasedColorSpace*)colorMap->getColorSpace())->getAlt()->getMode() == csDeviceRGB);
+#if CHECK_ICC_BASED_COLOR_SPACE_IDENTITY_TRANSFORM
+        /* ICCBased color space doesn't do any color correction
+         * so check its underlying color space as well */
+        int is_identity_transform;
+        is_identity_transform = colorMap->getColorSpace()->getMode() == csDeviceRGB || (colorMap->getColorSpace()->getMode() == csICCBased && ((GfxICCBasedColorSpace *)colorMap->getColorSpace())->getAlt()->getMode() == csDeviceRGB);
 #endif
 
         // special case for one-channel (monochrome/gray/separation) images:
@@ -3573,15 +3570,15 @@ void CairoOutputDev::drawImage(GfxState *state, Object *ref, Stream *str, int wi
     cairo_pattern_destroy(pattern);
 }
 
-void CairoOutputDev::beginMarkedContent(const char *name, Dict *properties)
+void CairoOutputDev::beginMarkedContent(const std::string &name, Dict *properties)
 {
     if (!logicalStruct || !isPDF()) {
         return;
     }
 
-    if (strcmp(name, "Artifact") == 0) {
+    if (name == "Artifact") {
         markedContentStack.emplace_back(name);
-        cairo_tag_begin(cairo, name, nullptr);
+        cairo_tag_begin(cairo, name.c_str(), nullptr);
         return;
     }
 
@@ -3594,7 +3591,7 @@ void CairoOutputDev::beginMarkedContent(const char *name, Dict *properties)
         return;
     }
 
-    std::string attribs = GooString::format("tag_name='{0:s}' id='{1:d}_{2:d}'", name, currentStructParents, mcid);
+    std::string attribs = GooString::format("tag_name='{0:r}' id='{1:d}_{2:d}'", &name, currentStructParents, mcid);
     mcidEmitted.insert(std::pair<int, int>(currentStructParents, mcid));
 
     std::string tag;
@@ -3702,7 +3699,7 @@ void CairoImageOutputDev::drawImageMask(GfxState *state, Object *ref, Stream *st
     }
 }
 
-void CairoImageOutputDev::setSoftMaskFromImageMask(GfxState *state, Object *ref, Stream *str, int width, int height, bool invert, bool inlineImg, std::array<double, 6> & /*baseMatrix*/)
+bool CairoImageOutputDev::setSoftMaskFromImageMask(GfxState *state, Object *ref, Stream *str, int width, int height, bool invert, bool inlineImg, std::array<double, 6> & /*baseMatrix*/)
 {
     cairo_t *cr;
     cairo_surface_t *surface;
@@ -3731,6 +3728,8 @@ void CairoImageOutputDev::setSoftMaskFromImageMask(GfxState *state, Object *ref,
         cairo_surface_destroy(surface);
         cairo_destroy(cr);
     }
+
+    return true;
 }
 
 void CairoImageOutputDev::drawImage(GfxState *state, Object *ref, Stream *str, int width, int height, GfxImageColorMap *colorMap, bool interpolate, const int *maskColors, bool inlineImg)

@@ -31,6 +31,7 @@
 // Copyright (C) 2024-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2025 Hagen Möbius <hagen.moebius@googlemail.com>
 // Copyright (C) 2026 Aditya Tiwari <suntiwari3495@gmail.com>
+// Copyright (C) 2026 Diego Costa R. <diegocostar@gmail.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -174,7 +175,7 @@ public:
 
     static bool cmpYX(const TextWord *word1, const TextWord *word2);
 
-    void visitSelection(TextSelectionVisitor *visitor, const PDFRectangle *selection);
+    void visitSelection(TextSelectionVisitor *visitor, const PDFRectangle &selection);
 
     // Get the TextFontInfo object associated with a character.
     const TextFontInfo *getFontInfo(int idx) const { return chars[idx].font; }
@@ -333,7 +334,7 @@ public:
 
     void coalesce(const UnicodeMap *uMap);
 
-    void visitSelection(TextSelectionVisitor *visitor, const PDFRectangle *selection, SelectionStyle style);
+    void visitSelection(TextSelectionVisitor *visitor, const PDFRectangle &selection, SelectionStyle style);
     PDFRectangle getBBox() const { return { xMin, yMin, xMax, yMax }; }
 
     // Get the head of the linked list of TextWords.
@@ -408,7 +409,7 @@ public:
     // primary rotation.
     bool isBelow(const TextBlock *blk) const;
 
-    void visitSelection(TextSelectionVisitor *visitor, const PDFRectangle *selection, SelectionStyle style);
+    void visitSelection(TextSelectionVisitor *visitor, const PDFRectangle &selection, SelectionStyle style);
 
     // Get the head of the linked list of TextLines.
     const TextLine *getLines() const { return lines; }
@@ -632,15 +633,15 @@ public:
     // physical layout false and raw order false does not go well with a rectangle
     GooString getText(const std::optional<PDFRectangle> &area, EndOfLineKind textEOL, bool physLayout, EndOfLineHyphenMode hyphenMode) const;
 
-    void visitSelection(TextSelectionVisitor *visitor, const PDFRectangle *selection, SelectionStyle style);
+    void visitSelection(TextSelectionVisitor *visitor, const PDFRectangle &selection, SelectionStyle style);
 
-    void drawSelection(OutputDev *out, double scale, int rotation, const PDFRectangle *selection, SelectionStyle style, const GfxColor *glyph_color, const GfxColor *box_color, double box_opacity, bool draw_glyphs);
+    void drawSelection(OutputDev *out, double scale, int rotation, const PDFRectangle &selection, SelectionStyle style, const GfxColor &glyph_color, const GfxColor &box_color, double box_opacity, bool draw_glyphs);
 
-    std::vector<PDFRectangle *> *getSelectionRegion(const PDFRectangle *selection, SelectionStyle style, double scale);
+    std::vector<PDFRectangle *> *getSelectionRegion(const PDFRectangle &selection, SelectionStyle style, double scale);
 
-    GooString getSelectionText(const PDFRectangle *selection, SelectionStyle style);
+    GooString getSelectionText(const PDFRectangle &selection, SelectionStyle style);
 
-    [[nodiscard]] std::vector<std::vector<std::unique_ptr<TextWordSelection>>> getSelectionWords(const PDFRectangle *selection, SelectionStyle style);
+    [[nodiscard]] std::vector<std::vector<std::unique_ptr<TextWordSelection>>> getSelectionWords(const PDFRectangle &selection, SelectionStyle style);
 
     // Find a string by character position and length.  If found, sets
     // the text bounding rectangle and returns true; otherwise returns
@@ -657,6 +658,8 @@ public:
     // character are drawn on eachother.
     void setMergeCombining(bool merge);
 
+    void setInlineLinkURIs(bool inlineLinkURIsA);
+
     // Build a flat word list, in content stream order (if
     // this->rawOrder is true), physical layout order (if <physLayout>
     // is true and this->rawOrder is false), or reading order (if both
@@ -671,6 +674,7 @@ private:
 
     bool rawOrder; // keep text in content stream order
     bool discardDiag; // discard diagonal text
+    bool inlineLinkURIs = false;
     bool mergeCombining; // merge when combining and base characters
                          // are drawn on top of each other
 
@@ -797,6 +801,9 @@ public:
 
     //----- initialization and control
 
+    bool checkPageSlice(Page *pageA, double hDPI, double vDPI, int rotate, bool useMediaBox, bool crop, int sliceX, int sliceY, int sliceW, int sliceH, bool printing, bool (*abortCheckCbk)(void *data) = nullptr,
+                        void *abortCheckCbkData = nullptr, bool (*annotDisplayDecideCbk)(Annot *annot, void *user_data) = nullptr, void *annotDisplayDecideCbkData = nullptr) override;
+
     // Start a page.
     void startPage(int pageNum, GfxState *state, XRef *xref) override;
 
@@ -845,11 +852,11 @@ public:
     // false.
     bool findCharRange(int pos, int length, double *xMin, double *yMin, double *xMax, double *yMax) const;
 
-    void drawSelection(OutputDev *out, double scale, int rotation, const PDFRectangle *selection, SelectionStyle style, const GfxColor *glyph_color, const GfxColor *box_color, double box_opacity, bool draw_glyphs);
+    void drawSelection(OutputDev *out, double scale, int rotation, const PDFRectangle &selection, SelectionStyle style, const GfxColor &glyph_color, const GfxColor &box_color, double box_opacity, bool draw_glyphs);
 
-    std::vector<PDFRectangle *> *getSelectionRegion(const PDFRectangle *selection, SelectionStyle style, double scale);
+    std::vector<PDFRectangle *> *getSelectionRegion(const PDFRectangle &selection, SelectionStyle style, double scale);
 
-    GooString getSelectionText(const PDFRectangle *selection, SelectionStyle style);
+    GooString getSelectionText(const PDFRectangle &selection, SelectionStyle style);
 
     // If true, will combine characters when a base and combining
     // character are drawn on eachother.
@@ -867,6 +874,8 @@ public:
 
     // Turn extra processing for HTML conversion on or off.
     void enableHTMLExtras(bool doHTMLA) { doHTML = doHTMLA; }
+
+    void setInlineLinkURIs(bool inlineLinkURIsA);
 
     // Get the head of the linked list of TextFlows for the
     // last rasterized page.
@@ -895,6 +904,8 @@ private:
                       // 0, 90, 180, or 270 degree axes, is discarded. This is useful
                       // to skip watermarks drawn on top of body text, etc.
     bool doHTML; // extra processing for HTML conversion
+    bool inlineLinkURIs = false;
+    Page *currentPage = nullptr;
     bool ok; // set up ok?
     bool textPageBreaks; // insert end-of-page markers?
     EndOfLineKind textEOL; // type of EOL marker to use

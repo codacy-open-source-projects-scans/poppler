@@ -14,7 +14,7 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2005, 2006, 2008 Brad Hards <bradh@frogmouth.net>
-// Copyright (C) 2005, 2009, 2014, 2015, 2017-2022, 2024, 2025 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005, 2009, 2014, 2015, 2017-2022, 2024-2026 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2008 Julien Rebetez <julienr@svn.gnome.org>
 // Copyright (C) 2008 Pino Toscano <pino@kde.org>
 // Copyright (C) 2008 Carlos Garcia Campos <carlosgc@gnome.org>
@@ -42,6 +42,7 @@
 // Copyright (C) 2023-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2024 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
 // Copyright (C) 2025 Jonathan Hähne <jonathan.haehne@hotmail.com>
+// Copyright (C) 2026 Sune Stolborg Vuorela <sune@vuorela.dk>, work sponsored by the Direction Interministérielle du Numérique
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -61,12 +62,13 @@
 #include "XRef.h"
 #include "Catalog.h"
 #include "Page.h"
-#include "Annot.h"
 #include "ErrorCodes.h"
-#include "Form.h"
-#include "OptionalContent.h"
 #include "Stream.h"
 
+class AnnotColor;
+class AnnotWidget;
+class FormFieldSignature;
+class FormWidget;
 class GooString;
 class GooFile;
 class BaseStream;
@@ -190,7 +192,7 @@ public:
 
     // Return the contents of the metadata stream, or nullptr if there is
     // no metadata.
-    std::unique_ptr<GooString> readMetadata() const { return catalog->readMetadata(); }
+    std::optional<std::string> readMetadata() const { return catalog->readMetadata(); }
 
     // Return the structure tree root object.
     const StructTreeRoot *getStructTreeRoot() const { return catalog->getStructTreeRoot(); }
@@ -270,16 +272,16 @@ public:
 
     // Get document's properties from document's Info dictionary.
     // Returns nullptr on fail.
-    std::unique_ptr<GooString> getDocInfoStringEntry(const char *key);
+    std::optional<std::string> getDocInfoStringEntry(std::string_view key);
 
-    std::unique_ptr<GooString> getDocInfoTitle() { return getDocInfoStringEntry("Title"); }
-    std::unique_ptr<GooString> getDocInfoAuthor() { return getDocInfoStringEntry("Author"); }
-    std::unique_ptr<GooString> getDocInfoSubject() { return getDocInfoStringEntry("Subject"); }
-    std::unique_ptr<GooString> getDocInfoKeywords() { return getDocInfoStringEntry("Keywords"); }
-    std::unique_ptr<GooString> getDocInfoCreator() { return getDocInfoStringEntry("Creator"); }
-    std::unique_ptr<GooString> getDocInfoProducer() { return getDocInfoStringEntry("Producer"); }
-    std::unique_ptr<GooString> getDocInfoCreatDate() { return getDocInfoStringEntry("CreationDate"); }
-    std::unique_ptr<GooString> getDocInfoModDate() { return getDocInfoStringEntry("ModDate"); }
+    std::optional<std::string> getDocInfoTitle() { return getDocInfoStringEntry("Title"); }
+    std::optional<std::string> getDocInfoAuthor() { return getDocInfoStringEntry("Author"); }
+    std::optional<std::string> getDocInfoSubject() { return getDocInfoStringEntry("Subject"); }
+    std::optional<std::string> getDocInfoKeywords() { return getDocInfoStringEntry("Keywords"); }
+    std::optional<std::string> getDocInfoCreator() { return getDocInfoStringEntry("Creator"); }
+    std::optional<std::string> getDocInfoProducer() { return getDocInfoStringEntry("Producer"); }
+    std::optional<std::string> getDocInfoCreatDate() { return getDocInfoStringEntry("CreationDate"); }
+    std::optional<std::string> getDocInfoModDate() { return getDocInfoStringEntry("ModDate"); }
 
     // Return the PDF subtype, part, and conformance
     PDFSubtype getPDFSubtype() const { return pdfSubtype; }
@@ -315,7 +317,7 @@ public:
     int saveWithoutChangesAs(OutStream *outStr);
 
     // rewrite pageDict with MediaBox, CropBox and new page CTM
-    bool replacePageDict(int pageNo, int rotate, const PDFRectangle *mediaBox, const PDFRectangle *cropBox) const;
+    bool replacePageDict(int pageNo, int rotate, const PDFRectangle &mediaBox, const PDFRectangle *cropBox) const;
     bool markPageObjects(Dict *pageDict, XRef *xRef, XRef *countRef, unsigned int numOffset, int oldRefNum, int newRefNum, std::set<Dict *> *alreadyMarkedDicts = nullptr);
     bool markAnnotations(Object *annots, XRef *xRef, XRef *countRef, unsigned int numOffset, int oldPageNum, int newPageNum, std::set<Dict *> *alreadyMarkedDicts = nullptr);
     void markAcroForm(Object *afObj, XRef *xRef, XRef *countRef, unsigned int numOffset, int oldRefNum, int newRefNum);
@@ -336,7 +338,7 @@ public:
     // Arguments reason and location are UTF-16 big endian strings with BOM. An empty string and nullptr are acceptable too.
     // Argument imagePath is a background image (a path to a file).
     // sign() takes ownership of partialFieldName.
-    std::optional<CryptoSign::SigningErrorMessage> sign(const std::string &saveFilename, const std::string &certNickname, const std::string &password, std::unique_ptr<GooString> &&partialFieldName, int page, const PDFRectangle &rect,
+    std::optional<CryptoSign::SigningErrorMessage> sign(const std::string &saveFilename, const CryptoSign::SigningOperationData &data, std::unique_ptr<GooString> &&partialFieldName, int page, const PDFRectangle &rect,
                                                         const GooString &signatureText, const GooString &signatureTextLeft, double fontSize, double leftFontSize, std::unique_ptr<AnnotColor> &&fontColor, double borderWidth,
                                                         std::unique_ptr<AnnotColor> &&borderColor, std::unique_ptr<AnnotColor> &&backgroundColor, const GooString *reason = nullptr, const GooString *location = nullptr,
                                                         const std::string &imagePath = "", const std::optional<GooString> &ownerPassword = {}, const std::optional<GooString> &userPassword = {});
@@ -346,7 +348,7 @@ public:
         Ref ref;
         std::shared_ptr<AnnotWidget> annotWidget = nullptr;
         FormWidget *formWidget = nullptr;
-        std::unique_ptr<::FormFieldSignature> field = nullptr;
+        std::unique_ptr<::FormFieldSignature> field;
     };
 
     std::variant<SignatureData, CryptoSign::SigningErrorMessage> createSignature(::Page *destPage, std::unique_ptr<GooString> &&partialFieldName, const PDFRectangle &rect, const GooString &signatureText, const GooString &signatureTextLeft,

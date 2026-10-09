@@ -49,11 +49,14 @@
 // Copyright (C) 2024-2026 Stefan Brüns <stefan.bruens@rwth-aachen.de>
 // Copyright (C) 2025 Hagen Möbius <hagen.moebius@googlemail.com>
 // Copyright (C) 2026 Aditya Tiwari <suntiwari3495@gmail.com>
+// Copyright (C) 2026 Diego Costa R. <diegocostar@gmail.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
 //
 //========================================================================
+
+#define ENABLE_TEXTDEVOUTPUT_DEBUGGING 0
 
 #include <config.h>
 
@@ -754,6 +757,9 @@ void TextWord::merge(TextWord *word)
     chars.insert(chars.end(), word->chars.begin(), word->chars.end());
     edgeEnd = word->edgeEnd;
     charPosEnd = word->charPosEnd;
+    if (!link) {
+        link = word->link;
+    }
 }
 
 inline int TextWord::primaryCmp(const TextWord *word) const
@@ -2198,9 +2204,8 @@ int TextBlock::visitDepthFirst(TextBlock *blkList, int pos1, TextBlock **sorted,
 
     blk1 = this;
 
-#if 0 // for debugging
-  printf("visited: %d %.2f..%.2f %.2f..%.2f\n",
-	 sortPos, blk1->ExMin, blk1->ExMax, blk1->EyMin, blk1->EyMax);
+#if ENABLE_TEXTDEVOUTPUT_DEBUGGING
+    printf("visited: %d %.2f..%.2f %.2f..%.2f\n", sortPos, blk1->ExMin, blk1->ExMax, blk1->EyMin, blk1->EyMax);
 #endif
     visited[pos1] = true;
     pos2 = -1;
@@ -2231,10 +2236,8 @@ int TextBlock::visitDepthFirst(TextBlock *blkList, int pos1, TextBlock **sorted,
             if (blk2->isBeforeByRule1(blk1)) {
                 // Rule (1) blk1 and blk2 overlap, and blk2 is above blk1.
                 before = true;
-#if 0 // for debugging
-        printf("rule1: %.2f..%.2f %.2f..%.2f %.2f..%.2f %.2f..%.2f\n",
-	       blk2->ExMin, blk2->ExMax, blk2->EyMin, blk2->EyMax,
-	       blk1->ExMin, blk1->ExMax, blk1->EyMin, blk1->EyMax);
+#if ENABLE_TEXTDEVOUTPUT_DEBUGGING
+                printf("rule1: %.2f..%.2f %.2f..%.2f %.2f..%.2f %.2f..%.2f\n", blk2->ExMin, blk2->ExMax, blk2->EyMin, blk2->EyMax, blk1->ExMin, blk1->ExMax, blk1->EyMin, blk1->EyMax);
 #endif
             } else if (blk2->isBeforeByRule2(blk1)) {
                 // Rule (2) blk2 left of blk1, and no intervening blk3
@@ -2262,12 +2265,10 @@ int TextBlock::visitDepthFirst(TextBlock *blkList, int pos1, TextBlock **sorted,
                         }
                     }
                 }
-#if 0 // for debugging
-        if (before) {
-	  printf("rule2: %.2f..%.2f %.2f..%.2f %.2f..%.2f %.2f..%.2f\n",
-	         blk1->ExMin, blk1->ExMax, blk1->EyMin, blk1->EyMax,
-	         blk2->ExMin, blk2->ExMax, blk2->EyMin, blk2->EyMax);
-        }
+#if ENABLE_TEXTDEVOUTPUT_DEBUGGING
+                if (before) {
+                    printf("rule2: %.2f..%.2f %.2f..%.2f %.2f..%.2f %.2f..%.2f\n", blk1->ExMin, blk1->ExMax, blk1->EyMin, blk1->EyMax, blk2->ExMin, blk2->ExMax, blk2->EyMin, blk2->EyMax);
+                }
 #endif
             }
         }
@@ -2277,9 +2278,8 @@ int TextBlock::visitDepthFirst(TextBlock *blkList, int pos1, TextBlock **sorted,
             sortPos = blk2->visitDepthFirst(blkList, pos2, sorted, sortPos, visited, cache, cacheSize);
         }
     }
-#if 0 // for debugging
-  printf("sorted: %d %.2f..%.2f %.2f..%.2f\n",
-	 sortPos, blk1->ExMin, blk1->ExMax, blk1->EyMin, blk1->EyMax);
+#if ENABLE_TEXTDEVOUTPUT_DEBUGGING
+    printf("sorted: %d %.2f..%.2f %.2f..%.2f\n", sortPos, blk1->ExMin, blk1->ExMax, blk1->EyMin, blk1->EyMax);
 #endif
     sorted[sortPos++] = blk1;
     return sortPos;
@@ -2854,6 +2854,15 @@ void TextPage::coalesce(bool physLayout, double fixedPitch, bool doHTML, double 
     if (rawOrder) {
         primaryRot = 0;
         primaryLR = true;
+        if (inlineLinkURIs) {
+            for (TextWord *word = rawWords; word; word = word->next) {
+                for (const std::unique_ptr<TextLink> &link : links) {
+                    if (link->xMin < word->xMin + hyperlinkSlack && word->xMax - hyperlinkSlack < link->xMax && link->yMin < word->yMin + hyperlinkSlack && word->yMax - hyperlinkSlack < link->yMax) {
+                        word->link = link->link;
+                    }
+                }
+            }
+        }
         return;
     }
 
@@ -2863,32 +2872,28 @@ void TextPage::coalesce(bool physLayout, double fixedPitch, bool doHTML, double 
     nBlocks = 0;
     primaryRot = 0;
 
-#if 0 // for debugging
-  printf("*** initial words ***\n");
-  for (rot = 0; rot < 4; ++rot) {
-    pool = pools[rot];
-    for (baseIdx = pool->minBaseIdx; baseIdx <= pool->maxBaseIdx; ++baseIdx) {
-      for (word0 = pool->getPool(baseIdx); word0; word0 = word0->next) {
-	printf("    word: x=%.2f..%.2f y=%.2f..%.2f base=%.2f fontSize=%.2f rot=%d link=%p '",
-	       word0->xMin, word0->xMax, word0->yMin, word0->yMax,
-	       word0->base, word0->fontSize, rot*90, word0->link);
-	for (i = 0; i < word0->len; ++i) {
-	  fputc(word0->text[i] & 0xff, stdout);
-	}
-	printf("'\n");
-      }
+#if ENABLE_TEXTDEVOUTPUT_DEBUGGING
+    printf("*** initial words ***\n");
+    for (rot = 0; rot < 4; ++rot) {
+        pool = pools[rot];
+        for (baseIdx = pool->minBaseIdx; baseIdx <= pool->maxBaseIdx; ++baseIdx) {
+            for (word0 = pool->getPool(baseIdx); word0; word0 = word0->next) {
+                printf("    word: x=%.2f..%.2f y=%.2f..%.2f base=%.2f fontSize=%.2f rot=%d link=%p '", word0->xMin, word0->xMax, word0->yMin, word0->yMax, word0->base, word0->fontSize, rot * 90, word0->link);
+                for (i = 0; i < word0->len; ++i) {
+                    fputc(word0->text[i] & 0xff, stdout);
+                }
+                printf("'\n");
+            }
+        }
     }
-  }
-  printf("\n");
+    printf("\n");
 #endif
 
-#if 0 //~ for debugging
-  for (i = 0; i < underlines->getLength(); ++i) {
-    underline = (TextUnderline *)underlines->get(i);
-    printf("underline: x=%g..%g y=%g..%g horiz=%d\n",
-	   underline->x0, underline->x1, underline->y0, underline->y1,
-	   underline->horiz);
-  }
+#if ENABLE_TEXTDEVOUTPUT_DEBUGGING
+    for (i = 0; i < underlines->getLength(); ++i) {
+        underline = (TextUnderline *)underlines->get(i);
+        printf("underline: x=%g..%g y=%g..%g horiz=%d\n", underline->x0, underline->x1, underline->y0, underline->y1, underline->horiz);
+    }
 #endif
 
     if (doHTML) {
@@ -2950,6 +2955,9 @@ void TextPage::coalesce(bool physLayout, double fixedPitch, bool doHTML, double 
                 }
             }
         }
+    }
+
+    if (doHTML || inlineLinkURIs) {
 
         //----- handle links
         for (const std::unique_ptr<TextLink> &link : links) {
@@ -3262,35 +3270,31 @@ void TextPage::coalesce(bool physLayout, double fixedPitch, bool doHTML, double 
         }
     }
 
-#if 0 // for debugging
-  printf("*** rotation ***\n");
-  for (rot = 0; rot < 4; ++rot) {
-    printf("  %d: %6d\n", rot, count[rot]);
-  }
-  printf("  primary rot = %d\n", primaryRot);
-  printf("\n");
+#if ENABLE_TEXTDEVOUTPUT_DEBUGGING
+    printf("*** rotation ***\n");
+    for (rot = 0; rot < 4; ++rot) {
+        printf("  %d: %6d\n", rot, count[rot]);
+    }
+    printf("  primary rot = %d\n", primaryRot);
+    printf("\n");
 #endif
 
-#if 0 // for debugging
-  printf("*** blocks ***\n");
-  for (blk = blkList; blk; blk = blk->next) {
-    printf("block: rot=%d x=%.2f..%.2f y=%.2f..%.2f\n",
-	   blk->rot, blk->xMin, blk->xMax, blk->yMin, blk->yMax);
-    for (line = blk->lines; line; line = line->next) {
-      printf("  line: x=%.2f..%.2f y=%.2f..%.2f base=%.2f\n",
-	     line->xMin, line->xMax, line->yMin, line->yMax, line->base);
-      for (word0 = line->words; word0; word0 = word0->next) {
-	printf("    word: x=%.2f..%.2f y=%.2f..%.2f base=%.2f fontSize=%.2f space=%d: '",
-	       word0->xMin, word0->xMax, word0->yMin, word0->yMax,
-	       word0->base, word0->fontSize, word0->spaceAfter);
-	for (i = 0; i < word0->len; ++i) {
-	  fputc(word0->text[i] & 0xff, stdout);
-	}
-	printf("'\n");
-      }
+#if ENABLE_TEXTDEVOUTPUT_DEBUGGING
+    printf("*** blocks ***\n");
+    for (blk = blkList; blk; blk = blk->next) {
+        printf("block: rot=%d x=%.2f..%.2f y=%.2f..%.2f\n", blk->rot, blk->xMin, blk->xMax, blk->yMin, blk->yMax);
+        for (line = blk->lines; line; line = line->next) {
+            printf("  line: x=%.2f..%.2f y=%.2f..%.2f base=%.2f\n", line->xMin, line->xMax, line->yMin, line->yMax, line->base);
+            for (word0 = line->words; word0; word0 = word0->next) {
+                printf("    word: x=%.2f..%.2f y=%.2f..%.2f base=%.2f fontSize=%.2f space=%d: '", word0->xMin, word0->xMax, word0->yMin, word0->yMax, word0->base, word0->fontSize, word0->spaceAfter);
+                for (i = 0; i < word0->len; ++i) {
+                    fputc(word0->text[i] & 0xff, stdout);
+                }
+                printf("'\n");
+            }
+        }
     }
-  }
-  printf("\n");
+    printf("\n");
 #endif
 
     // determine the primary direction
@@ -3310,10 +3314,10 @@ void TextPage::coalesce(bool physLayout, double fixedPitch, bool doHTML, double 
     }
     primaryLR = lrCount >= 0;
 
-#if 0 // for debugging
-  printf("*** direction ***\n");
-  printf("lrCount = %d\n", lrCount);
-  printf("primaryLR = %d\n", primaryLR);
+#if ENABLE_TEXTDEVOUTPUT_DEBUGGING
+    printf("*** direction ***\n");
+    printf("lrCount = %d\n", lrCount);
+    printf("primaryLR = %d\n", primaryLR);
 #endif
 
     //----- column assignment
@@ -3419,26 +3423,22 @@ void TextPage::coalesce(bool physLayout, double fixedPitch, bool doHTML, double 
         }
     }
 
-#if 0 // for debugging
-  printf("*** blocks, after column assignment ***\n");
-  for (blk = blkList; blk; blk = blk->next) {
-    printf("block: rot=%d x=%.2f..%.2f y=%.2f..%.2f col=%d nCols=%d\n",
-	   blk->rot, blk->xMin, blk->xMax, blk->yMin, blk->yMax, blk->col,
-	   blk->nColumns);
-    for (line = blk->lines; line; line = line->next) {
-      printf("  line: col[0]=%d\n", line->col[0]);
-      for (word0 = line->words; word0; word0 = word0->next) {
-	printf("    word: x=%.2f..%.2f y=%.2f..%.2f base=%.2f fontSize=%.2f space=%d: '",
-	       word0->xMin, word0->xMax, word0->yMin, word0->yMax,
-	       word0->base, word0->fontSize, word0->spaceAfter);
-	for (i = 0; i < word0->len; ++i) {
-	  fputc(word0->text[i] & 0xff, stdout);
-	}
-	printf("'\n");
-      }
+#if ENABLE_TEXTDEVOUTPUT_DEBUGGING
+    printf("*** blocks, after column assignment ***\n");
+    for (blk = blkList; blk; blk = blk->next) {
+        printf("block: rot=%d x=%.2f..%.2f y=%.2f..%.2f col=%d nCols=%d\n", blk->rot, blk->xMin, blk->xMax, blk->yMin, blk->yMax, blk->col, blk->nColumns);
+        for (line = blk->lines; line; line = line->next) {
+            printf("  line: col[0]=%d\n", line->col[0]);
+            for (word0 = line->words; word0; word0 = word0->next) {
+                printf("    word: x=%.2f..%.2f y=%.2f..%.2f base=%.2f fontSize=%.2f space=%d: '", word0->xMin, word0->xMax, word0->yMin, word0->yMax, word0->base, word0->fontSize, word0->spaceAfter);
+                for (i = 0; i < word0->len; ++i) {
+                    fputc(word0->text[i] & 0xff, stdout);
+                }
+                printf("'\n");
+            }
+        }
     }
-  }
-  printf("\n");
+    printf("\n");
 #endif
 
     //----- reading order sort
@@ -3454,8 +3454,8 @@ void TextPage::coalesce(bool physLayout, double fixedPitch, bool doHTML, double 
         }
     }
 
-#if 0 // for debugging
-  printf("PAGE\n");
+#if ENABLE_TEXTDEVOUTPUT_DEBUGGING
+    printf("PAGE\n");
 #endif
 
     int sortPos = 0;
@@ -3715,28 +3715,24 @@ void TextPage::coalesce(bool physLayout, double fixedPitch, bool doHTML, double 
         gfree(visited);
     }
 
-#if 0 // for debugging
-  printf("*** blocks, after ro sort ***\n");
-  for (i = 0; i < nBlocks; ++i) {
-    blk = blocks[i];
-    printf("block: rot=%d x=%.2f..%.2f y=%.2f..%.2f space=%.2f..%.2f\n",
-	   blk->rot, blk->xMin, blk->xMax, blk->yMin, blk->yMax,
-	   blk->priMin, blk->priMax);
-    for (line = blk->lines; line; line = line->next) {
-      printf("  line:\n");
-      for (word0 = line->words; word0; word0 = word0->next) {
-	printf("    word: x=%.2f..%.2f y=%.2f..%.2f base=%.2f fontSize=%.2f space=%d: '",
-	       word0->xMin, word0->xMax, word0->yMin, word0->yMax,
-	       word0->base, word0->fontSize, word0->spaceAfter);
-	for (j = 0; j < word0->len; ++j) {
-	  fputc(word0->text[j] & 0xff, stdout);
-	}
-	printf("'\n");
-      }
+#if ENABLE_TEXTDEVOUTPUT_DEBUGGING
+    printf("*** blocks, after ro sort ***\n");
+    for (i = 0; i < nBlocks; ++i) {
+        blk = blocks[i];
+        printf("block: rot=%d x=%.2f..%.2f y=%.2f..%.2f space=%.2f..%.2f\n", blk->rot, blk->xMin, blk->xMax, blk->yMin, blk->yMax, blk->priMin, blk->priMax);
+        for (line = blk->lines; line; line = line->next) {
+            printf("  line:\n");
+            for (word0 = line->words; word0; word0 = word0->next) {
+                printf("    word: x=%.2f..%.2f y=%.2f..%.2f base=%.2f fontSize=%.2f space=%d: '", word0->xMin, word0->xMax, word0->yMin, word0->yMax, word0->base, word0->fontSize, word0->spaceAfter);
+                for (j = 0; j < word0->len; ++j) {
+                    fputc(word0->text[j] & 0xff, stdout);
+                }
+                printf("'\n");
+            }
+        }
     }
-  }
-  printf("\n");
-  fflush(stdout);
+    printf("\n");
+    fflush(stdout);
 #endif
 
     // build the flows
@@ -3771,31 +3767,25 @@ void TextPage::coalesce(bool physLayout, double fixedPitch, bool doHTML, double 
         lastFlow = flow;
     }
 
-#if 0 // for debugging
-  printf("*** flows ***\n");
-  for (flow = flows; flow; flow = flow->next) {
-    printf("flow: x=%.2f..%.2f y=%.2f..%.2f pri:%.2f..%.2f\n",
-	   flow->xMin, flow->xMax, flow->yMin, flow->yMax,
-	   flow->priMin, flow->priMax);
-    for (blk = flow->blocks; blk; blk = blk->next) {
-      printf("  block: rot=%d x=%.2f..%.2f y=%.2f..%.2f pri=%.2f..%.2f\n",
-	     blk->rot, blk->ExMin, blk->ExMax, blk->EyMin, blk->EyMax,
-	     blk->priMin, blk->priMax);
-      for (line = blk->lines; line; line = line->next) {
-	printf("    line:\n");
-	for (word0 = line->words; word0; word0 = word0->next) {
-	  printf("      word: x=%.2f..%.2f y=%.2f..%.2f base=%.2f fontSize=%.2f space=%d: '",
-		 word0->xMin, word0->xMax, word0->yMin, word0->yMax,
-		 word0->base, word0->fontSize, word0->spaceAfter);
-	  for (i = 0; i < word0->len; ++i) {
-	    fputc(word0->text[i] & 0xff, stdout);
-	  }
-	  printf("'\n");
-	}
-      }
+#if ENABLE_TEXTDEVOUTPUT_DEBUGGING
+    printf("*** flows ***\n");
+    for (flow = flows; flow; flow = flow->next) {
+        printf("flow: x=%.2f..%.2f y=%.2f..%.2f pri:%.2f..%.2f\n", flow->xMin, flow->xMax, flow->yMin, flow->yMax, flow->priMin, flow->priMax);
+        for (blk = flow->blocks; blk; blk = blk->next) {
+            printf("  block: rot=%d x=%.2f..%.2f y=%.2f..%.2f pri=%.2f..%.2f\n", blk->rot, blk->ExMin, blk->ExMax, blk->EyMin, blk->EyMax, blk->priMin, blk->priMax);
+            for (line = blk->lines; line; line = line->next) {
+                printf("    line:\n");
+                for (word0 = line->words; word0; word0 = word0->next) {
+                    printf("      word: x=%.2f..%.2f y=%.2f..%.2f base=%.2f fontSize=%.2f space=%d: '", word0->xMin, word0->xMax, word0->yMin, word0->yMax, word0->base, word0->fontSize, word0->spaceAfter);
+                    for (i = 0; i < word0->len; ++i) {
+                        fputc(word0->text[i] & 0xff, stdout);
+                    }
+                    printf("'\n");
+                }
+            }
+        }
     }
-  }
-  printf("\n");
+    printf("\n");
 #endif
 }
 
@@ -4219,9 +4209,9 @@ public:
     virtual ~TextSelectionVisitor();
     TextSelectionVisitor(const TextSelectionVisitor &) = delete;
     TextSelectionVisitor &operator=(const TextSelectionVisitor &) = delete;
-    virtual void visitBlock(TextBlock *block, TextLine *begin, TextLine *end, const PDFRectangle *selection) = 0;
-    virtual void visitLine(TextLine *line, TextWord *begin, TextWord *end, int edge_begin, int edge_end, const PDFRectangle *selection) = 0;
-    virtual void visitWord(TextWord *word, int begin, int end, const PDFRectangle *selection) = 0;
+    virtual void visitBlock(TextBlock *block, TextLine *begin, TextLine *end, const PDFRectangle &selection) = 0;
+    virtual void visitLine(TextLine *line, TextWord *begin, TextWord *end, int edge_begin, int edge_end, const PDFRectangle &selection) = 0;
+    virtual void visitWord(TextWord *word, int begin, int end, const PDFRectangle &selection) = 0;
 
 protected:
     TextPage *page;
@@ -4237,9 +4227,9 @@ public:
     explicit TextSelectionDumper(TextPage *page);
     ~TextSelectionDumper() override;
 
-    void visitBlock(TextBlock * /*block*/, TextLine * /*begin*/, TextLine * /*end*/, const PDFRectangle * /*selection*/) override { };
-    void visitLine(TextLine *line, TextWord *begin, TextWord *end, int edge_begin, int edge_end, const PDFRectangle *selection) override;
-    void visitWord(TextWord *word, int begin, int end, const PDFRectangle *selection) override;
+    void visitBlock(TextBlock * /*block*/, TextLine * /*begin*/, TextLine * /*end*/, const PDFRectangle & /*selection*/) override { };
+    void visitLine(TextLine *line, TextWord *begin, TextWord *end, int edge_begin, int edge_end, const PDFRectangle &selection) override;
+    void visitWord(TextWord *word, int begin, int end, const PDFRectangle &selection) override;
     void endPage();
 
     GooString getText();
@@ -4282,7 +4272,7 @@ void TextSelectionDumper::finishLine()
     words.clear();
 }
 
-void TextSelectionDumper::visitLine(TextLine *line, TextWord * /*begin*/, TextWord * /*end*/, int edge_begin, int edge_end, const PDFRectangle * /*selection*/)
+void TextSelectionDumper::visitLine(TextLine *line, TextWord * /*begin*/, TextWord * /*end*/, int edge_begin, int edge_end, const PDFRectangle & /*selection*/)
 {
     TextLineFrag frag;
 
@@ -4314,7 +4304,7 @@ void TextSelectionDumper::visitLine(TextLine *line, TextWord * /*begin*/, TextWo
     }
 }
 
-void TextSelectionDumper::visitWord(TextWord *word, int begin, int end, const PDFRectangle * /*selection*/)
+void TextSelectionDumper::visitWord(TextWord *word, int begin, int end, const PDFRectangle & /*selection*/)
 {
     words.push_back(std::make_unique<TextWordSelection>(word, begin, end));
 }
@@ -4373,9 +4363,9 @@ public:
     TextSelectionSizer(TextPage *page, double scale);
     ~TextSelectionSizer() override { delete list; }
 
-    void visitBlock(TextBlock * /*block*/, TextLine * /*begin*/, TextLine * /*end*/, const PDFRectangle * /*selection*/) override { };
-    void visitLine(TextLine *line, TextWord *begin, TextWord *end, int edge_begin, int edge_end, const PDFRectangle *selection) override;
-    void visitWord(TextWord * /*word*/, int /*begin*/, int /*end*/, const PDFRectangle * /*selection*/) override { };
+    void visitBlock(TextBlock * /*block*/, TextLine * /*begin*/, TextLine * /*end*/, const PDFRectangle & /*selection*/) override { };
+    void visitLine(TextLine *line, TextWord *begin, TextWord *end, int edge_begin, int edge_end, const PDFRectangle &selection) override;
+    void visitWord(TextWord * /*word*/, int /*begin*/, int /*end*/, const PDFRectangle & /*selection*/) override { };
 
     std::vector<PDFRectangle *> *takeRegion()
     {
@@ -4394,7 +4384,7 @@ TextSelectionSizer::TextSelectionSizer(TextPage *p, double s) : TextSelectionVis
     list = new std::vector<PDFRectangle *>();
 }
 
-void TextSelectionSizer::visitLine(TextLine *line, TextWord * /*begin*/, TextWord * /*end*/, int edge_begin, int edge_end, const PDFRectangle * /*selection*/)
+void TextSelectionSizer::visitLine(TextLine *line, TextWord * /*begin*/, TextWord * /*end*/, int edge_begin, int edge_end, const PDFRectangle & /*selection*/)
 {
     PDFRectangle *rect;
     double x1, y1, x2, y2, margin;
@@ -4438,17 +4428,17 @@ void TextSelectionSizer::visitLine(TextLine *line, TextWord * /*begin*/, TextWor
 class TextSelectionPainter : public TextSelectionVisitor
 {
 public:
-    TextSelectionPainter(TextPage *page, double scale, int rotation, OutputDev *out, const GfxColor *box_color, const GfxColor *glyph_color, double box_opacity, bool draw_glyphs);
+    TextSelectionPainter(TextPage *page, double scale, int rotation, OutputDev *out, const GfxColor &box_color, const GfxColor &glyph_color, double box_opacity, bool draw_glyphs);
     ~TextSelectionPainter() override;
 
-    void visitBlock(TextBlock * /*block*/, TextLine * /*begin*/, TextLine * /*end*/, const PDFRectangle * /*selection*/) override { };
-    void visitLine(TextLine *line, TextWord *begin, TextWord *end, int edge_begin, int edge_end, const PDFRectangle *selection) override;
-    void visitWord(TextWord *word, int begin, int end, const PDFRectangle *selection) override;
+    void visitBlock(TextBlock * /*block*/, TextLine * /*begin*/, TextLine * /*end*/, const PDFRectangle & /*selection*/) override { };
+    void visitLine(TextLine *line, TextWord *begin, TextWord *end, int edge_begin, int edge_end, const PDFRectangle &selection) override;
+    void visitWord(TextWord *word, int begin, int end, const PDFRectangle &selection) override;
     void endPage();
 
 private:
     OutputDev *out;
-    const GfxColor *glyph_color;
+    const GfxColor &glyph_color;
     bool draw_glyphs;
     GfxState *state;
     std::vector<TextWordSelection *> *selectionList;
@@ -4456,13 +4446,13 @@ private:
     bool hasGlyphLessFont();
 };
 
-TextSelectionPainter::TextSelectionPainter(TextPage *p, double scale, int rotation, OutputDev *outA, const GfxColor *box_color, const GfxColor *glyph_colorA, double box_opacity, bool draw_glyphsA)
+TextSelectionPainter::TextSelectionPainter(TextPage *p, double scale, int rotation, OutputDev *outA, const GfxColor &box_color, const GfxColor &glyph_colorA, double box_opacity, bool draw_glyphsA)
     : TextSelectionVisitor(p), out(outA), glyph_color(glyph_colorA), draw_glyphs(draw_glyphsA)
 {
     PDFRectangle box(0, 0, p->pageWidth, p->pageHeight);
 
     selectionList = new std::vector<TextWordSelection *>();
-    state = new GfxState(72 * scale, 72 * scale, &box, rotation, false);
+    state = new GfxState(72 * scale, 72 * scale, box, rotation, false);
 
     state->getCTM(&ctm);
     ctm.invertTo(&ictm);
@@ -4485,7 +4475,7 @@ TextSelectionPainter::~TextSelectionPainter()
     delete state;
 }
 
-void TextSelectionPainter::visitLine(TextLine *line, TextWord * /*begin*/, TextWord * /*end*/, int edge_begin, int edge_end, const PDFRectangle * /*selection*/)
+void TextSelectionPainter::visitLine(TextLine *line, TextWord * /*begin*/, TextWord * /*end*/, int edge_begin, int edge_end, const PDFRectangle & /*selection*/)
 {
     double x1, y1, x2, y2, margin;
 
@@ -4550,7 +4540,7 @@ void TextSelectionPainter::visitLine(TextLine *line, TextWord * /*begin*/, TextW
     state->closePath();
 }
 
-void TextSelectionPainter::visitWord(TextWord *word, int begin, int end, const PDFRectangle * /*selection*/)
+void TextSelectionPainter::visitWord(TextWord *word, int begin, int end, const PDFRectangle & /*selection*/)
 {
     selectionList->push_back(new TextWordSelection(word, begin, end));
 }
@@ -4635,16 +4625,16 @@ void TextSelectionPainter::endPage()
     out->endPage();
 }
 
-void TextWord::visitSelection(TextSelectionVisitor *visitor, const PDFRectangle *selection)
+void TextWord::visitSelection(TextSelectionVisitor *visitor, const PDFRectangle &selection)
 {
     double mid, s1, s2;
 
     if (rot == 0 || rot == 2) {
-        s1 = selection->x1;
-        s2 = selection->x2;
+        s1 = selection.x1;
+        s2 = selection.x2;
     } else {
-        s1 = selection->y1;
-        s2 = selection->y2;
+        s1 = selection.y1;
+        s2 = selection.y2;
     }
 
     size_t begin = len();
@@ -4672,7 +4662,7 @@ void TextWord::visitSelection(TextSelectionVisitor *visitor, const PDFRectangle 
     visitor->visitWord(this, begin, end, selection);
 }
 
-void TextLine::visitSelection(TextSelectionVisitor *visitor, const PDFRectangle *selection, SelectionStyle style)
+void TextLine::visitSelection(TextSelectionVisitor *visitor, const PDFRectangle &selection, SelectionStyle style)
 {
     TextWord *p, *begin, *end, *current;
     int i, edge_begin, edge_end;
@@ -4680,11 +4670,11 @@ void TextLine::visitSelection(TextSelectionVisitor *visitor, const PDFRectangle 
     double s1, s2, pMin, pMax;
 
     if (rot == 0 || rot == 2) {
-        s1 = selection->x1;
-        s2 = selection->x2;
+        s1 = selection.x1;
+        s2 = selection.x2;
     } else {
-        s1 = selection->y1;
-        s2 = selection->y2;
+        s1 = selection.y1;
+        s2 = selection.y2;
     }
 
     begin = nullptr;
@@ -4724,7 +4714,7 @@ void TextLine::visitSelection(TextSelectionVisitor *visitor, const PDFRectangle 
         current = begin;
     }
 
-    child_selection = *selection;
+    child_selection = selection;
     if (style == selectionStyleWord) {
         if (rot == 0 || rot == 2) {
             child_selection.x1 = begin ? begin->xMin : xMin;
@@ -4769,14 +4759,14 @@ void TextLine::visitSelection(TextSelectionVisitor *visitor, const PDFRectangle 
         return;
     }
 
-    visitor->visitLine(this, begin, end, edge_begin, edge_end, &child_selection);
+    visitor->visitLine(this, begin, end, edge_begin, edge_end, child_selection);
 
     for (p = begin; p != end; p = p->next) {
-        p->visitSelection(visitor, &child_selection);
+        p->visitSelection(visitor, child_selection);
     }
 }
 
-void TextBlock::visitSelection(TextSelectionVisitor *visitor, const PDFRectangle *selection, SelectionStyle style)
+void TextBlock::visitSelection(TextSelectionVisitor *visitor, const PDFRectangle &selection, SelectionStyle style)
 {
     PDFRectangle child_selection;
     double x[2], y[2], d, best_d[2];
@@ -4784,10 +4774,10 @@ void TextBlock::visitSelection(TextSelectionVisitor *visitor, const PDFRectangle
     int i, count = 0, best_count[2], start, stop;
     bool all[2];
 
-    x[0] = selection->x1;
-    y[0] = selection->y1;
-    x[1] = selection->x2;
-    y[1] = selection->y2;
+    x[0] = selection.x1;
+    y[0] = selection.y1;
+    x[1] = selection.x2;
+    y[1] = selection.y2;
 
     for (i = 0; i < 2; i++) {
         // the first/last lines are often not nearest
@@ -4874,14 +4864,14 @@ void TextBlock::visitSelection(TextSelectionVisitor *visitor, const PDFRectangle
                 child_selection.y2 = fmax(p->yMin, fmin(p->yMax, y[stop]));
             }
         }
-        p->visitSelection(visitor, &child_selection, style);
+        p->visitSelection(visitor, child_selection, style);
         if (p == best_line[stop]) {
             return;
         }
     }
 }
 
-void TextPage::visitSelection(TextSelectionVisitor *visitor, const PDFRectangle *selection, SelectionStyle style)
+void TextPage::visitSelection(TextSelectionVisitor *visitor, const PDFRectangle &selection, SelectionStyle style)
 {
     PDFRectangle child_selection;
     double x[2], y[2], d, best_d[2];
@@ -4894,10 +4884,10 @@ void TextPage::visitSelection(TextSelectionVisitor *visitor, const PDFRectangle 
         return;
     }
 
-    x[0] = selection->x1;
-    y[0] = selection->y1;
-    x[1] = selection->x2;
-    y[1] = selection->y2;
+    x[0] = selection.x1;
+    y[0] = selection.y1;
+    x[1] = selection.x2;
+    y[1] = selection.y2;
 
     xMin = pageWidth;
     yMin = pageHeight;
@@ -4988,15 +4978,15 @@ void TextPage::visitSelection(TextSelectionVisitor *visitor, const PDFRectangle 
             if (blk == best_block[stop]) {
                 child_selection.x2 = fmax(blk->xMin, fmin(blk->xMax, x[stop]));
                 child_selection.y2 = fmax(blk->yMin, fmin(blk->yMax, y[stop]));
-                blk->visitSelection(visitor, &child_selection, style);
+                blk->visitSelection(visitor, child_selection, style);
                 return;
             }
-            blk->visitSelection(visitor, &child_selection, style);
+            blk->visitSelection(visitor, child_selection, style);
         }
     }
 }
 
-void TextPage::drawSelection(OutputDev *out, double scale, int rotation, const PDFRectangle *selection, SelectionStyle style, const GfxColor *glyph_color, const GfxColor *box_color, double box_opacity, bool draw_glyphs)
+void TextPage::drawSelection(OutputDev *out, double scale, int rotation, const PDFRectangle &selection, SelectionStyle style, const GfxColor &glyph_color, const GfxColor &box_color, double box_opacity, bool draw_glyphs)
 {
     TextSelectionPainter painter(this, scale, rotation, out, box_color, glyph_color, box_opacity, draw_glyphs);
 
@@ -5004,7 +4994,7 @@ void TextPage::drawSelection(OutputDev *out, double scale, int rotation, const P
     painter.endPage();
 }
 
-std::vector<PDFRectangle *> *TextPage::getSelectionRegion(const PDFRectangle *selection, SelectionStyle style, double scale)
+std::vector<PDFRectangle *> *TextPage::getSelectionRegion(const PDFRectangle &selection, SelectionStyle style, double scale)
 {
     TextSelectionSizer sizer(this, scale);
 
@@ -5013,7 +5003,7 @@ std::vector<PDFRectangle *> *TextPage::getSelectionRegion(const PDFRectangle *se
     return sizer.takeRegion();
 }
 
-GooString TextPage::getSelectionText(const PDFRectangle *selection, SelectionStyle style)
+GooString TextPage::getSelectionText(const PDFRectangle &selection, SelectionStyle style)
 {
     TextSelectionDumper dumper(this);
 
@@ -5023,7 +5013,7 @@ GooString TextPage::getSelectionText(const PDFRectangle *selection, SelectionSty
     return dumper.getText();
 }
 
-std::vector<std::vector<std::unique_ptr<TextWordSelection>>> TextPage::getSelectionWords(const PDFRectangle *selection, SelectionStyle style)
+std::vector<std::vector<std::unique_ptr<TextWordSelection>>> TextPage::getSelectionWords(const PDFRectangle &selection, SelectionStyle style)
 {
     TextSelectionDumper dumper(this);
 
@@ -5177,6 +5167,48 @@ static bool isHyphenChar(Unicode c)
     return c == static_cast<Unicode>('-') || c == static_cast<Unicode>(0x2010) || c == static_cast<Unicode>(0xFE63) || c == static_cast<Unicode>(0xFF0D);
 }
 
+// sanitize output to prevent terminal escape injection and line spoofing
+static bool isDangerousCtrl(unsigned char c)
+{
+    switch (c) {
+    case 0x07: // BEL - audible bell, terminates OSC
+    case 0x08: // BS  - erases previous character
+    case 0x0a: // LF  - newline injection
+    case 0x0b: // VT  - acts as linefeed
+    case 0x0c: // FF  - acts as linefeed
+    case 0x0d: // CR  - overwrites line start
+    case 0x0e: // SO  - corrupts charset
+    case 0x0f: // SI  - corrupts charset
+    case 0x1b: // ESC - starts escape sequences
+    case 0x7f: // DEL - may erase
+        return true;
+    default:
+        return false;
+    }
+}
+
+static int appendInlineLinkURI(const AnnotLink *link, const UnicodeMap *uMap, GooString *s)
+{
+    const LinkAction *action = link->getAction();
+    if (!action || action->getKind() != actionURI) {
+        return 0;
+    }
+    char buf[8];
+    int nCols = 0;
+    const auto append = [&](Unicode u) {
+        s->append(buf, uMap->mapUnicode(u, buf, sizeof(buf)));
+        ++nCols;
+    };
+    append(0x20);
+    append('[');
+    for (const char c : static_cast<const LinkURI *>(action)->getURI()) {
+        const auto uc = static_cast<unsigned char>(c);
+        append(isDangerousCtrl(uc) ? '?' : uc);
+    }
+    append(']');
+    return nCols;
+}
+
 void TextPage::dump(void *outputStream, TextOutputFunc outputFunc, bool physLayout, EndOfLineKind textEOL, bool pageBreaks, bool suppressLastEol, std::optional<PDFRectangle> area, EndOfLineHyphenMode hyphenMode) const
 {
     const UnicodeMap *uMap;
@@ -5228,6 +5260,12 @@ void TextPage::dump(void *outputStream, TextOutputFunc outputFunc, bool physLayo
             std::ranges::transform(word->chars, uText.begin(), [](auto &c) { return c.text; });
             dumpFragment(uText.data(), uText.size(), uMap, &s);
             (*outputFunc)(outputStream, s.c_str(), s.size());
+
+            if (inlineLinkURIs && word->link && (!word->next || word->next->link != word->link)) {
+                s.clear();
+                appendInlineLinkURI(word->link, uMap, &s);
+                (*outputFunc)(outputStream, s.c_str(), s.size());
+            }
 
             if (!word->next) {
                 continue;
@@ -5289,17 +5327,16 @@ void TextPage::dump(void *outputStream, TextOutputFunc outputFunc, bool physLayo
             it = end;
         }
 
-#if 0 // for debugging
-    printf("*** line fragments ***\n");
-    for (const auto& frag : frags) {
-      printf("frag: x=%.2f..%.2f y=%.2f..%.2f base=%.2f '",
-	     frag.xMin, frag.xMax, frag.yMin, frag.yMax, frag.base);
-      for (int n = 0; n < frag.len; ++n) {
-	fputc(frag.line->text[frag.start + n] & 0xff, stdout);
-      }
-      printf("'\n");
-    }
-    printf("\n");
+#if ENABLE_TEXTDEVOUTPUT_DEBUGGING
+        printf("*** line fragments ***\n");
+        for (const auto &frag : frags) {
+            printf("frag: x=%.2f..%.2f y=%.2f..%.2f base=%.2f '", frag.xMin, frag.xMax, frag.yMin, frag.yMax, frag.base);
+            for (int n = 0; n < frag.len; ++n) {
+                fputc(frag.line->text[frag.start + n] & 0xff, stdout);
+            }
+            printf("'\n");
+        }
+        printf("\n");
 #endif
 
         GooString s;
@@ -5317,6 +5354,19 @@ void TextPage::dump(void *outputStream, TextOutputFunc outputFunc, bool physLayo
             s.clear();
             col += dumpFragment(frag.line->text + frag.start, frag.len, uMap, &s);
             (*outputFunc)(outputStream, s.c_str(), s.size());
+
+            if (inlineLinkURIs) {
+                s.clear();
+                int offset = 0;
+                for (const TextWord *word = frag.line->words; word && offset < frag.start + frag.len; word = word->next) {
+                    const int wordEnd = offset + static_cast<int>(word->len());
+                    if (word->link && (!word->next || word->next->link != word->link) && wordEnd > frag.start) {
+                        col += appendInlineLinkURI(word->link, uMap, &s);
+                    }
+                    offset = wordEnd + (word->spaceAfter ? 1 : 0);
+                }
+                (*outputFunc)(outputStream, s.c_str(), s.size());
+            }
 
             // print one or more returns if necessary
             if (i == frags.size() - 1) {
@@ -5339,7 +5389,7 @@ void TextPage::dump(void *outputStream, TextOutputFunc outputFunc, bool physLayo
         for (TextFlow *flow = flows; flow; flow = flow->next) {
             for (TextBlock *blk = flow->blocks; blk; blk = blk->next) {
                 for (TextLine *line = blk->lines; line; line = line->next) {
-                    const bool suppressHyphen = [&]() -> bool {
+                    const bool suppressHyphen = [&] -> bool {
                         if (!line->next && !blk->next) {
                             return false;
                         }
@@ -5358,6 +5408,23 @@ void TextPage::dump(void *outputStream, TextOutputFunc outputFunc, bool physLayo
                     s.clear();
                     dumpFragment(line->text, n, uMap, &s);
                     (*outputFunc)(outputStream, s.c_str(), s.size());
+                    if (inlineLinkURIs) {
+                        s.clear();
+                        for (const TextWord *word = line->words; word; word = word->next) {
+                            const TextWord *nextWord = word->next;
+                            if (!nextWord) {
+                                if (line->next) {
+                                    nextWord = line->next->words;
+                                } else if (blk->next && blk->next->lines) {
+                                    nextWord = blk->next->lines->words;
+                                }
+                            }
+                            if (word->link && (!nextWord || nextWord->link != word->link)) {
+                                appendInlineLinkURI(word->link, uMap, &s);
+                            }
+                        }
+                        (*outputFunc)(outputStream, s.c_str(), s.size());
+                    }
                     if (!suppressHyphen) {
                         (*outputFunc)(outputStream, eol, eolLen);
                     }
@@ -5376,6 +5443,11 @@ void TextPage::dump(void *outputStream, TextOutputFunc outputFunc, bool physLayo
 void TextPage::setMergeCombining(bool merge)
 {
     mergeCombining = merge;
+}
+
+void TextPage::setInlineLinkURIs(bool inlineLinkURIsA)
+{
+    inlineLinkURIs = inlineLinkURIsA;
 }
 
 void TextPage::assignColumns(TextLineFrag *frags, int nFrags, bool oneRot)
@@ -5609,6 +5681,13 @@ TextOutputDev::~TextOutputDev()
     }
 }
 
+bool TextOutputDev::checkPageSlice(Page *pageA, double /*hDPI*/, double /*vDPI*/, int /*rotate*/, bool /*useMediaBox*/, bool /*crop*/, int /*sliceX*/, int /*sliceY*/, int /*sliceW*/, int /*sliceH*/, bool /*printing*/,
+                                   bool (* /*abortCheckCbk*/)(void *data), void * /*abortCheckCbkData*/, bool (* /*annotDisplayDecideCbk*/)(Annot *annot, void *user_data), void * /*annotDisplayDecideCbkData*/)
+{
+    currentPage = pageA;
+    return true;
+}
+
 void TextOutputDev::startPage(int /*pageNum*/, GfxState *state, XRef * /*xref*/)
 {
     text->startPage(state);
@@ -5616,11 +5695,18 @@ void TextOutputDev::startPage(int /*pageNum*/, GfxState *state, XRef * /*xref*/)
 
 void TextOutputDev::endPage()
 {
+    if (inlineLinkURIs && currentPage) {
+        const std::unique_ptr<Links> pageLinks = currentPage->getLinks();
+        for (const std::shared_ptr<AnnotLink> &annot : pageLinks->getLinks()) {
+            processLink(annot.get());
+        }
+    }
     text->endPage();
     text->coalesce(physLayout, fixedPitch, doHTML, minColSpacing1);
     if (outputStream) {
         text->dump(outputStream, outputFunc, physLayout, textEOL, textPageBreaks, false, std::nullopt, hyphenMode);
     }
+    currentPage = nullptr;
 }
 
 void TextOutputDev::restoreState(GfxState *state)
@@ -5759,7 +5845,7 @@ void TextOutputDev::processLink(AnnotLink *link)
     double x1, y1, x2, y2;
     int xMin, yMin, xMax, yMax, x, y;
 
-    if (!doHTML) {
+    if (!doHTML && !inlineLinkURIs) {
         return;
     }
     link->getRect(&x1, &y1, &x2, &y2);
@@ -5812,17 +5898,17 @@ GooString TextOutputDev::getText(const std::optional<PDFRectangle> &area) const
     return text->getText(area, textEOL, physLayout, hyphenMode);
 }
 
-void TextOutputDev::drawSelection(OutputDev *out, double scale, int rotation, const PDFRectangle *selection, SelectionStyle style, const GfxColor *glyph_color, const GfxColor *box_color, double box_opacity, bool draw_glyphs)
+void TextOutputDev::drawSelection(OutputDev *out, double scale, int rotation, const PDFRectangle &selection, SelectionStyle style, const GfxColor &glyph_color, const GfxColor &box_color, double box_opacity, bool draw_glyphs)
 {
     text->drawSelection(out, scale, rotation, selection, style, glyph_color, box_color, box_opacity, draw_glyphs);
 }
 
-std::vector<PDFRectangle *> *TextOutputDev::getSelectionRegion(const PDFRectangle *selection, SelectionStyle style, double scale)
+std::vector<PDFRectangle *> *TextOutputDev::getSelectionRegion(const PDFRectangle &selection, SelectionStyle style, double scale)
 {
     return text->getSelectionRegion(selection, style, scale);
 }
 
-GooString TextOutputDev::getSelectionText(const PDFRectangle *selection, SelectionStyle style)
+GooString TextOutputDev::getSelectionText(const PDFRectangle &selection, SelectionStyle style)
 {
     return text->getSelectionText(selection, style);
 }
@@ -5847,8 +5933,15 @@ std::unique_ptr<TextPage> TextOutputDev::takeText()
     auto ret = std::move(text);
 
     text = std::make_unique<TextPage>(rawOrder, discardDiag);
+    text->setInlineLinkURIs(inlineLinkURIs);
     actualText = std::make_unique<ActualText>(text.get());
     return ret;
+}
+
+void TextOutputDev::setInlineLinkURIs(bool inlineLinkURIsA)
+{
+    inlineLinkURIs = inlineLinkURIsA;
+    text->setInlineLinkURIs(inlineLinkURIsA);
 }
 
 const TextFlow *TextOutputDev::getFlows() const

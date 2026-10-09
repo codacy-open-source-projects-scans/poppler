@@ -43,6 +43,7 @@
 // Copyright (C) 2024 G B <glen.browman@veeva.com>
 // Copyright (C) 2025 Arnav V <arnav0872@gmail.com>
 // Copyright (C) 2026 Adam Sampson <ats@offog.org>
+// Copyright (C) 2026 Stefan Brüns <stefan.bruens@rwth-aachen.de>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -75,13 +76,14 @@
 #include <fofi/FoFiTrueType.h>
 #include "GfxFont.h"
 #include "PSOutputDev.h"
+#include "Stream.h"
 
 //------------------------------------------------------------------------
 
 struct Base14FontMapEntry
 {
-    const char *altName;
-    const char *base14Name;
+    const std::string altName;
+    const std::string base14Name;
 };
 
 static const Base14FontMapEntry base14FontMap[] = { { .altName = "Arial", .base14Name = "Helvetica" },
@@ -194,7 +196,7 @@ GfxFontLoc &GfxFontLoc::operator=(GfxFontLoc &&other) noexcept = default;
 // GfxFont
 //------------------------------------------------------------------------
 
-std::unique_ptr<GfxFont> GfxFont::makeFont(XRef *xref, const char *tagA, Ref idA, const Dict &fontDict)
+std::unique_ptr<GfxFont> GfxFont::makeFont(XRef *xref, std::string_view tagA, Ref idA, const Dict &fontDict)
 {
     std::optional<std::string> name;
     Ref embFontIDA;
@@ -202,7 +204,7 @@ std::unique_ptr<GfxFont> GfxFont::makeFont(XRef *xref, const char *tagA, Ref idA
     // get base font name
     Object obj1 = fontDict.lookup("BaseFont");
     if (obj1.isName()) {
-        name = obj1.getName();
+        name = obj1.getNameString();
     }
 
     // There is no BaseFont in Type 3 fonts, try fontDescriptor.FontName
@@ -211,7 +213,7 @@ std::unique_ptr<GfxFont> GfxFont::makeFont(XRef *xref, const char *tagA, Ref idA
         if (fontDesc.isDict()) {
             Object obj2 = fontDesc.dictLookup("FontName");
             if (obj2.isName()) {
-                name = obj2.getName();
+                name = obj2.getNameString();
             }
         }
     }
@@ -220,7 +222,7 @@ std::unique_ptr<GfxFont> GfxFont::makeFont(XRef *xref, const char *tagA, Ref idA
     if (!name) {
         Object obj2 = fontDict.lookup("Name");
         if (obj2.isName()) {
-            name = obj2.getName();
+            name = obj2.getNameString();
         }
     }
 
@@ -234,7 +236,7 @@ std::unique_ptr<GfxFont> GfxFont::makeFont(XRef *xref, const char *tagA, Ref idA
     return std::make_unique<GfxCIDFont>(tagA, idA, std::move(name), typeA, embFontIDA, fontDict);
 }
 
-GfxFont::GfxFont(const char *tagA, Ref idA, std::optional<std::string> &&nameA, GfxFontType typeA, Ref embFontIDA) : tag(tagA), id(idA), name(std::move(nameA)), type(typeA)
+GfxFont::GfxFont(std::string_view tagA, Ref idA, std::optional<std::string> &&nameA, GfxFontType typeA, Ref embFontIDA) : tag(tagA), id(idA), name(std::move(nameA)), type(typeA)
 {
     ok = false;
     embFontID = embFontIDA;
@@ -286,7 +288,6 @@ std::string GfxFont::getNameWithoutSubsetTag() const
 GfxFontType GfxFont::getFontType(XRef *xref, const Dict &fontDict, Ref *embID)
 {
     GfxFontType t, expectedType;
-    FoFiIdentifierType fft;
     bool isType0, err;
 
     t = fontUnknownType;
@@ -359,7 +360,7 @@ GfxFontType GfxFont::getFontType(XRef *xref, const Dict &fontDict, Ref *embID)
             *embID = obj3.getRef();
             Object obj4 = obj3.fetch(xref);
             if (obj4.isStream()) {
-                subtype = obj4.streamGetDict()->lookup("Subtype");
+                subtype = obj4.getStream()->getDict()->lookup("Subtype");
                 if (subtype.isName("Type1")) {
                     if (expectedType != fontType1) {
                         err = true;
@@ -407,33 +408,36 @@ GfxFontType GfxFont::getFontType(XRef *xref, const Dict &fontDict, Ref *embID)
     if (*embID != Ref::INVALID()) {
         Object obj3(*embID);
         Object obj4 = obj3.fetch(xref);
-        if (obj4.isStream() && obj4.streamRewind()) {
-            fft = FoFiIdentifier::identifyStream(&readFromStream, obj4.getStream());
-            obj4.streamClose();
-            switch (fft) {
-            case fofiIdType1PFA:
-            case fofiIdType1PFB:
-                t = fontType1;
-                break;
-            case fofiIdCFF8Bit:
-                t = isType0 ? fontCIDType0C : fontType1C;
-                break;
-            case fofiIdCFFCID:
-                t = fontCIDType0C;
-                break;
-            case fofiIdTrueType:
-            case fofiIdTrueTypeCollection:
-                t = isType0 ? fontCIDType2 : fontTrueType;
-                break;
-            case fofiIdOpenTypeCFF8Bit:
-                t = isType0 ? fontCIDType0COT : fontType1COT;
-                break;
-            case fofiIdOpenTypeCFFCID:
-                t = fontCIDType0COT;
-                break;
-            default:
-                error(errSyntaxError, -1, "Embedded font file may be invalid");
-                break;
+        if (obj4.isStream()) {
+            Stream *obj4Stream = obj4.getStream();
+            if (obj4Stream->rewind()) {
+                const FoFiIdentifierType fft = FoFiIdentifier::identifyStream(&readFromStream, obj4Stream);
+                obj4Stream->close();
+                switch (fft) {
+                case fofiIdType1PFA:
+                case fofiIdType1PFB:
+                    t = fontType1;
+                    break;
+                case fofiIdCFF8Bit:
+                    t = isType0 ? fontCIDType0C : fontType1C;
+                    break;
+                case fofiIdCFFCID:
+                    t = fontCIDType0C;
+                    break;
+                case fofiIdTrueType:
+                case fofiIdTrueTypeCollection:
+                    t = isType0 ? fontCIDType2 : fontTrueType;
+                    break;
+                case fofiIdOpenTypeCFF8Bit:
+                    t = isType0 ? fontCIDType0COT : fontType1COT;
+                    break;
+                case fofiIdOpenTypeCFFCID:
+                    t = fontCIDType0COT;
+                    break;
+                default:
+                    error(errSyntaxError, -1, "Embedded font file may be invalid");
+                    break;
+                }
             }
         }
     }
@@ -474,13 +478,13 @@ void GfxFont::readFontDescriptor(const Dict &fontDict)
         // get name
         obj2 = obj1.dictLookup("FontName");
         if (obj2.isName()) {
-            embFontName = std::make_unique<GooString>(obj2.getName());
+            embFontName = std::make_unique<GooString>(obj2.getNameString());
         }
         if (embFontName == nullptr) {
             // get name with typo
             obj2 = obj1.dictLookup("Fontname");
             if (obj2.isName()) {
-                embFontName = std::make_unique<GooString>(obj2.getName());
+                embFontName = std::make_unique<GooString>(obj2.getNameString());
                 error(errSyntaxWarning, -1, "The file uses Fontname instead of FontName please notify the creator that the file is broken");
             }
         }
@@ -494,23 +498,24 @@ void GfxFont::readFontDescriptor(const Dict &fontDict)
         // get stretch
         obj2 = obj1.dictLookup("FontStretch");
         if (obj2.isName()) {
-            if (strcmp(obj2.getName(), "UltraCondensed") == 0) {
+            const std::string &stretchStr = obj2.getNameString();
+            if (stretchStr == "UltraCondensed") {
                 stretch = UltraCondensed;
-            } else if (strcmp(obj2.getName(), "ExtraCondensed") == 0) {
+            } else if (stretchStr == "ExtraCondensed") {
                 stretch = ExtraCondensed;
-            } else if (strcmp(obj2.getName(), "Condensed") == 0) {
+            } else if (stretchStr == "Condensed") {
                 stretch = Condensed;
-            } else if (strcmp(obj2.getName(), "SemiCondensed") == 0) {
+            } else if (stretchStr == "SemiCondensed") {
                 stretch = SemiCondensed;
-            } else if (strcmp(obj2.getName(), "Normal") == 0) {
+            } else if (stretchStr == "Normal") {
                 stretch = Normal;
-            } else if (strcmp(obj2.getName(), "SemiExpanded") == 0) {
+            } else if (stretchStr == "SemiExpanded") {
                 stretch = SemiExpanded;
-            } else if (strcmp(obj2.getName(), "Expanded") == 0) {
+            } else if (stretchStr == "Expanded") {
                 stretch = Expanded;
-            } else if (strcmp(obj2.getName(), "ExtraExpanded") == 0) {
+            } else if (stretchStr == "ExtraExpanded") {
                 stretch = ExtraExpanded;
-            } else if (strcmp(obj2.getName(), "UltraExpanded") == 0) {
+            } else if (stretchStr == "UltraExpanded") {
                 stretch = UltraExpanded;
             } else {
                 error(errSyntaxWarning, -1, "Invalid Font Stretch");
@@ -596,9 +601,10 @@ std::unique_ptr<CharCodeToUnicode> GfxFont::readToUnicodeCMap(const Dict &fontDi
     if (!obj1.isStream()) {
         return ctu;
     }
+    Stream *toUnicodeStream = obj1.getStream();
     std::string buf;
-    obj1.getStream()->fillString(buf);
-    obj1.streamClose();
+    toUnicodeStream->fillString(buf);
+    toUnicodeStream->close();
     if (ctu) {
         ctu->mergeCMap(buf, nBits);
     } else {
@@ -612,7 +618,6 @@ std::optional<GfxFontLoc> GfxFont::locateFont(XRef *xref, PSOutputDev *ps, GooSt
 {
     SysFontType sysFontType;
     std::optional<std::string> path;
-    GooString *base14Name;
     int substIdx, fontNum;
     bool embed;
 
@@ -690,14 +695,12 @@ std::optional<GfxFontLoc> GfxFont::locateFont(XRef *xref, PSOutputDev *ps, GooSt
 
     //----- external font file for Base-14 font
     if (!ps && !isCIDFont() && (static_cast<Gfx8BitFont *>(this))->base14) {
-        base14Name = new GooString((static_cast<Gfx8BitFont *>(this))->base14->base14Name);
+        const std::string &base14Name = static_cast<Gfx8BitFont *>(this)->base14->base14Name;
         if ((path = globalParams->findBase14FontFile(base14Name, *this, substituteFontName))) {
             if (std::optional<GfxFontLoc> fontLoc = getExternalFont(*path, false)) {
-                delete base14Name;
                 return fontLoc;
             }
         }
-        delete base14Name;
     }
 
     //----- system font
@@ -930,7 +933,7 @@ static bool testForNumericNames(const Dict &fontDict, bool hex)
             }
         } else if (obj.isName()) {
             // All character names must successfully parse.
-            if (!parseNumericName(obj.getName(), hex, nullptr)) {
+            if (!parseNumericName(obj.getNameString().c_str(), hex, nullptr)) {
                 numeric = false;
             }
         } else {
@@ -941,7 +944,7 @@ static bool testForNumericNames(const Dict &fontDict, bool hex)
     return numeric;
 }
 
-Gfx8BitFont::Gfx8BitFont(XRef *xref, const char *tagA, Ref idA, std::optional<std::string> &&nameA, GfxFontType typeA, Ref embFontIDA, const Dict &fontDict) : GfxFont(tagA, idA, std::move(nameA), typeA, embFontIDA)
+Gfx8BitFont::Gfx8BitFont(XRef *xref, std::string_view tagA, Ref idA, std::optional<std::string> &&nameA, GfxFontType typeA, Ref embFontIDA, const Dict &fontDict) : GfxFont(tagA, idA, std::move(nameA), typeA, embFontIDA)
 {
     const BuiltinFont *builtinFont;
     bool baseEncFromFontFile;
@@ -988,7 +991,7 @@ Gfx8BitFont::Gfx8BitFont(XRef *xref, const char *tagA, Ref idA, std::optional<st
     builtinFont = nullptr;
     if (base14) {
         for (const BuiltinFont &bf : builtinFonts) {
-            if (!strcmp(base14->base14Name, bf.name)) {
+            if (base14->base14Name == bf.name) {
                 builtinFont = &bf;
                 break;
             }
@@ -1208,7 +1211,8 @@ Gfx8BitFont::Gfx8BitFont(XRef *xref, const char *tagA, Ref idA, std::optional<st
                         if (encFree[code]) {
                             gfree(const_cast<char *>(enc[code]));
                         }
-                        enc[code] = copyString(obj3.getName());
+                        const std::string &codeName = obj3.getNameString();
+                        enc[code] = copyString(codeName.c_str(), codeName.size());
                         encFree[code] = true;
                         ++code;
                     }
@@ -1691,7 +1695,7 @@ struct cmpWidthExcepVFunctor
     bool operator()(const GfxFontCIDWidthExcepV &w1, const GfxFontCIDWidthExcepV &w2) { return w1.first < w2.first; }
 };
 
-GfxCIDFont::GfxCIDFont(const char *tagA, Ref idA, std::optional<std::string> &&nameA, GfxFontType typeA, Ref embFontIDA, const Dict &fontDict) : GfxFont(tagA, idA, std::move(nameA), typeA, embFontIDA)
+GfxCIDFont::GfxCIDFont(std::string_view tagA, Ref idA, std::optional<std::string> &&nameA, GfxFontType typeA, Ref embFontIDA, const Dict &fontDict) : GfxFont(tagA, idA, std::move(nameA), typeA, embFontIDA)
 {
     Dict *desFontDict;
     Object desFontDictObj;
@@ -1701,7 +1705,7 @@ GfxCIDFont::GfxCIDFont(const char *tagA, Ref idA, std::optional<std::string> &&n
     ascent = 0.95;
     descent = -0.35;
     fontBBox[0] = fontBBox[1] = fontBBox[2] = fontBBox[3] = 0;
-    collection = nullptr;
+    std::unique_ptr<GooString> collection;
     ctuUsesCharCode = true;
     widths.defWidth = 1.0;
     widths.defHeight = -1.0;
@@ -1733,8 +1737,8 @@ GfxCIDFont::GfxCIDFont(const char *tagA, Ref idA, std::optional<std::string> &&n
         if (!obj2.isString() || !obj3.isString()) {
             error(errSyntaxError, -1, "Invalid CIDSystemInfo dictionary in Type 0 descendant font");
             error(errSyntaxError, -1, "Assuming Adobe-Identity for character collection");
-            obj2 = Object(std::make_unique<GooString>("Adobe"));
-            obj3 = Object(std::make_unique<GooString>("Identity"));
+            obj2 = Object(std::string { "Adobe" });
+            obj3 = Object(std::string { "Identity" });
         }
         collection = obj2.takeString();
         collection->push_back('-');
@@ -1751,7 +1755,7 @@ GfxCIDFont::GfxCIDFont(const char *tagA, Ref idA, std::optional<std::string> &&n
 
         // use an identity mapping for the "Adobe-Identity" and
         // "Adobe-UCS" collections
-        if (!collection->compare("Adobe-Identity") || !collection->compare("Adobe-UCS")) {
+        if (collection->toStr() == "Adobe-Identity" || collection->toStr() == "Adobe-UCS") {
             ctu = CharCodeToUnicode::makeIdentityMapping();
         } else {
             // look for a user-supplied .cidToUnicode file
@@ -1765,7 +1769,7 @@ GfxCIDFont::GfxCIDFont(const char *tagA, Ref idA, std::optional<std::string> &&n
                     "Adobe-CNS1", "Adobe-GB1", "Adobe-Japan1", "Adobe-Japan2", "Adobe-Korea1",
                 };
                 for (const char *knownCollection : knownCollections) {
-                    if (collection->compare(knownCollection) == 0) {
+                    if (collection->toStr() == knownCollection) {
                         error(errSyntaxError, -1, "Missing language pack for '{0:t}' mapping", collection.get());
                         return;
                     }
@@ -1793,13 +1797,24 @@ GfxCIDFont::GfxCIDFont(const char *tagA, Ref idA, std::optional<std::string> &&n
     }
 
     // CIDToGIDMap (for embedded TrueType fonts)
-    obj1 = desFontDict->lookup("CIDToGIDMap");
-    if (obj1.isStream() && obj1.streamRewind()) {
-        while ((c1 = obj1.streamGetChar()) != EOF && (c2 = obj1.streamGetChar()) != EOF) {
-            cidToGID.push_back((c1 << 8) + c2);
+    {
+        bool printInvalidCIDToGIDMap = false;
+        Object cidToGIDMap = desFontDict->lookup("CIDToGIDMap");
+        if (cidToGIDMap.isStream()) {
+            Stream *cidToGIDMapStream = cidToGIDMap.getStream();
+            if (cidToGIDMapStream->rewind()) {
+                while ((c1 = cidToGIDMapStream->getChar()) != EOF && (c2 = cidToGIDMapStream->getChar()) != EOF) {
+                    cidToGID.push_back((c1 << 8) + c2);
+                }
+            } else {
+                printInvalidCIDToGIDMap = true;
+            }
+        } else if (!cidToGIDMap.isName("Identity") && !cidToGIDMap.isNull()) {
+            printInvalidCIDToGIDMap = true;
         }
-    } else if (!obj1.isName("Identity") && !obj1.isNull()) {
-        error(errSyntaxError, -1, "Invalid CIDToGIDMap entry in CID font");
+        if (printInvalidCIDToGIDMap) {
+            error(errSyntaxError, -1, "Invalid CIDToGIDMap entry in CID font");
+        }
     }
 
     //----- character metrics -----
@@ -2068,7 +2083,7 @@ std::vector<int> GfxCIDFont::getCodeToGIDMap(FoFiTrueType *ff)
     }
 
     if (getEmbeddedFontID(&embID)) {
-        if (getCollection()->compare("Adobe-Identity") == 0) {
+        if (getCollection()->toStr() == "Adobe-Identity") {
             return {};
         }
 
@@ -2141,7 +2156,7 @@ std::vector<int> GfxCIDFont::getCodeToGIDMap(FoFiTrueType *ff)
         }
         ff->setupGSUB(lp->scriptTag, lp->languageTag);
     } else {
-        if (getCollection()->compare("Adobe-Identity") == 0) {
+        if (getCollection()->toStr() == "Adobe-Identity") {
             error(errSyntaxError, -1, "non-embedded font using identity encoding: {0:s}", name ? name->c_str() : "(null)");
         } else {
             error(errSyntaxError, -1, "Unknown character collection {0:t}", getCollection());
@@ -2305,7 +2320,7 @@ GfxFontDict::GfxFontDict(XRef *xref, const Ref fontDictRef, const Dict &fontDict
     }
 }
 
-std::shared_ptr<GfxFont> GfxFontDict::lookup(const char *tag) const
+std::shared_ptr<GfxFont> GfxFontDict::lookup(std::string_view tag) const
 {
     for (const auto &font : fonts) {
         if (font && font->matches(tag)) {
@@ -2351,68 +2366,71 @@ int GfxFontDict::hashFontObject(Object *obj)
 
 void GfxFontDict::hashFontObject1(const Object *obj, FNVHash *h)
 {
-    const char *p;
-    double r;
-    int n, i;
-
     switch (obj->getType()) {
     case objBool:
         h->hash('b');
         h->hash(obj->getBool() ? 1 : 0);
         break;
-    case objInt:
+    case objInt: {
         h->hash('i');
-        n = obj->getInt();
-        h->hash(reinterpret_cast<char *>(&n), sizeof(int));
+        const int n = obj->getInt();
+        h->hash(reinterpret_cast<const char *>(&n), sizeof(int));
         break;
-    case objReal:
+    }
+    case objReal: {
         h->hash('r');
-        r = obj->getReal();
-        h->hash(reinterpret_cast<char *>(&r), sizeof(double));
+        const double r = obj->getReal();
+        h->hash(reinterpret_cast<const char *>(&r), sizeof(double));
         break;
+    }
     case objString: {
         h->hash('s');
-        const auto &s = obj->getString();
+        const std::string &s = obj->getString();
         h->hash(s.c_str(), s.size());
     } break;
-    case objName:
+    case objName: {
         h->hash('n');
-        p = obj->getName();
-        h->hash(p, static_cast<int>(strlen(p)));
-        break;
+        const std::string &s = obj->getNameString();
+        h->hash(s.c_str(), s.size());
+    } break;
     case objNull:
         h->hash('z');
         break;
-    case objArray:
+    case objArray: {
         h->hash('a');
-        n = obj->arrayGetLength();
-        h->hash(reinterpret_cast<char *>(&n), sizeof(int));
-        for (i = 0; i < n; ++i) {
-            const Object &obj2 = obj->arrayGetNF(i);
+        Array *array = obj->getArray();
+        const int n = array->getLength();
+        h->hash(reinterpret_cast<const char *>(&n), sizeof(int));
+        for (int i = 0; i < n; ++i) {
+            const Object &obj2 = array->getNF(i);
             hashFontObject1(&obj2, h);
         }
         break;
-    case objDict:
+    }
+    case objDict: {
+        Dict *dict = obj->getDict();
         h->hash('d');
-        n = obj->dictGetLength();
-        h->hash(reinterpret_cast<char *>(&n), sizeof(int));
-        for (i = 0; i < n; ++i) {
-            p = obj->dictGetKey(i);
-            h->hash(p, static_cast<int>(strlen(p)));
-            const Object &obj2 = obj->dictGetValNF(i);
+        const int n = dict->getLength();
+        h->hash(reinterpret_cast<const char *>(&n), sizeof(int));
+        for (int i = 0; i < n; ++i) {
+            const std::string &name = dict->getKey(i);
+            h->hash(name.data(), static_cast<int>(name.size()));
+            const Object &obj2 = dict->getValNF(i);
             hashFontObject1(&obj2, h);
         }
         break;
+    }
     case objStream:
         // this should never happen - streams must be indirect refs
         break;
-    case objRef:
+    case objRef: {
         h->hash('f');
-        n = obj->getRefNum();
-        h->hash(reinterpret_cast<char *>(&n), sizeof(int));
-        n = obj->getRefGen();
-        h->hash(reinterpret_cast<char *>(&n), sizeof(int));
+        const int num = obj->getRefNum();
+        h->hash(reinterpret_cast<const char *>(&num), sizeof(int));
+        const int gen = obj->getRefGen();
+        h->hash(reinterpret_cast<const char *>(&gen), sizeof(int));
         break;
+    }
     default:
         h->hash('u');
         break;

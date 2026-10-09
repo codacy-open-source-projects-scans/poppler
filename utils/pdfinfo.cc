@@ -15,7 +15,7 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2006 Dom Lachowicz <cinamod@hotmail.com>
-// Copyright (C) 2007-2010, 2012, 2016-2022, 2024, 2025 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2007-2010, 2012, 2016-2022, 2024-2026 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2010 Hib Eris <hib@hiberis.nl>
 // Copyright (C) 2011 Vittal Aithal <vittal.aithal@cognidox.com>
 // Copyright (C) 2012, 2013, 2016-2018, 2021 Adrian Johnson <ajohnson@redneon.com>
@@ -30,6 +30,7 @@
 // Copyright (C) 2019 Thomas Fischer <fischer@unix-ag.uni-kl.de>
 // Copyright (C) 2024-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2025 Jonathan Hähne <jonathan.haehne@hotmail.com>
+// Copyright (C) 2026 evil rabbit <evilrabbit@tutamail.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -52,6 +53,7 @@
 #include "goo/GooString.h"
 #include "goo/gfile.h"
 #include "goo/glibc.h"
+#include "Annot.h"
 #include "GlobalParams.h"
 #include "Object.h"
 #include "Stream.h"
@@ -81,8 +83,8 @@ static bool printJS = false;
 static bool isoDates = false;
 static bool rawDates = false;
 static char textEncName[128] = "";
-static char ownerPassword[33] = "\001";
-static char userPassword[33] = "\001";
+static char ownerPassword[128] = "\001";
+static char userPassword[128] = "\001";
 static bool printVersion = false;
 static bool printHelp = false;
 static bool printEnc = false;
@@ -114,13 +116,41 @@ static const ArgDesc argDesc[] = { { .arg = "-f", .kind = argInt, .val = &firstP
                                    { .arg = "-?", .kind = argFlag, .val = &printHelp, .size = 0, .usage = "print usage information" },
                                    {} };
 
+// sanitize output to prevent terminal escape injection and line spoofing
+static bool isDangerousCtrl(unsigned char c)
+{
+    switch (c) {
+    case 0x07: // BEL - audible bell, terminates OSC
+    case 0x08: // BS  - erases previous character
+    case 0x0a: // LF  - newline injection
+    case 0x0b: // VT  - acts as linefeed
+    case 0x0c: // FF  - acts as linefeed
+    case 0x0d: // CR  - overwrites line start
+    case 0x0e: // SO  - corrupts charset
+    case 0x0f: // SI  - corrupts charset
+    case 0x1b: // ESC - starts escape sequences
+    case 0x7f: // DEL - may erase
+        return true;
+    default:
+        return false;
+    }
+}
+
+static void putSanitized(const char *s, int len, FILE *f)
+{
+    for (int i = 0; i < len; i++) {
+        auto c = static_cast<unsigned char>(s[i]);
+        fputc(isDangerousCtrl(c) ? '?' : c, f);
+    }
+}
+
 static void printStdTextString(const std::string &s, const UnicodeMap *uMap)
 {
     char buf[8];
     const std::vector<Unicode> u = TextStringToUCS4(s);
     for (const auto &c : u) {
         int n = uMap->mapUnicode(c, buf, sizeof(buf));
-        fwrite(buf, 1, n, stdout);
+        putSanitized(buf, n, stdout);
     }
 }
 
@@ -129,7 +159,7 @@ static void printUCS4String(const std::vector<Unicode> &u, const UnicodeMap *uMa
     char buf[8];
     for (auto i : u) {
         int n = uMap->mapUnicode(i, buf, sizeof(buf));
-        fwrite(buf, 1, n, stdout);
+        putSanitized(buf, n, stdout);
     }
 }
 
@@ -214,9 +244,9 @@ static void printISODate(Dict *infoDict, const char *key, const char *text, cons
     }
 }
 
-static void printBox(const char *text, const PDFRectangle *box)
+static void printBox(const char *text, const PDFRectangle &box)
 {
-    printf("%s%8.2f %8.2f %8.2f %8.2f\n", text, box->x1, box->y1, box->x2, box->y2);
+    printf("%s%8.2f %8.2f %8.2f %8.2f\n", text, box.x1, box.y1, box.x2, box.y2);
 }
 
 static void printIndent(unsigned indent)
@@ -233,11 +263,16 @@ static void printAttribute(const Attribute *attribute, unsigned indent)
     printf(" /%s ", attribute->getTypeName());
     if (attribute->getType() == Attribute::UserProperty) {
         const char *name = attribute->getName();
-        printf("(%s) ", name);
+        printf("(");
+        putSanitized(name, strlen(name), stdout);
+        printf(") ");
     }
     attribute->getValue()->print(stdout);
     if (attribute->getFormattedValue()) {
-        printf(" \"%s\"", attribute->getFormattedValue());
+        const char *fv = attribute->getFormattedValue();
+        printf(" \"");
+        putSanitized(fv, strlen(fv), stdout);
+        printf("\"");
     }
     if (attribute->isHidden()) {
         printf(" [hidden]");
@@ -256,7 +291,9 @@ static void printStruct(const StructElement *element, unsigned indent)
         GooString *text = element->getText(false);
         printIndent(indent);
         if (text) {
-            printf("\"%s\"\n", text->c_str());
+            printf("\"");
+            putSanitized(text->c_str(), text->size(), stdout);
+            printf("\"\n");
         } else {
             printf("(No content?)\n");
         }
@@ -267,10 +304,14 @@ static void printStruct(const StructElement *element, unsigned indent)
         printIndent(indent);
         printf("%s", element->getTypeName());
         if (element->getID()) {
-            printf(" <%s>", element->getID()->c_str());
+            printf(" <");
+            putSanitized(element->getID()->c_str(), element->getID()->size(), stdout);
+            printf(">");
         }
         if (element->getTitle()) {
-            printf(" \"%s\"", element->getTitle()->c_str());
+            printf(" \"");
+            putSanitized(element->getTitle()->c_str(), element->getTitle()->size(), stdout);
+            printf("\"");
         }
         if (element->getRevision() > 0) {
             printf(" r%u", element->getRevision());
@@ -279,7 +320,10 @@ static void printStruct(const StructElement *element, unsigned indent)
             printf(" (%s)", element->isInline() ? "inline" : "block");
         }
         if (element->getAltText()) {
-            printf(" [\"%s\"]", TextStringToUtf8(element->getAltText()->toStr()).c_str());
+            std::string alt = TextStringToUtf8(element->getAltText()->toStr());
+            printf(" [\"");
+            putSanitized(alt.c_str(), alt.size(), stdout);
+            printf("\"]");
         }
         if (element->getNumAttributes()) {
             putchar(':');
@@ -418,7 +462,9 @@ static void printUrlList(PDFDoc *doc)
                 if (action && action->getKind() == actionURI) {
                     auto *linkUri = dynamic_cast<LinkURI *>(action);
                     std::string uri = linkUri->getURI();
-                    printf("%4d  Annotation    %s\n", pg, uri.c_str());
+                    printf("%4d  Annotation    ", pg);
+                    putSanitized(uri.c_str(), uri.size(), stdout);
+                    printf("\n");
                 }
             }
         }
@@ -744,7 +790,7 @@ static void printInfo(PDFDoc *doc, const UnicodeMap *uMap, long long filesize, b
     }
 
     bool hasMetadata = false;
-    std::unique_ptr<GooString> metadata = doc->readMetadata();
+    std::optional<std::string> metadata = doc->readMetadata();
     if (metadata) {
         hasMetadata = true;
     }
@@ -967,7 +1013,7 @@ int main(int argc, char *argv[])
         userPW = GooString(userPassword);
     }
 
-    if (fileName->compare("-") == 0) {
+    if (fileName->toStr() == "-") {
         delete fileName;
         fileName = new GooString("fd://0");
     }
@@ -994,9 +1040,19 @@ int main(int argc, char *argv[])
 
     if (printMetadata) {
         // print the metadata
-        const std::unique_ptr<GooString> metadata = doc->readMetadata();
+        const std::optional<std::string> metadata = doc->readMetadata();
         if (metadata) {
-            fputs(metadata->c_str(), stdout);
+            // sanitize but keep newlines for XML structure
+            for (const char *p = metadata->c_str(); *p; p++) {
+                auto c = static_cast<unsigned char>(*p);
+                if (c == '\n') {
+                    fputc(c, stdout);
+                } else if (isDangerousCtrl(c)) {
+                    fputc('?', stdout);
+                } else {
+                    fputc(c, stdout);
+                }
+            }
             fputc('\n', stdout);
         }
     } else if (printCustom) {

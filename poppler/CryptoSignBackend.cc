@@ -5,7 +5,8 @@
 // This file is licensed under the GPLv2 or later
 //
 // Copyright 2023, 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
-// Copyright 2024, 2025 Albert Astals Cid <aacid@kde.org>
+// Copyright 2024-2026 Albert Astals Cid <aacid@kde.org>
+//
 //========================================================================
 #include "CryptoSignBackend.h"
 #include "config.h"
@@ -35,7 +36,7 @@ SignatureType signatureTypeFromString(std::string_view data)
     return CryptoSign::SignatureType::unknown_signature_type;
 }
 
-std::string toStdString(SignatureType type)
+std::string_view toStdString(SignatureType type)
 {
     switch (type) {
     case CryptoSign::SignatureType::unsigned_signature_field:

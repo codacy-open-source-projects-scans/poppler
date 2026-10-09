@@ -1,7 +1,7 @@
 /* poppler-media.cc: glib interface to MediaRendition
  *
  * Copyright (C) 2010 Carlos Garcia Campos <carlosgc@gnome.org>
- * Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+ * Copyright (C) 2025, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  * Copyright (C) 2025 Albert Astals Cid <aacid@kde.org>
  * Copyright (C) 2025 Arnav V <arnav0872@gmail.com>
  *
@@ -104,7 +104,7 @@ PopplerMedia *_poppler_media_new(const MediaRendition *poppler_media)
         media->filename = g_strdup(poppler_media->getFileName()->c_str());
     }
 
-    const MediaParameters *mp = poppler_media->getBEParameters();
+    std::optional<MediaParameters> mp = poppler_media->getBEParameters();
     mp = mp ? mp : poppler_media->getMHParameters();
 
     media->auto_play = mp ? mp->autoPlay : false;

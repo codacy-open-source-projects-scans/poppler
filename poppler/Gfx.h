@@ -27,6 +27,7 @@
 // Copyright (C) 2019, 2022, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2019 Volker Krause <vkrause@kde.org>
 // Copyright (C) 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2026 Stefan Brüns <stefan.bruens@rwth-aachen.de>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -45,7 +46,6 @@
 #include <stack>
 #include <vector>
 
-class GooString;
 class PDFDoc;
 class XRef;
 class Array;
@@ -119,21 +119,21 @@ public:
     GfxResources(const GfxResources &) = delete;
     GfxResources &operator=(const GfxResources &other) = delete;
 
-    std::shared_ptr<GfxFont> lookupFont(const char *name);
-    std::shared_ptr<const GfxFont> lookupFont(const char *name) const;
-    Object lookupXObject(const char *name);
-    Object lookupXObjectNF(const char *name);
-    Object lookupMarkedContentNF(const char *name);
-    Object lookupColorSpace(const char *name);
-    std::unique_ptr<GfxPattern> lookupPattern(const char *name, OutputDev *out, GfxState *state);
-    std::unique_ptr<GfxShading> lookupShading(const char *name, OutputDev *out, GfxState *state);
-    Object lookupGState(const char *name);
-    Object lookupGStateNF(const char *name);
+    std::shared_ptr<GfxFont> lookupFont(std::string_view name);
+    std::shared_ptr<const GfxFont> lookupFont(std::string_view name) const;
+    Object lookupXObject(std::string_view name);
+    Object lookupXObjectNF(std::string_view name);
+    Object lookupMarkedContentNF(std::string_view name);
+    Object lookupColorSpace(std::string_view name);
+    std::unique_ptr<GfxPattern> lookupPattern(std::string_view name, OutputDev *out, GfxState *state);
+    std::unique_ptr<GfxShading> lookupShading(std::string_view name, OutputDev *out, GfxState *state);
+    Object lookupGState(std::string_view name);
+    Object lookupGStateNF(std::string_view name);
 
     GfxResources *getNext() const { return next; }
 
 private:
-    std::shared_ptr<GfxFont> doLookupFont(const char *name) const;
+    std::shared_ptr<GfxFont> doLookupFont(std::string_view name) const;
 
     Ref fontDictRef;
     mutable std::unique_ptr<GfxFontDict> fonts;
@@ -157,11 +157,11 @@ class POPPLER_PRIVATE_EXPORT Gfx
 {
 public:
     // Constructor for regular output.
-    Gfx(PDFDoc *docA, OutputDev *outA, int pageNum, Dict *resDict, double hDPI, double vDPI, const PDFRectangle *box, const PDFRectangle *cropBox, int rotate, bool (*abortCheckCbkA)(void *data) = nullptr, void *abortCheckCbkDataA = nullptr,
+    Gfx(PDFDoc *docA, OutputDev *outA, int pageNum, Dict *resDict, double hDPI, double vDPI, const PDFRectangle &box, const PDFRectangle *cropBox, int rotate, bool (*abortCheckCbkA)(void *data) = nullptr, void *abortCheckCbkDataA = nullptr,
         XRef *xrefA = nullptr);
 
     // Constructor for a sub-page object.
-    Gfx(PDFDoc *docA, OutputDev *outA, Dict *resDict, const PDFRectangle *box, const PDFRectangle *cropBox, bool (*abortCheckCbkA)(void *data) = nullptr, void *abortCheckCbkDataA = nullptr, Gfx *gfxA = nullptr);
+    Gfx(PDFDoc *docA, OutputDev *outA, Dict *resDict, const PDFRectangle &box, const PDFRectangle *cropBox, bool (*abortCheckCbkA)(void *data) = nullptr, void *abortCheckCbkDataA = nullptr, Gfx *gfxA = nullptr);
 #if USE_CMS
     void initDisplayProfile();
 #endif
@@ -202,8 +202,9 @@ public:
 
     bool checkTransparencyGroup(Dict *resDict);
 
+    // if softMask is true backdropColor must not be null
     void drawForm(Object *str, Dict *resDict, const std::array<double, 6> &matrix, const std::array<double, 4> &bbox, bool transpGroup = false, bool softMask = false, GfxColorSpace *blendingColorSpace = nullptr, bool isolated = false,
-                  bool knockout = false, bool alpha = false, Function *transferFunc = nullptr, GfxColor *backdropColor = nullptr);
+                  bool knockout = false, bool alpha = false, Function *transferFunc = nullptr, const GfxColor *backdropColor = nullptr);
 
     void pushResources(Dict *resDict);
     void popResources();
@@ -267,7 +268,7 @@ private:
     void opSetMiterLimit(Object args[], int numArgs);
     void opSetLineWidth(Object args[], int numArgs);
     void opSetExtGState(Object args[], int numArgs);
-    void doSoftMask(Object *str, bool alpha, GfxColorSpace *blendingColorSpace, bool isolated, bool knockout, Function *transferFunc, GfxColor *backdropColor);
+    void doSoftMask(Object *str, bool alpha, GfxColorSpace *blendingColorSpace, bool isolated, bool knockout, Function *transferFunc, const GfxColor &backdropColor);
     void opSetRenderingIntent(Object args[], int numArgs);
 
     // color operators

@@ -60,6 +60,9 @@
 // Copyright (C) 2025 Juraj Šarinay <juraj@sarinay.com>
 // Copyright (C) 2025 Jonathan Hähne <jonathan.haehne@hotmail.com>
 // Copyright (C) 2025 Arnav V <arnav0872@gmail.com>
+// Copyright (C) 2026 Stefan Brüns <stefan.bruens@rwth-aachen.de>
+// Copyright (C) 2026 Ojas Maheshwari <workonlyojas@gmail.com>
+// Copyright (C) 2026 Sune Stolborg Vuorela <sune@vuorela.dk>, work sponsored by the Direction Interministérielle du Numérique
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -89,6 +92,7 @@
 #include "GlobalParams.h"
 #include "Page.h"
 #include "Catalog.h"
+#include "Form.h"
 #include "Stream.h"
 #include "XRef.h"
 #include "Linearization.h"
@@ -105,6 +109,10 @@
 #include "FlateEncoder.h"
 #include "JSInfo.h"
 #include "ImageEmbeddingUtils.h"
+
+#if ENABLE_HARFBUZZ
+#    include <FontSubsetter.h>
+#endif
 
 //------------------------------------------------------------------------
 
@@ -512,7 +520,7 @@ static PDFSubtypeConformance pdfConformanceFromString(const std::string &pdfsubv
             /**/
             break;
         }
-        error(errSyntaxWarning, -1, "Unexpected pdf subtype {0:s}", conf.c_str());
+        error(errSyntaxWarning, -1, "Unexpected pdf subtype {0:r}", &conf);
     }
 
     return subtypeConfNone;
@@ -524,7 +532,7 @@ void PDFDoc::extractPDFSubtype()
     pdfPart = subtypePartNull;
     pdfConformance = subtypeConfNull;
 
-    std::unique_ptr<GooString> pdfSubtypeVersion;
+    std::optional<std::string> pdfSubtypeVersion;
     // Find PDF InfoDict subtype key if any
     if ((pdfSubtypeVersion = getDocInfoStringEntry("GTS_PDFA1Version"))) {
         pdfSubtype = subtypePDFA;
@@ -544,10 +552,10 @@ void PDFDoc::extractPDFSubtype()
     }
 
     // Extract part from version string
-    pdfPart = pdfPartFromString(pdfSubtype, pdfSubtypeVersion->toStr());
+    pdfPart = pdfPartFromString(pdfSubtype, pdfSubtypeVersion.value());
 
     // Extract conformance from version string
-    pdfConformance = pdfConformanceFromString(pdfSubtypeVersion->toStr());
+    pdfConformance = pdfConformanceFromString(pdfSubtypeVersion.value());
 }
 
 static void addSignatureFieldsToVector(FormField *ff, std::vector<FormFieldSignature *> &res)
@@ -726,7 +734,7 @@ void PDFDoc::setDocInfoStringEntry(const char *key, std::unique_ptr<GooString> v
     if (removeEntry) {
         infoObj.dictSet(key, Object::null());
     } else {
-        infoObj.dictSet(key, Object(std::move(value)));
+        infoObj.dictSet(key, Object(std::move(value->toNonConstStr())));
     }
 
     if (infoObj.dictGetLength() == 0) {
@@ -737,7 +745,7 @@ void PDFDoc::setDocInfoStringEntry(const char *key, std::unique_ptr<GooString> v
     }
 }
 
-std::unique_ptr<GooString> PDFDoc::getDocInfoStringEntry(const char *key)
+std::optional<std::string> PDFDoc::getDocInfoStringEntry(std::string_view key)
 {
     Object infoObj = getDocInfo();
     if (!infoObj.isDict()) {
@@ -749,7 +757,7 @@ std::unique_ptr<GooString> PDFDoc::getDocInfoStringEntry(const char *key)
         return {};
     }
 
-    return entryObj.takeString();
+    return entryObj.getString();
 }
 
 static bool get_id(const std::string &encodedidstring, GooString *id)
@@ -841,14 +849,14 @@ int PDFDoc::savePageAs(const std::string &name, int pageNo)
     }
     const PDFRectangle *cropBox = nullptr;
     if (getCatalog()->getPage(pageNo)->isCropped()) {
-        cropBox = getCatalog()->getPage(pageNo)->getCropBox();
+        cropBox = &getCatalog()->getPage(pageNo)->getCropBox();
     }
     replacePageDict(pageNo, getCatalog()->getPage(pageNo)->getRotate(), getCatalog()->getPage(pageNo)->getMediaBox(), cropBox);
     Ref *refPage = getCatalog()->getPageRef(pageNo);
     Object page = getXRef()->fetch(*refPage);
 
     if (!(f = openFile(name.c_str(), "wb"))) {
-        error(errIO, -1, "Couldn't open file '{0:s}'", name.c_str());
+        error(errIO, -1, "Couldn't open file '{0:r}'", &name);
         return errOpenFile;
     }
     // Calls fclose on f when the fileCloser is destroyed because it goes out of scope
@@ -935,13 +943,13 @@ int PDFDoc::savePageAs(const std::string &name, int pageNo)
     outStr->printf("%d 0 obj\n", rootNum);
     outStr->printf("<< /Type /Catalog /Pages %d 0 R", rootNum + 1);
     for (int j = 0; j < catDict->getLength(); j++) {
-        const char *key = catDict->getKey(j);
-        if (strcmp(key, "Type") != 0 && strcmp(key, "Catalog") != 0 && strcmp(key, "Pages") != 0) {
+        const std::string &key = catDict->getKey(j);
+        if (key != "Type" && key != "Catalog" && key != "Pages") {
             if (j > 0) {
                 outStr->printf(" ");
             }
             Object value = catDict->getValNF(j).copy();
-            outStr->printf("/%s ", key);
+            outStr->printf("/%s ", key.c_str());
             writeObject(&value, outStr.get(), getXRef(), 0, nullptr, cryptRC4, 0, 0, 0);
         }
     }
@@ -964,12 +972,12 @@ int PDFDoc::savePageAs(const std::string &name, int pageNo)
         if (n > 0) {
             outStr->printf(" ");
         }
-        const char *key = pageDict->getKey(n);
+        const std::string &key = pageDict->getKey(n);
         Object value = pageDict->getValNF(n).copy();
-        if (strcmp(key, "Parent") == 0) {
+        if (key == "Parent") {
             outStr->printf("/Parent %d 0 R", rootNum + 1);
         } else {
-            outStr->printf("/%s ", key);
+            outStr->printf("/%s ", key.c_str());
             writeObject(&value, outStr.get(), getXRef(), 0, nullptr, cryptRC4, 0, 0, 0);
         }
     }
@@ -994,7 +1002,7 @@ int PDFDoc::saveAs(const std::string &name, PDFWriteMode mode)
     int res;
 
     if (!(f = openFile(name.c_str(), "wb"))) {
-        error(errIO, -1, "Couldn't open file '{0:s}'", name.c_str());
+        error(errIO, -1, "Couldn't open file '{0:r}'", &name);
         return errOpenFile;
     }
     outStr = new FileOutStream(f, 0);
@@ -1029,7 +1037,7 @@ int PDFDoc::saveWithoutChangesAs(const std::string &name)
     int res;
 
     if (!(f = openFile(name.c_str(), "wb"))) {
-        error(errIO, -1, "Couldn't open file '{0:s}'", name.c_str());
+        error(errIO, -1, "Couldn't open file '{0:r}'", &name);
         return errOpenFile;
     }
 
@@ -1067,6 +1075,11 @@ int PDFDoc::saveWithoutChangesAs(OutStream *outStr)
 
 void PDFDoc::saveIncrementalUpdate(OutStream *outStr)
 {
+#if ENABLE_HARFBUZZ
+    FontSubsetter fontSubsetter(this);
+    fontSubsetter.subsetAll();
+#endif
+
     // copy the original file
     std::unique_ptr<BaseStream> copyStr { str->copy() };
     if (!copyStr->rewind()) {
@@ -1147,6 +1160,11 @@ void PDFDoc::saveIncrementalUpdate(OutStream *outStr)
 
 void PDFDoc::saveCompleteRewrite(OutStream *outStr)
 {
+#if ENABLE_HARFBUZZ
+    FontSubsetter fontSubsetter(this);
+    fontSubsetter.subsetAll();
+#endif
+
     // Make sure that special flags are set, because we are going to read
     // all objects, including Unencrypted ones.
     xref->scanSpecialFlags();
@@ -1241,7 +1259,7 @@ void PDFDoc::writeDictionary(Dict *dict, OutStream *outStr, XRef *xRef, unsigned
 
     outStr->printf("<<");
     for (int i = 0; i < dict->getLength(); i++) {
-        std::string keyName(dict->getKey(i));
+        const std::string &keyName = dict->getKey(i);
         outStr->printf("/%s ", sanitizedName(keyName).c_str());
         Object obj1 = dict->getValNF(i).copy();
         writeObject(&obj1, outStr, xRef, numOffset, fileKey, encAlgorithm, keyLength, ref, alreadyWrittenDicts);
@@ -1456,6 +1474,7 @@ void PDFDoc::writeObject(Object *obj, OutStream *outStr, XRef *xRef, unsigned in
             }
             if (addEncryptstream) {
                 encStream = std::make_unique<EncryptStream>(*stream, fileKey, encAlgorithm, keyLength, ref);
+                stream = encStream.get();
             }
 
             if (!stream->rewind()) {
@@ -1590,14 +1609,14 @@ Object PDFDoc::createTrailerDict(int uxrefSize, bool incrUpdate, Goffset startxR
             auto array = std::make_unique<Array>(xRef);
             // Get the first part of the ID
             array->add(obj4.arrayGet(0));
-            array->add(Object(std::make_unique<GooString>(reinterpret_cast<const char *>(digest), 16)));
+            array->add(Object(std::string(reinterpret_cast<const char *>(digest), 16)));
             trailerDict->set("ID", Object(std::move(array)));
         }
     } else {
         // new file => same values for the two identifiers
         auto array = std::make_unique<Array>(xRef);
-        array->add(Object(std::make_unique<GooString>(reinterpret_cast<const char *>(digest), 16)));
-        array->add(Object(std::make_unique<GooString>(reinterpret_cast<const char *>(digest), 16)));
+        array->add(Object(std::string(reinterpret_cast<const char *>(digest), 16)));
+        array->add(Object(std::string(reinterpret_cast<const char *>(digest), 16)));
         trailerDict->set("ID", Object(std::move(array)));
     }
 
@@ -1690,8 +1709,8 @@ bool PDFDoc::markDictionary(Dict *dict, XRef *xRef, XRef *countRef, unsigned int
     }
 
     for (int i = 0; i < dict->getLength(); i++) {
-        const char *key = dict->getKey(i);
-        if (strcmp(key, "Annots") != 0) {
+        const std::string &key = dict->getKey(i);
+        if (key != "Annots") {
             Object obj1 = dict->getValNF(i).copy();
             const bool success = markObject(&obj1, xRef, countRef, numOffset, oldRefNum, newRefNum, alreadyMarkedDicts);
             if (unlikely(!success)) {
@@ -1775,7 +1794,7 @@ bool PDFDoc::markObject(Object *obj, XRef *xRef, XRef *countRef, unsigned int nu
     return true;
 }
 
-bool PDFDoc::replacePageDict(int pageNo, int rotate, const PDFRectangle *mediaBox, const PDFRectangle *cropBox) const
+bool PDFDoc::replacePageDict(int pageNo, int rotate, const PDFRectangle &mediaBox, const PDFRectangle *cropBox) const
 {
     Ref *refPage = getCatalog()->getPageRef(pageNo);
     Object page = getXRef()->fetch(*refPage);
@@ -1791,10 +1810,10 @@ bool PDFDoc::replacePageDict(int pageNo, int rotate, const PDFRectangle *mediaBo
     pageDict->remove("TrimBox");
     pageDict->remove("Rotate");
     auto mediaBoxArray = std::make_unique<Array>(getXRef());
-    mediaBoxArray->add(Object(mediaBox->x1));
-    mediaBoxArray->add(Object(mediaBox->y1));
-    mediaBoxArray->add(Object(mediaBox->x2));
-    mediaBoxArray->add(Object(mediaBox->y2));
+    mediaBoxArray->add(Object(mediaBox.x1));
+    mediaBoxArray->add(Object(mediaBox.y1));
+    mediaBoxArray->add(Object(mediaBox.x2));
+    mediaBoxArray->add(Object(mediaBox.y2));
     Object mediaBoxObject(std::move(mediaBoxArray));
     Object trimBoxObject = mediaBoxObject.copy();
     pageDict->add("MediaBox", std::move(mediaBoxObject));
@@ -1821,9 +1840,9 @@ bool PDFDoc::markPageObjects(Dict *pageDict, XRef *xRef, XRef *countRef, unsigne
     pageDict->remove("StructTreeRoot");
 
     for (int n = 0; n < pageDict->getLength(); n++) {
-        const char *key = pageDict->getKey(n);
+        const std::string &key = pageDict->getKey(n);
         Object value = pageDict->getValNF(n).copy();
-        if (strcmp(key, "Parent") != 0 && strcmp(key, "Pages") != 0 && strcmp(key, "AcroForm") != 0 && strcmp(key, "Annots") != 0 && strcmp(key, "P") != 0 && strcmp(key, "Root") != 0) {
+        if (key != "Parent" && key != "Pages" && key != "AcroForm" && key != "Annots" && key != "P" && key != "Root") {
             const bool success = markObject(&value, xRef, countRef, numOffset, oldRefNum, newRefNum, alreadyMarkedDicts);
             if (unlikely(!success)) {
                 return false;
@@ -1853,7 +1872,7 @@ bool PDFDoc::markAnnotations(Object *annotsObj, XRef *xRef, XRef *countRef, unsi
                         continue;
                     }
                 }
-                if (type.isName() && strcmp(type.getName(), "Annot") == 0) {
+                if (type.isName() && (type.getNameString() == "Annot")) {
                     const Object &obj2 = dict->lookupNF("P");
                     if (obj2.isRef()) {
                         if (obj2.getRef().num == oldPageNum) {
@@ -1872,7 +1891,7 @@ bool PDFDoc::markAnnotations(Object *annotsObj, XRef *xRef, XRef *countRef, unsi
                             if (page.isDict()) {
                                 Dict *pageDict = page.getDict();
                                 Object pagetype = pageDict->lookup("Type");
-                                if (!pagetype.isName() || strcmp(pagetype.getName(), "Page") != 0) {
+                                if (!pagetype.isName() || (pagetype.getNameString() != "Page")) {
                                     continue;
                                 }
                             }
@@ -1932,7 +1951,7 @@ void PDFDoc::markAcroForm(Object *afObj, XRef *xRef, XRef *countRef, unsigned in
     if (acroform.isDict()) {
         Dict *dict = acroform.getDict();
         for (int i = 0; i < dict->getLength(); i++) {
-            if (strcmp(dict->getKey(i), "Fields") == 0) {
+            if (dict->getKey(i) == "Fields") {
                 Object fields = dict->getValNF(i).copy();
                 modified = markAnnotations(&fields, xRef, countRef, numOffset, oldRefNum, newRefNum);
             } else {
@@ -2203,10 +2222,10 @@ std::variant<PDFDoc::SignatureData, CryptoSign::SigningErrorMessage> PDFDoc::cre
     Form *form = catalog->getCreateForm();
 
     Object annotObj = Object(std::make_unique<Dict>(getXRef()));
-    annotObj.dictSet("Type", Object(objName, "Annot"));
-    annotObj.dictSet("Subtype", Object(objName, "Widget"));
-    annotObj.dictSet("FT", Object(objName, "Sig"));
-    annotObj.dictSet("T", Object(std::move(partialFieldName)));
+    annotObj.dictSet("Type", Object::name("Annot"));
+    annotObj.dictSet("Subtype", Object::name("Widget"));
+    annotObj.dictSet("FT", Object::name("Sig"));
+    annotObj.dictSet("T", Object(std::move(partialFieldName->toNonConstStr())));
     auto rectArray = std::make_unique<Array>(getXRef());
     rectArray->add(Object(rect.x1));
     rectArray->add(Object(rect.y1));
@@ -2221,11 +2240,10 @@ std::variant<PDFDoc::SignatureData, CryptoSign::SigningErrorMessage> PDFDoc::cre
         }
 
         const DefaultAppearance da { pdfFontName, fontSize, std::move(fontColor) };
-        const std::string daStr = da.toAppearanceString();
-        annotObj.dictSet("DA", Object(std::make_unique<GooString>(daStr)));
+        annotObj.dictSet("DA", Object(da.toAppearanceString()));
 
-        form->ensureFontsForAllCharacters(&signatureText, pdfFontName);
-        form->ensureFontsForAllCharacters(&signatureTextLeft, pdfFontName);
+        form->ensureFontsForAllCharacters(signatureText.toStr(), pdfFontName);
+        form->ensureFontsForAllCharacters(signatureTextLeft.toStr(), pdfFontName);
     }
 
     const Ref ref = getXRef()->addIndirectObject(annotObj);
@@ -2257,7 +2275,7 @@ std::variant<PDFDoc::SignatureData, CryptoSign::SigningErrorMessage> PDFDoc::cre
     return SignatureData { .ref = { .num = ref.num, .gen = ref.gen }, .annotWidget = signatureAnnot, .formWidget = formWidget, .field = std::move(field) };
 }
 
-std::optional<CryptoSign::SigningErrorMessage> PDFDoc::sign(const std::string &saveFilename, const std::string &certNickname, const std::string &password, std::unique_ptr<GooString> &&partialFieldName, int page, const PDFRectangle &rect,
+std::optional<CryptoSign::SigningErrorMessage> PDFDoc::sign(const std::string &saveFilename, const CryptoSign::SigningOperationData &data, std::unique_ptr<GooString> &&partialFieldName, int page, const PDFRectangle &rect,
                                                             const GooString &signatureText, const GooString &signatureTextLeft, double fontSize, double leftFontSize, std::unique_ptr<AnnotColor> &&fontColor, double borderWidth,
                                                             std::unique_ptr<AnnotColor> &&borderColor, std::unique_ptr<AnnotColor> &&backgroundColor, const GooString *reason, const GooString *location, const std::string &imagePath,
                                                             const std::optional<GooString> &ownerPassword, const std::optional<GooString> &userPassword)
@@ -2285,7 +2303,7 @@ std::optional<CryptoSign::SigningErrorMessage> PDFDoc::sign(const std::string &s
 
     auto *fws = dynamic_cast<FormWidgetSignature *>(sig->formWidget);
     if (fws) {
-        const auto res = fws->signDocument(saveFilename, certNickname, password, reason, location, ownerPassword, userPassword);
+        const auto res = fws->signDocument(saveFilename, data, reason, location, ownerPassword, userPassword);
 
         // Now remove the signature stuff in case the user wants to continue editing stuff
         // So the document object is clean

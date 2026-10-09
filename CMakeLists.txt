@@ -27,6 +27,7 @@ CHECK_FILE_OFFSET_BITS()
 include(GenerateExportHeader)
 include(GNUInstallDirs)
 include(CMakePushCheckState)
+include(CheckLinkerFlag)
 
 set(ENABLE_FUZZER FALSE)
 
@@ -40,7 +41,7 @@ if (ECM_FOUND)
 endif()
 
 set(POPPLER_MAJOR_VERSION "26")
-set(POPPLER_MINOR_VERSION_STRING "04")
+set(POPPLER_MINOR_VERSION_STRING "10")
 # We want the string version to have 08 but the integer version can't have a leading 0 since otherwise it's considered octal
 # So strip a leading 0 if found in POPPLER_MINOR_VERSION_STRING and store the result in POPPLER_MINOR_VERSION
 string(REGEX REPLACE "^0?(.+)$" "\\1" POPPLER_MINOR_VERSION "${POPPLER_MINOR_VERSION_STRING}")
@@ -58,13 +59,12 @@ set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN 1)
 set(CMAKE_VERIFY_INTERFACE_HEADER_SETS ON)
 
+# We don't currently use modules, so no need to do the work for them
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+
 
 # command line switches
 option(ENABLE_UNSTABLE_API_ABI_HEADERS "Install API/ABI unstable xpdf headers." OFF)
-option(BUILD_GTK_TESTS "Whether to compile the GTK+ test programs." ON)
-option(BUILD_QT5_TESTS "Whether to compile the Qt5 test programs." ON)
-option(BUILD_QT6_TESTS "Whether to compile the Qt6 test programs." ON)
-option(BUILD_CPP_TESTS "Whether to compile the CPP test programs." ON)
 option(BUILD_MANUAL_TESTS "Whether to compile manual test programs." ON)
 option(ENABLE_BOOST "Use boost (for Splash backend performance)." ON)
 option(ENABLE_UTILS "Compile poppler command line utils." ON)
@@ -74,8 +74,9 @@ option(ENABLE_GOBJECT_INTROSPECTION "Whether to generate GObject introspection."
 option(ENABLE_GTK_DOC "Whether to generate glib API documentation." OFF)
 option(ENABLE_QT5 "Compile poppler qt5 wrapper." ON)
 option(ENABLE_QT6 "Compile poppler qt6 wrapper." ON)
-set(ENABLE_LIBOPENJPEG "openjpeg2" CACHE STRING "Use libopenjpeg for JPX streams. Possible values: openjpeg2, UnmaintainedWillBeRemovedInJuly2026, none. 'UnmaintainedWillBeRemovedInJuly2026' gives you the internal unmaintained decoder. Use at your own risk. The internal unmaintained decoder will be removed in july 2026. 'none' compiles no JPX decoder at all. Default: openjpeg2")
-set(ENABLE_DCTDECODER "libjpeg" CACHE STRING "Use libjpeg for DCT streams. Possible values: libjpeg, UnmaintainedWillBeRemovedInJuly2026, none. will use libjpeg if available or fail if not. 'UnmaintainedWillBeRemovedInJuly2026' gives you the internal unmaintained decoder. The internal unmaintained decoder will be removed in july 2026. Use at your own risk. 'none' compiles no DCT decoder at all. Default: libjpeg")
+option(ENABLE_BROTLI "Compile with support for brotli compressed streams" ON)
+option(ENABLE_LIBOPENJPEG "Use libopenjpeg for JPX streams." ON)
+option(ENABLE_LIBJPEG "Use libjpeg for DCT streams." ON)
 option(ENABLE_LCMS "Use LCMS for color management." ON)
 option(ENABLE_LIBCURL "Build libcurl based HTTP support." ON)
 option(ENABLE_LIBTIFF "Build code to write images as TIFF (pdfimages/pdftocairo/etc)." ON)
@@ -84,8 +85,13 @@ option(ENABLE_GPGME "Build the GPG backend for cryptographic support" ON)
 option(ENABLE_PGP_SIGNATURES "Enable pgp signatures in GPG backend by default" OFF)
 option(ENABLE_ZLIB_UNCOMPRESS "Use zlib to uncompress flate streams (not totally safe)." OFF)
 option(BUILD_SHARED_LIBS "Build poppler as a shared library" ON)
+option(BUILD_GTK_TESTS "Whether to compile the GTK+ test programs." ${ENABLE_GLIB})
+option(BUILD_QT5_TESTS "Whether to compile the Qt5 test programs." ${ENABLE_QT5})
+option(BUILD_QT6_TESTS "Whether to compile the Qt6 test programs." ${ENABLE_QT6})
+option(BUILD_CPP_TESTS "Whether to compile the CPP test programs." ${ENABLE_CPP})
 option(RUN_GPERF_IF_PRESENT "Run gperf if it is found" ON)
 option(INSTALL_GLIB_DEMO "Whether to install the poppler-glib-demo program." OFF)
+option(ENABLE_HARFBUZZ "Build with support for font subsetting (uses Harfbuzz)" ON)
 if(WIN32)
   option(ENABLE_RELOCATABLE "Do not hardcode the poppler library location (on Windows)." ON)
 else()
@@ -138,6 +144,11 @@ else()
   message(FATAL_ERROR "Invalid font configuration setting: ${FONT_CONFIGURATION}")
 endif()
 
+if(WITH_FONTCONFIGURATION_ANDROID OR font_configuration STREQUAL "generic")
+  set(ENABLE_HARFBUZZ OFF)
+  message(STATUS "Disabling HarfBuzz support because the font configuration does not have support for subsetting (generic, android)")
+endif()
+
 # setting the minimum required versions for some components
 set(CAIRO_VERSION "1.18.0")
 set(GLIB_REQUIRED "2.80")
@@ -154,6 +165,7 @@ set(QT5_VERSION "5.15")
 set(QT6_VERSION "6.4")
 set(BOOST_VERSION "1.83")
 set(GOBJECT_INTROSPECTION_VERSION "1.80")
+set(BROTLI_VERSION "1.1")
 
 find_package(Freetype ${FREETYPE_VERSION} REQUIRED)
 if(WITH_FONTCONFIGURATION_FONTCONFIG)
@@ -174,10 +186,13 @@ endmacro()
 find_soft_mandatory_package(ENABLE_NSS3 NSS3 ${NSS3_VERSION})
 find_soft_mandatory_package(ENABLE_GPGME Gpgmepp ${GPGME_VERSION})
 find_soft_mandatory_package(ENABLE_LIBTIFF TIFF ${TIFF_VERSION})
+find_soft_mandatory_package(ENABLE_BROTLI libbrotlidec ${BROTLI_VERSION})
 
-macro_optional_find_package(JPEG)
+find_soft_mandatory_package(ENABLE_HARFBUZZ harfbuzz "")
+
 macro_optional_find_package(PNG)
-if(ENABLE_DCTDECODER STREQUAL "libjpeg")
+if(ENABLE_LIBJPEG)
+  find_package(JPEG)
   if(JPEG_FOUND)
     include(CheckCSourceCompiles)
     set(_save_CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES}")
@@ -190,42 +205,25 @@ if(ENABLE_DCTDECODER STREQUAL "libjpeg")
     set(CMAKE_REQUIRED_LIBRARIES "${_save_CMAKE_REQUIRED_LIBRARIES}")
 
     if(NOT HAVE_JPEG_MEM_SRC)
-      message(FATAL_ERROR "Your libjpeg is too old. Poppler needs one that provides jpeg_mem_src. That is provided in libjpeg >= 8 or libjpeg-turbo >= 1.1.0. You can \
-also decide to use the internal unmaintained DCT decoder or none at all. The internal unmaintained decoder will be removed in july 2026\n\
-Possible options are: -DENABLE_DCTDECODER=libjpeg, -DENABLE_DCTDECODER=none, \
--DENABLE_DCTDECODER=UnmaintainedWillBeRemovedInJuly2026")
+      message(FATAL_ERROR "Your libjpeg is too old. Poppler needs one that provides jpeg_mem_src. That is provided in libjpeg >= 8 or libjpeg-turbo >= 1.1.0. You can disable it with -DENABLE_LIBJPEG=OFF.")
     endif()
-
-    set(ENABLE_LIBJPEG ${JPEG_FOUND})
   else()
     message(STATUS "Could NOT find libjpeg.")
-    message(FATAL_ERROR "Install libjpeg before trying to build poppler. You can \
-also decide to use the internal unmaintained DCT decoder or none at all. The internal unmaintained decoder will be removed in july 2026\n\
-Possible options are: -DENABLE_DCTDECODER=libjpeg, -DENABLE_DCTDECODER=none, \
--DENABLE_DCTDECODER=UnmaintainedWillBeRemovedInJuly2026")
+    message(FATAL_ERROR "Install libjpeg before trying to build poppler or disable it with -DENABLE_LIBJPEG=OFF.")
   endif()
-  set(HAVE_DCT_DECODER ON)
-elseif(ENABLE_DCTDECODER STREQUAL "UnmaintainedWillBeRemovedInJuly2026")
-  set(ENABLE_LIBJPEG OFF)
-  set(HAVE_DCT_DECODER ON)
-elseif(ENABLE_DCTDECODER STREQUAL "none")
-  set(ENABLE_LIBJPEG OFF)
-  set(HAVE_DCT_DECODER OFF)
-else()
-  message(FATAL_ERROR "Invalid ENABLE_DCTDECODER value.")
 endif()
 
 find_soft_mandatory_package(ENABLE_QT5 Qt5Core ${QT5_VERSION})
 find_soft_mandatory_package(ENABLE_QT5 Qt5Gui ${QT5_VERSION})
 find_soft_mandatory_package(ENABLE_QT5 Qt5Xml ${QT5_VERSION})
-find_soft_mandatory_package(ENABLE_QT5 Qt5Widgets ${QT5_VERSION})
-find_soft_mandatory_package(ENABLE_QT5 Qt5Test ${QT5_VERSION})
+find_soft_mandatory_package(BUILD_QT5_TESTS Qt5Widgets ${QT5_VERSION})
+find_soft_mandatory_package(BUILD_QT5_TESTS Qt5Test ${QT5_VERSION})
 
 SET(QT_NO_CREATE_VERSIONLESS_TARGETS ON)
 find_soft_mandatory_package(ENABLE_QT6 Qt6Core ${QT6_VERSION})
 find_soft_mandatory_package(ENABLE_QT6 Qt6Gui ${QT6_VERSION})
-find_soft_mandatory_package(ENABLE_QT6 Qt6Widgets ${QT6_VERSION})
-find_soft_mandatory_package(ENABLE_QT6 Qt6Test ${QT6_VERSION})
+find_soft_mandatory_package(BUILD_QT6_TESTS Qt6Widgets ${QT6_VERSION})
+find_soft_mandatory_package(BUILD_QT6_TESTS Qt6Test ${QT6_VERSION})
 
 add_definitions(-DQT_NO_CAST_FROM_ASCII)
 add_definitions(-DQT_NO_CAST_FROM_BYTEARRAY)
@@ -307,28 +305,13 @@ if(ENABLE_CPP)
 endif()
 find_package(ZLIB REQUIRED)
 
-set(WITH_OPENJPEG FALSE)
-if(ENABLE_LIBOPENJPEG STREQUAL "openjpeg2")
+if(ENABLE_LIBOPENJPEG)
   find_package(OpenJPEG)
-  set(WITH_OPENJPEG ${OpenJPEG_FOUND})
   if(NOT OpenJPEG_FOUND OR OPENJPEG_MAJOR_VERSION VERSION_LESS 2)
     message(STATUS "Could NOT find openjpeg2.")
-    message(FATAL_ERROR "Install libopenjpeg2 before trying to build poppler. You \
-can also decide to use the internal unmaintained JPX decoder or none at all. The internal decoder will be removed in july 2026.\n\
-Possible options are: -DENABLE_LIBOPENJPEG=openjpeg2, -DENABLE_LIBOPENJPEG=none, \
--DENABLE_LIBOPENJPEG=UnmaintainedWillBeRemovedInJuly2026,")
+    message(FATAL_ERROR "Install libopenjpeg2 before trying to build poppler or disable it with -DENABLE_LIBOPENJPEG=OFF.")
   endif()
-  set(HAVE_JPX_DECODER ON)
-elseif(ENABLE_LIBOPENJPEG STREQUAL "UnmaintainedWillBeRemovedInJuly2026")
-  set(WITH_OPENJPEG OFF)
-  set(HAVE_JPX_DECODER ON)
-elseif(ENABLE_LIBOPENJPEG STREQUAL "none")
-  set(WITH_OPENJPEG OFF)
-  set(HAVE_JPX_DECODER OFF)
-else()
-  message(FATAL_ERROR "Invalid ENABLE_LIBOPENJPEG value: ${ENABLE_LIBOPENJPEG}")
 endif()
-set(ENABLE_LIBOPENJPEG "${WITH_OPENJPEG}")
 
 find_soft_mandatory_package(ENABLE_LCMS LCMS2 ${LCMS2_REQUIRED_VERSION})
 set(USE_CMS ${ENABLE_LCMS})
@@ -524,6 +507,15 @@ if(Androidlib)
   set(PC_LIBS_PRIVATE "${PC_LIBS_PRIVATE} ${Androidlib}")
 endif()
 
+if (ENABLE_BROTLI)
+  set(poppler_SRCS ${poppler_SRCS}
+      poppler/BrotliStream.cc
+  )
+  set(poppler_LIBS ${poppler_LIBS} PkgConfig::libbrotlidec)
+  set(PC_REQUIRES_PRIVATE "${PC_REQUIRES_PRIVATE} libbrotlidec >= ${BROTLI_VERSION}")
+endif()
+
+
 if(ENABLE_LIBJPEG)
   set(poppler_SRCS ${poppler_SRCS}
     poppler/DCTStream.cc
@@ -560,16 +552,12 @@ if (ENABLE_GPGME)
     set(PC_REQUIRES_PRIVATE "${PC_REQUIRES_PRIVATE} gpgmepp >= ${GPGME_VERSION}")
   endif()
 endif()
-if (OpenJPEG_FOUND)
+if(ENABLE_LIBOPENJPEG)
   set(poppler_SRCS ${poppler_SRCS}
     poppler/JPEG2000Stream.cc
   )
   set(poppler_LIBS ${poppler_LIBS} openjp2)
   set(PC_REQUIRES_PRIVATE "${PC_REQUIRES_PRIVATE} libopenjp2")
-else ()
-  set(poppler_SRCS ${poppler_SRCS}
-    poppler/JPXStream.cc
-  )
 endif()
 if(USE_CMS)
   set(poppler_LIBS ${poppler_LIBS} ${LCMS2_LIBRARIES})
@@ -592,6 +580,13 @@ if(ENABLE_LIBTIFF)
 endif()
 if(Boost_FOUND)
   set(poppler_LIBS ${poppler_LIBS} Boost::boost)
+endif()
+if(ENABLE_HARFBUZZ)
+  set(poppler_SRCS ${poppler_SRCS}
+    poppler/FontSubsetter.cc
+  )
+  set(poppler_LIBS ${poppler_LIBS} harfbuzz::harfbuzz harfbuzz::subset)
+  set(PC_REQUIRES_PRIVATE "${PC_REQUIRES_PRIVATE} harfbuzz harfbuzz-subset")
 endif()
 
 if (GPERF AND SED AND RUN_GPERF_IF_PRESENT)
@@ -631,7 +626,7 @@ ADD_GPERF_FILE(TimesItalicWidths)
 ADD_GPERF_FILE(TimesRomanWidths)
 ADD_GPERF_FILE(ZapfDingbatsWidths)
 
-set(POPPLER_SOVERSION_NUMBER "159")
+set(POPPLER_SOVERSION_NUMBER "165")
 
 set(LINKER_SCRIPT "${CMAKE_BINARY_DIR}/libpoppler.map")
 configure_file(
@@ -659,18 +654,7 @@ set_target_properties(poppler PROPERTIES
 if(UNIX AND (NOT APPLE))
     file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/linkerscript_test.map "VERS_1 {\nglobal:\n *;};\n")
 
-    # once we require cmake 3.18,
-    # the next set of lines can be changed
-    # to the check_linker_flags function instead
-    include(CheckCXXSourceCompiles)
-    set(OLD_CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS})
-    set(CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS} -Wl,--version-script=${CMAKE_CURRENT_BINARY_DIR}/linkerscript_test.map)
-    check_cxx_source_compiles("
-      int main(int, char**) {
-        return 0;
-      }
-    " SUPPORT_VERSION_SCRIPT)
-    set(CMAKE_REQUIRED_FLAGS ${OLD_CMAKE_REQUIRED_FLAGS})
+    check_linker_flag(CXX "LINKER:--version-script=${CMAKE_CURRENT_BINARY_DIR}/linkerscript_test.map" SUPPORT_VERSION_SCRIPT)
 
     file(REMOVE ${CMAKE_CURRENT_BINARY_DIR}/linkerscript_test.map)
     if (SUPPORT_VERSION_SCRIPT)
@@ -726,6 +710,7 @@ if(ENABLE_UNSTABLE_API_ABI_HEADERS)
     poppler/PopplerCache.h
     poppler/ProfileData.h
     poppler/Rendition.h
+    poppler/Ref.h
     poppler/CertificateInfo.h
     poppler/SignatureInfo.h
     poppler/Stream-CCITT.h
@@ -790,10 +775,8 @@ if(ENABLE_UNSTABLE_API_ABI_HEADERS)
           poppler/CurlCachedFile.h
           poppler/CurlPDFDocBuilder.h)
   endif()
-  if(OpenJPEG_FOUND)
+  if(ENABLE_LIBOPENJPEG)
     set(poppler_poppler_installed_headers ${poppler_poppler_installed_headers} poppler/JPEG2000Stream.h)
-  else()
-    set(poppler_poppler_installed_headers ${poppler_poppler_installed_headers} poppler/JPXStream.h)
   endif()
   if(PNG_FOUND)
     set(poppler_goo_installed_headers ${poppler_goo_installed_headers} goo/PNGWriter.h)
@@ -911,6 +894,7 @@ endif()
 # Summarize build options & display warnings for user
 message("Building Poppler with support for:")
 show_end_message("font configuration" ${font_configuration})
+show_end_message_yesno("font subsetting" ENABLE_HARFBUZZ)
 show_end_message_yesno("use boost (Splash)" ENABLE_BOOST)
 show_end_message_yesno("cairo output" CAIRO_FOUND)
 show_end_message_yesno("qt5 wrapper" ENABLE_QT5)
@@ -922,23 +906,20 @@ show_end_message_yesno("cpp wrapper" ENABLE_CPP)
 show_end_message_yesno("use libjpeg" ENABLE_LIBJPEG)
 show_end_message_yesno("use libpng" ENABLE_LIBPNG)
 show_end_message_yesno("use libtiff" ENABLE_LIBTIFF)
+show_end_message_yesno("use brotli" ENABLE_BROTLI)
 show_end_message_yesno("use zlib uncompress" ENABLE_ZLIB_UNCOMPRESS)
 show_end_message_yesno("use nss3" ENABLE_NSS3)
 show_end_message_yesno("use gpg" ENABLE_GPGME)
 show_end_message("  default signature backend" ${DEFAULT_SIGNATURE_BACKEND})
 show_end_message_yesno("  enable pgp signatures in gpg backend by default" ENABLE_PGP_SIGNATURES)
 show_end_message_yesno("use curl" ENABLE_LIBCURL)
-show_end_message_yesno("use libopenjpeg2" WITH_OPENJPEG)
+show_end_message_yesno("use libopenjpeg2" ENABLE_LIBOPENJPEG)
 show_end_message_yesno("use lcms2" USE_CMS)
 show_end_message_yesno("command line utils" ENABLE_UTILS)
 show_end_message_yesno("fuzz target" ENABLE_FUZZER)
 show_end_message("test data dir" ${TESTDATADIR})
 
-if(NOT ENABLE_LIBJPEG AND HAVE_DCT_DECODER)
-  message("Warning: Using libjpeg is recommended. The internal DCT decoder is unmaintained and will be removed in july 2026.")
-endif()
-
-if(NOT HAVE_DCT_DECODER)
+if(NOT ENABLE_LIBJPEG)
   message("Warning: You're not compiling any DCT decoder. Some files will fail to display properly.")
 endif()
 
@@ -946,11 +927,7 @@ if(ENABLE_ZLIB_UNCOMPRESS)
   message("Warning: Using zlib is not totally safe")
 endif()
 
-if(NOT WITH_OPENJPEG AND HAVE_JPX_DECODER)
-  message("Warning: Using libopenjpeg2 is recommended. The internal JPX decoder is unmaintained and will be removed in july 2026.")
-endif()
-
-if(NOT HAVE_JPX_DECODER)
+if(NOT ENABLE_LIBOPENJPEG)
   message("Warning: You're not compiling any JPX decoder. Some files will fail to display properly.")
 endif()
 

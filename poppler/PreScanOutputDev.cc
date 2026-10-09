@@ -14,7 +14,7 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2009 Carlos Garcia Campos <carlosgc@gnome.org>
-// Copyright (C) 2010, 2011, 2018-2021, 2025 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2010, 2011, 2018-2021, 2025, 2026 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2011, 2014 William Bader <williambader@hotmail.com>
 // Copyright (C) 2011, 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2011 Adrian Johnson <ajohnson@redneon.com>
@@ -36,6 +36,7 @@
 #include "Catalog.h"
 #include "Page.h"
 #include "PreScanOutputDev.h"
+#include "Stream.h"
 
 //------------------------------------------------------------------------
 // PreScanOutputDev
@@ -76,7 +77,10 @@ void PreScanOutputDev::eoFill(GfxState *state)
 bool PreScanOutputDev::tilingPatternFill(GfxState *state, Gfx *gfx, Catalog * /*catalog*/, GfxTilingPattern *tPat, const std::array<double, 6> &mat, int x0, int y0, int x1, int y1, double /*xStep*/, double /*yStep*/)
 {
     if (tPat->getPaintType() == 1) {
-        bool tilingNeeded = (x1 - x0 != 1 || y1 - y0 != 1);
+        int diffX, diffY;
+        const bool xNeedsTiling = !checkedSubtraction(x1, x0, &diffX) || (diffX != 1);
+        const bool yNeedsTiling = !checkedSubtraction(y1, y0, &diffY) || (diffY != 1);
+        const bool tilingNeeded = xNeedsTiling || yNeedsTiling;
         if (tilingNeeded) {
             inTilingPatternFill++;
         }
@@ -282,12 +286,12 @@ void PreScanOutputDev::paintTransparencyGroup(GfxState *state, const std::array<
     check(state->getFillColorSpace(), state->getFillColor(), state->getFillOpacity(), state->getBlendMode());
 }
 
-void PreScanOutputDev::setSoftMask(GfxState * /*state*/, const std::array<double, 4> & /*bbox*/, bool /*alpha*/, Function * /*transferFunc*/, GfxColor * /*backdropColor*/)
+void PreScanOutputDev::setSoftMask(GfxState * /*state*/, const std::array<double, 4> & /*bbox*/, bool /*alpha*/, Function * /*transferFunc*/, const GfxColor & /*backdropColor*/)
 {
     transparency = true;
 }
 
-void PreScanOutputDev::check(GfxColorSpace *colorSpace, const GfxColor *color, double opacity, GfxBlendMode blendMode)
+void PreScanOutputDev::check(GfxColorSpace *colorSpace, const GfxColor &color, double opacity, GfxBlendMode blendMode)
 {
     GfxRGB rgb;
 

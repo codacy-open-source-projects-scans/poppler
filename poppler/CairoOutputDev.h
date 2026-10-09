@@ -30,6 +30,7 @@
 // Copyright (C) 2022 Marek Kasik <mkasik@redhat.com>
 // Copyright (C) 2024 Nelson Benítez León <nbenitezl@gmail.com>
 // Copyright (C) 2025, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2026 Stefan Brüns <stefan.bruens@rwth-aachen.de>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -207,12 +208,12 @@ public:
     void beginTextObject(GfxState *state) override;
     void endTextObject(GfxState *state) override;
 
-    void beginMarkedContent(const char *name, Dict *properties) override;
+    void beginMarkedContent(const std::string &name, Dict *properties) override;
     void endMarkedContent(GfxState *state) override;
 
     //----- image drawing
     void drawImageMask(GfxState *state, Object *ref, Stream *str, int width, int height, bool invert, bool interpolate, bool inlineImg) override;
-    void setSoftMaskFromImageMask(GfxState *state, Object *ref, Stream *str, int width, int height, bool invert, bool inlineImg, std::array<double, 6> &baseMatrix) override;
+    bool setSoftMaskFromImageMask(GfxState *state, Object *ref, Stream *str, int width, int height, bool invert, bool inlineImg, std::array<double, 6> &baseMatrix) override;
     void unsetSoftMaskFromImageMask(GfxState *state, std::array<double, 6> &baseMatrix) override;
     void drawImageMaskRegular(GfxState *state, Stream *str, int width, int height, bool invert, bool interpolate);
 
@@ -230,7 +231,7 @@ public:
     void endTransparencyGroup(GfxState * /*state*/) override;
     void popTransparencyGroup();
     void paintTransparencyGroup(GfxState * /*state*/, const std::array<double, 4> & /*bbox*/) override;
-    void setSoftMask(GfxState * /*state*/, const std::array<double, 4> & /*bbox*/, bool /*alpha*/, Function * /*transferFunc*/, GfxColor * /*backdropColor*/) override;
+    void setSoftMask(GfxState * /*state*/, const std::array<double, 4> & /*bbox*/, bool /*alpha*/, Function * /*transferFunc*/, const GfxColor & /*backdropColor*/) override;
     void clearSoftMask(GfxState * /*state*/) override;
 
     //----- Type 3 font operators
@@ -281,7 +282,7 @@ protected:
     void fillToStrokePathClip();
     void alignStrokeCoords(const GfxSubpath *subpath, int i, double *x, double *y);
     AnnotLink *findLinkObject(const StructElement *elem);
-    static void quadToCairoRect(AnnotQuadrilaterals *quads, int idx, double destPageHeight, cairo_rectangle_t *rect);
+    static void quadToCairoRect(const AnnotQuadrilaterals *quads, int idx, double destPageHeight, cairo_rectangle_t *rect);
     bool appendLinkDestRef(std::string &s, const LinkDest *dest);
     static void appendLinkDestXY(std::string &s, const LinkDest *dest, double destPageHeight);
     bool beginLinkTag(AnnotLink *annotLink);
@@ -491,14 +492,14 @@ public:
     void drawSoftMaskedImage(GfxState *state, Object *ref, Stream *str, int width, int height, GfxImageColorMap *colorMap, bool interpolate, Stream *maskStr, int maskWidth, int maskHeight, GfxImageColorMap *maskColorMap,
                              bool maskInterpolate) override;
     void drawMaskedImage(GfxState *state, Object *ref, Stream *str, int width, int height, GfxImageColorMap *colorMap, bool interpolate, Stream *maskStr, int maskWidth, int maskHeight, bool maskInvert, bool maskInterpolate) override;
-    void setSoftMaskFromImageMask(GfxState *state, Object *ref, Stream *str, int width, int height, bool invert, bool inlineImg, std::array<double, 6> &baseMatrix) override;
+    bool setSoftMaskFromImageMask(GfxState *state, Object *ref, Stream *str, int width, int height, bool invert, bool inlineImg, std::array<double, 6> &baseMatrix) override;
     void unsetSoftMaskFromImageMask(GfxState * /*state*/, std::array<double, 6> & /*baseMatrix*/) override { }
 
     //----- transparency groups and soft masks
     void beginTransparencyGroup(GfxState * /*state*/, const std::array<double, 4> & /*bbox*/, GfxColorSpace * /*blendingColorSpace*/, bool /*isolated*/, bool /*knockout*/, bool /*forSoftMask*/) override { }
     void endTransparencyGroup(GfxState * /*state*/) override { }
     void paintTransparencyGroup(GfxState * /*state*/, const std::array<double, 4> & /*bbox*/) override { }
-    void setSoftMask(GfxState * /*state*/, const std::array<double, 4> & /*bbox*/, bool /*alpha*/, Function * /*transferFunc*/, GfxColor * /*backdropColor*/) override { }
+    void setSoftMask(GfxState * /*state*/, const std::array<double, 4> & /*bbox*/, bool /*alpha*/, Function * /*transferFunc*/, const GfxColor & /*backdropColor*/) override { }
     void clearSoftMask(GfxState * /*state*/) override { }
 
     //----- Image list

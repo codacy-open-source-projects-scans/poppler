@@ -20,7 +20,7 @@
 // Copyright (C) 2007 Julien Rebetez <julienr@svn.gnome.org>
 // Copyright (C) 2008 Iñigo Martínez <inigomartinez@gmail.com>
 // Copyright (C) 2012 Fabio D'Urso <fabiodurso@hotmail.it>
-// Copyright (C) 2012, 2017, 2018, 2020, 2021, 2023, 2025 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2012, 2017, 2018, 2020, 2021, 2023, 2025, 2026 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2013, 2017, 2023 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
@@ -30,6 +30,7 @@
 // Copyright (C) 2024-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2025 Even Rouault <even.rouault@spatialys.com>
 // Copyright (C) 2025 Stefan Brüns <stefan.bruens@rwth-aachen.de>
+// Copyright (C) 2026 Lucas Baudin <lbaudin@gnome.org>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -75,12 +76,12 @@ public:
     ~PageAttrs();
 
     // Accessors.
-    const PDFRectangle *getMediaBox() const { return &mediaBox; }
-    const PDFRectangle *getCropBox() const { return &cropBox; }
+    const PDFRectangle &getMediaBox() const { return mediaBox; }
+    const PDFRectangle &getCropBox() const { return cropBox; }
     bool isCropped() const { return haveCropBox; }
-    const PDFRectangle *getBleedBox() const { return &bleedBox; }
-    const PDFRectangle *getTrimBox() const { return &trimBox; }
-    const PDFRectangle *getArtBox() const { return &artBox; }
+    const PDFRectangle &getBleedBox() const { return bleedBox; }
+    const PDFRectangle &getTrimBox() const { return trimBox; }
+    const PDFRectangle &getArtBox() const { return artBox; }
     int getRotate() const { return rotate; }
     Dict *getBoxColorInfo() { return boxColorInfo.isDict() ? boxColorInfo.getDict() : nullptr; }
     Dict *getGroup() { return group.isDict() ? group.getDict() : nullptr; }
@@ -134,16 +135,16 @@ public:
 
     // Get page parameters.
     int getNum() const { return num; }
-    const PDFRectangle *getMediaBox() const { return attrs->getMediaBox(); }
-    const PDFRectangle *getCropBox() const { return attrs->getCropBox(); }
+    const PDFRectangle &getMediaBox() const { return attrs->getMediaBox(); }
+    const PDFRectangle &getCropBox() const { return attrs->getCropBox(); }
     bool isCropped() const { return attrs->isCropped(); }
-    double getMediaWidth() const { return attrs->getMediaBox()->x2 - attrs->getMediaBox()->x1; }
-    double getMediaHeight() const { return attrs->getMediaBox()->y2 - attrs->getMediaBox()->y1; }
-    double getCropWidth() const { return attrs->getCropBox()->x2 - attrs->getCropBox()->x1; }
-    double getCropHeight() const { return attrs->getCropBox()->y2 - attrs->getCropBox()->y1; }
-    const PDFRectangle *getBleedBox() const { return attrs->getBleedBox(); }
-    const PDFRectangle *getTrimBox() const { return attrs->getTrimBox(); }
-    const PDFRectangle *getArtBox() const { return attrs->getArtBox(); }
+    double getMediaWidth() const { return attrs->getMediaBox().x2 - attrs->getMediaBox().x1; }
+    double getMediaHeight() const { return attrs->getMediaBox().y2 - attrs->getMediaBox().y1; }
+    double getCropWidth() const { return attrs->getCropBox().x2 - attrs->getCropBox().x1; }
+    double getCropHeight() const { return attrs->getCropBox().y2 - attrs->getCropBox().y1; }
+    const PDFRectangle &getBleedBox() const { return attrs->getBleedBox(); }
+    const PDFRectangle &getTrimBox() const { return attrs->getTrimBox(); }
+    const PDFRectangle &getArtBox() const { return attrs->getArtBox(); }
     int getRotate() const { return attrs->getRotate(); }
     Dict *getBoxColorInfo() { return attrs->getBoxColorInfo(); }
     Dict *getGroup() { return attrs->getGroup(); }
@@ -172,7 +173,7 @@ public:
     std::unique_ptr<Links> getLinks();
 
     // Return a list of annots. It will be valid until the page is destroyed
-    Annots *getAnnots(XRef *xrefA = nullptr);
+    Annots *getAnnots();
 
     // Get contents.
     Object getContents() { return contents.fetch(xref); }
@@ -240,6 +241,7 @@ private:
     int num; // page number
     std::unique_ptr<PageAttrs> attrs; // page attributes
     std::unique_ptr<Annots> annots; // annotations
+    std::once_flag annotsInitializationFlag;
     Object annotsObj; // annotations array
     Object contents; // page contents
     Object thumb; // page thumbnail
@@ -256,6 +258,7 @@ private:
     // they are 'de facto' being used to implement tooltips. See #34
     std::vector<std::unique_ptr<FormField>> standaloneFields;
     void loadStandaloneFields(Form *form);
+    void initializeAnnots();
 };
 
 #endif

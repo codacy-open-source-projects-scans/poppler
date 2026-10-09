@@ -7,7 +7,7 @@
 // Copyright (C) 2011-2015, 2017 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2012 Arseny Solokha <asolokha@gmx.com>
 // Copyright (C) 2012 Fabio D'Urso <fabiodurso@hotmail.it>
-// Copyright (C) 2012, 2014, 2017-2019, 2021, 2022, 2024, 2025 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2012, 2014, 2017-2019, 2021, 2022, 2024-2026 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2013 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2013 Hib Eris <hib@hiberis.nl>
 // Copyright (C) 2015 Arthur Stavisky <vovodroid@gmail.com>
@@ -40,24 +40,26 @@ static const ArgDesc argDesc[] = { { .arg = "-v", .kind = argFlag, .val = &print
 
 static void doMergeNameTree(PDFDoc *doc, XRef *srcXRef, XRef *countRef, int oldRefNum, int newRefNum, Dict *srcNameTree, Dict *mergeNameTree, int numOffset)
 {
-    Object mergeNameArray = mergeNameTree->lookup("Names");
-    Object srcNameArray = srcNameTree->lookup("Names");
-    if (mergeNameArray.isArray() && srcNameArray.isArray()) {
+    Object mergeNameArrayObj = mergeNameTree->lookup("Names");
+    Object srcNameArrayObj = srcNameTree->lookup("Names");
+    if (mergeNameArrayObj.isArray() && srcNameArrayObj.isArray()) {
         auto newNameArray = std::make_unique<Array>(srcXRef);
         int j = 0;
-        for (int i = 0; i < srcNameArray.arrayGetLength() - 1; i += 2) {
-            const Object &key = srcNameArray.arrayGetNF(i);
-            const Object &value = srcNameArray.arrayGetNF(i + 1);
+        Array *srcNameArray = srcNameArrayObj.getArray();
+        Array *mergeNameArray = mergeNameArrayObj.getArray();
+        for (int i = 0; i < srcNameArray->getLength() - 1; i += 2) {
+            const Object &key = srcNameArray->getNF(i);
+            const Object &value = srcNameArray->getNF(i + 1);
             if (key.isString() && value.isRef()) {
-                while (j < mergeNameArray.arrayGetLength() - 1) {
-                    const Object &mkey = mergeNameArray.arrayGetNF(j);
-                    const Object &mvalue = mergeNameArray.arrayGetNF(j + 1);
+                while (j < mergeNameArray->getLength() - 1) {
+                    const Object &mkey = mergeNameArray->getNF(j);
+                    const Object &mvalue = mergeNameArray->getNF(j + 1);
                     if (mkey.isString() && mvalue.isRef()) {
-                        if (mkey.getString().compare(key.getString()) < 0) {
+                        if (mkey.getString() < key.getString()) {
                             newNameArray->add(Object(std::string { mkey.getString() }));
                             newNameArray->add(Object(Ref { .num = mvalue.getRef().num + numOffset, .gen = mvalue.getRef().gen }));
                             j += 2;
-                        } else if (mkey.getString().compare(key.getString()) == 0) {
+                        } else if (mkey.getString() == key.getString()) {
                             j += 2;
                         } else {
                             break;
@@ -70,9 +72,9 @@ static void doMergeNameTree(PDFDoc *doc, XRef *srcXRef, XRef *countRef, int oldR
                 newNameArray->add(Object(value.getRef()));
             }
         }
-        while (j < mergeNameArray.arrayGetLength() - 1) {
-            const Object &mkey = mergeNameArray.arrayGetNF(j);
-            const Object &mvalue = mergeNameArray.arrayGetNF(j + 1);
+        while (j < mergeNameArray->getLength() - 1) {
+            const Object &mkey = mergeNameArray->getNF(j);
+            const Object &mvalue = mergeNameArray->getNF(j + 1);
             if (mkey.isString() && mvalue.isRef()) {
                 newNameArray->add(Object(std::string { mkey.getString() }));
                 newNameArray->add(Object(Ref { .num = mvalue.getRef().num + numOffset, .gen = mvalue.getRef().gen }));
@@ -81,11 +83,12 @@ static void doMergeNameTree(PDFDoc *doc, XRef *srcXRef, XRef *countRef, int oldR
         }
         srcNameTree->set("Names", Object(std::move(newNameArray)));
         doc->markPageObjects(mergeNameTree, srcXRef, countRef, numOffset, oldRefNum, newRefNum);
-    } else if (srcNameArray.isNull() && mergeNameArray.isArray()) {
+    } else if (srcNameArrayObj.isNull() && mergeNameArrayObj.isArray()) {
         auto newNameArray = std::make_unique<Array>(srcXRef);
-        for (int i = 0; i < mergeNameArray.arrayGetLength() - 1; i += 2) {
-            const Object &key = mergeNameArray.arrayGetNF(i);
-            const Object &value = mergeNameArray.arrayGetNF(i + 1);
+        Array *mergeNameArray = mergeNameArrayObj.getArray();
+        for (int i = 0; i < mergeNameArray->getLength() - 1; i += 2) {
+            const Object &key = mergeNameArray->getNF(i);
+            const Object &value = mergeNameArray->getNF(i + 1);
             if (key.isString() && value.isRef()) {
                 newNameArray->add(Object(std::string { key.getString() }));
                 newNameArray->add(Object(Ref { .num = value.getRef().num + numOffset, .gen = value.getRef().gen }));
@@ -99,7 +102,7 @@ static void doMergeNameTree(PDFDoc *doc, XRef *srcXRef, XRef *countRef, int oldR
 static void doMergeNameDict(PDFDoc *doc, XRef *srcXRef, XRef *countRef, int oldRefNum, int newRefNum, Dict *srcNameDict, Dict *mergeNameDict, int numOffset)
 {
     for (int i = 0; i < mergeNameDict->getLength(); i++) {
-        const char *key = mergeNameDict->getKey(i);
+        const std::string &key = mergeNameDict->getKey(i);
         Object mergeNameTree = mergeNameDict->lookup(key);
         Object srcNameTree = srcNameDict->lookup(key);
         if (srcNameTree.isDict() && mergeNameTree.isDict()) {
@@ -117,13 +120,15 @@ static bool doMergeFormDict(Dict *srcFormDict, Dict *mergeFormDict, int numOffse
     Object srcFields = srcFormDict->lookup("Fields");
     Object mergeFields = mergeFormDict->lookup("Fields");
     if (srcFields.isArray() && mergeFields.isArray()) {
-        for (int i = 0; i < mergeFields.arrayGetLength(); i++) {
-            const Object &value = mergeFields.arrayGetNF(i);
+        Array *srcFieldsArray = srcFields.getArray();
+        Array *mergeFieldsArray = mergeFields.getArray();
+        for (int i = 0; i < mergeFieldsArray->getLength(); i++) {
+            const Object &value = mergeFieldsArray->getNF(i);
             if (!value.isRef()) {
                 error(errSyntaxError, -1, "Fields object is not a Ref.");
                 return false;
             }
-            srcFields.arrayAdd(Object(Ref { .num = value.getRef().num + numOffset, .gen = value.getRef().gen }));
+            srcFieldsArray->add(Object(Ref { .num = value.getRef().num + numOffset, .gen = value.getRef().gen }));
         }
     }
     return true;
@@ -203,7 +208,7 @@ int main(int argc, char *argv[])
     PDFDoc::writeHeader(outStr, majorVersion, minorVersion);
 
     // handle OutputIntents, AcroForm, OCProperties & Names
-    Object intents;
+    Object intentsObj;
     Object names;
     Object afObj;
     Object ocObj;
@@ -218,7 +223,7 @@ int main(int argc, char *argv[])
             return -1;
         }
         Dict *catDict = catObj.getDict();
-        intents = catDict->lookup("OutputIntents");
+        intentsObj = catDict->lookup("OutputIntents");
         afObj = catDict->lookupNF("AcroForm").copy();
         Ref *refPage = docs[0]->getCatalog()->getPageRef(1);
         if (!afObj.isNull() && refPage) {
@@ -232,14 +237,15 @@ int main(int argc, char *argv[])
         if (!names.isNull() && names.isDict() && refPage) {
             docs[0]->markPageObjects(names.getDict(), yRef, countRef, 0, refPage->num, refPage->num);
         }
-        if (intents.isArrayOfLengthAtLeast(1)) {
+        if (intentsObj.isArrayOfLengthAtLeast(1)) {
             for (size_t i = 1; i < docs.size(); i++) {
                 Object pagecatObj = docs[i]->getXRef()->getCatalog();
                 Dict *pagecatDict = pagecatObj.getDict();
                 Object pageintents = pagecatDict->lookup("OutputIntents");
                 if (pageintents.isArrayOfLengthAtLeast(1)) {
-                    for (int j = intents.arrayGetLength() - 1; j >= 0; j--) {
-                        Object intent = intents.arrayGet(j, 0);
+                    Array *intents = intentsObj.getArray();
+                    for (int j = intents->getLength() - 1; j >= 0; j--) {
+                        Object intent = intents->get(j, 0);
                         if (intent.isDict()) {
                             Object idf = intent.dictLookup("OutputConditionIdentifier");
                             if (idf.isString()) {
@@ -259,15 +265,15 @@ int main(int argc, char *argv[])
                                     }
                                 }
                                 if (removeIntent) {
-                                    intents.arrayRemove(j);
+                                    intents->remove(j);
                                     error(errSyntaxWarning, -1, "Output intent {0:s} missing in pdf {1:s}, removed", gidf.c_str(), docs[i]->getFileName()->c_str());
                                 }
                             } else {
-                                intents.arrayRemove(j);
+                                intents->remove(j);
                                 error(errSyntaxWarning, -1, "Invalid output intent dict, missing required OutputConditionIdentifier");
                             }
                         } else {
-                            intents.arrayRemove(j);
+                            intents->remove(j);
                         }
                     }
                 } else {
@@ -276,13 +282,15 @@ int main(int argc, char *argv[])
                 }
             }
         }
-        if (intents.isArrayOfLengthAtLeast(1)) {
-            for (int j = intents.arrayGetLength() - 1; j >= 0; j--) {
-                Object intent = intents.arrayGet(j, 0);
+        // This should not get merged with the if above beacuse we modify intentsObj inside the if above
+        if (intentsObj.isArrayOfLengthAtLeast(1)) {
+            Array *intents = intentsObj.getArray();
+            for (int j = intents->getLength() - 1; j >= 0; j--) {
+                Object intent = intents->get(j, 0);
                 if (intent.isDict()) {
                     docs[0]->markPageObjects(intent.getDict(), yRef, countRef, numOffset, 0, 0);
                 } else {
-                    intents.arrayRemove(j);
+                    intents->remove(j);
                 }
             }
         }
@@ -296,7 +304,7 @@ int main(int argc, char *argv[])
 
             const PDFRectangle *cropBox = nullptr;
             if (docs[i]->getCatalog()->getPage(j)->isCropped()) {
-                cropBox = docs[i]->getCatalog()->getPage(j)->getCropBox();
+                cropBox = &docs[i]->getCatalog()->getPage(j)->getCropBox();
             }
             if (!docs[i]->replacePageDict(j, docs[i]->getCatalog()->getPage(j)->getRotate(), docs[i]->getCatalog()->getPage(j)->getMediaBox(), cropBox)) {
                 fclose(f);
@@ -361,10 +369,10 @@ int main(int argc, char *argv[])
     outStr->printf("%d 0 obj\n", rootNum);
     outStr->printf("<< /Type /Catalog /Pages %d 0 R", rootNum + 1);
     // insert OutputIntents
-    if (intents.isArrayOfLengthAtLeast(1)) {
+    if (intentsObj.isArrayOfLengthAtLeast(1)) {
         outStr->printf(" /OutputIntents [");
-        for (int j = 0; j < intents.arrayGetLength(); j++) {
-            Object intent = intents.arrayGet(j, 0);
+        for (int j = 0; j < intentsObj.arrayGetLength(); j++) {
+            Object intent = intentsObj.arrayGet(j, 0);
             if (intent.isDict()) {
                 PDFDoc::writeObject(&intent, outStr, yRef, 0, nullptr, cryptRC4, 0, 0, 0);
             }
@@ -407,12 +415,12 @@ int main(int argc, char *argv[])
             if (j > 0) {
                 outStr->printf(" ");
             }
-            const char *key = pageDict->getKey(j);
+            const std::string &key = pageDict->getKey(j);
             Object value = pageDict->getValNF(j).copy();
-            if (strcmp(key, "Parent") == 0) {
+            if (key == "Parent") {
                 outStr->printf("/Parent %d 0 R", rootNum + 1);
             } else {
-                outStr->printf("/%s ", key);
+                outStr->printf("/%s ", key.c_str());
                 PDFDoc::writeObject(&value, outStr, yRef, offsets[i], nullptr, cryptRC4, 0, 0, 0);
             }
         }

@@ -5,10 +5,11 @@
 // This file is licensed under the GPLv2 or later
 //
 // Copyright 2018 Chinmoy Ranjan Pradhan <chinmoyrp65@gmail.com>
-// Copyright 2018, 2019, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright 2018, 2019, 2022, 2026 Albert Astals Cid <aacid@kde.org>
 // Copyright 2018 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright 2020 Thorsten Behrens <Thorsten.Behrens@CIB.de>
 // Copyright 2023, 2024, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2026 Sune Stolborg Vuorela <sune@vuorela.dk>, work sponsored by the Direction Interministérielle du Numérique
 //
 //========================================================================
 
@@ -61,7 +62,7 @@ unsigned int X509CertificateInfo::getKeyUsageExtensions() const
     return ku_extensions;
 }
 
-const GooString &X509CertificateInfo::getCertificateDER() const
+const std::vector<unsigned char> &X509CertificateInfo::getCertificateDER() const
 {
     return cert_der;
 }
@@ -111,9 +112,9 @@ void X509CertificateInfo::setKeyUsageExtensions(unsigned int keyUsages)
     ku_extensions = keyUsages;
 }
 
-void X509CertificateInfo::setCertificateDER(const GooString &certDer)
+void X509CertificateInfo::setCertificateDER(std::vector<unsigned char> &&certDer)
 {
-    cert_der.assign(certDer.toStr());
+    cert_der = std::move(certDer);
 }
 
 void X509CertificateInfo::setIsSelfSigned(bool isSelfSigned)
@@ -148,4 +149,14 @@ CertificateType X509CertificateInfo::getCertificateType() const
 void X509CertificateInfo::setCertificateType(CertificateType type)
 {
     certificate_type = type;
+}
+
+void X509CertificateInfo::setSupportedSMimeSignatureTypes(std::vector<CryptoSign::SMimeSignatureType> &&supported)
+{
+    m_supportedTypes = std::move(supported);
+}
+
+const std::vector<CryptoSign::SMimeSignatureType> &X509CertificateInfo::supportedSMimeSignatureTypes() const
+{
+    return m_supportedTypes;
 }

@@ -107,7 +107,6 @@ static StrList *gArgsListRoot = nullptr;
 /* Names of all command-line switches we recognize */
 constexpr const char *TIMINGS_ARG = "-timings";
 constexpr const char *RESOLUTION_ARG = "-resolution";
-constexpr const char *RECURSIVE_ARG = "-recursive";
 constexpr const char *OUT_ARG = "-out";
 constexpr const char *LOAD_ONLY_ARG = "-loadonly";
 constexpr const char *PAGE_ARG = "-page";
@@ -116,10 +115,6 @@ constexpr const char *TEXT_ARG = "-text";
 /* Should we record timings? True if -timings command-line argument was given. */
 static bool gfTimings = false;
 
-/* If true, we use render each page at resolution 'gResolutionX'/'gResolutionY'.
-   If false, we render each page at its native resolution.
-   True if -resolution NxM command-line argument was given. */
-static bool gfForceResolution = false;
 static int gResolutionX = 0;
 static int gResolutionY = 0;
 /* If NULL, we output the log info to stdout. If not NULL, should be a name
@@ -129,14 +124,6 @@ static char *gOutFileName = nullptr;
 /* FILE * corresponding to gOutFileName or stdout if gOutFileName is NULL or
    was invalid name */
 static FILE *gOutFile = nullptr;
-/* FILE * corresponding to gOutFileName or stderr if gOutFileName is NULL or
-   was invalid name */
-static FILE *gErrFile = nullptr;
-
-/* If True and a directory is given as a command-line argument, we'll process
-   pdf files in sub-directories as well.
-   Controlled by -recursive command-line argument */
-static bool gfRecursive = false;
 
 /* If true, we only dump the text, not render */
 static bool gfTextOnly = false;
@@ -442,60 +429,7 @@ static void StrList_Destroy(StrList **root)
     *root = nullptr;
 }
 
-static void my_error(ErrorCategory /*category*/, Goffset /*pos*/, const char * /*msg*/)
-{
-#if 0
-    char        buf[4096], *p = buf;
-
-    // NB: this can be called before the globalParams object is created
-    if (globalParams && globalParams->getErrQuiet()) {
-        return;
-    }
-
-    if (pos >= 0) {
-      p += _snprintf(p, sizeof(buf)-1, "Error (%lld): ", (long long)pos);
-        *p   = '\0';
-        OutputDebugString(p);
-    } else {
-        OutputDebugString("Error: ");
-    }
-
-    p = buf;
-    p += vsnprintf(p, sizeof(buf) - 1, msg, args);
-    while ( p > buf  &&  isspace(p[-1]) )
-            *--p = '\0';
-    *p++ = '\r';
-    *p++ = '\n';
-    *p   = '\0';
-    OutputDebugString(buf);
-
-    if (pos >= 0) {
-        p += _snprintf(p, sizeof(buf)-1, "Error (%lld): ", (long long)pos);
-        *p   = '\0';
-        OutputDebugString(buf);
-        if (gErrFile)
-            fprintf(gErrFile, buf);
-    } else {
-        OutputDebugString("Error: ");
-        if (gErrFile)
-            fprintf(gErrFile, "Error: ");
-    }
-#endif
-#if 0
-    p = buf;
-    va_start(args, msg);
-    p += vsnprintf(p, sizeof(buf) - 3, msg, args);
-    while ( p > buf  &&  isspace(p[-1]) )
-            *--p = '\0';
-    *p++ = '\r';
-    *p++ = '\n';
-    *p   = '\0';
-    OutputDebugString(buf);
-    if (gErrFile)
-        fprintf(gErrFile, buf);
-    va_end(args);
-#endif
-}
+static void my_error(ErrorCategory /*category*/, Goffset /*pos*/, const char * /*msg*/) { }
 
 static void LogInfo(const char *fmt, ...) GCC_PRINTF_FORMAT(1, 2);
 
@@ -747,9 +681,6 @@ static void ParseCommandLine(int argc, char **argv)
                 if (!ParseResolutionString(argv[i], &gResolutionX, &gResolutionY)) {
                     PrintUsageAndExit(argc, argv);
                 }
-                gfForceResolution = true;
-            } else if (str_ieq(arg, RECURSIVE_ARG)) {
-                gfRecursive = true;
             } else if (str_ieq(arg, OUT_ARG)) {
                 /* expect a file name after that */
                 ++i;
@@ -830,12 +761,6 @@ int main(int argc, char **argv)
         gOutFile = outFile;
     } else {
         gOutFile = stdout;
-    }
-
-    if (gOutFileName) {
-        gErrFile = outFile;
-    } else {
-        gErrFile = stderr;
     }
 
     StrList *curr = gArgsListRoot;

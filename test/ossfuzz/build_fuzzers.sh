@@ -30,6 +30,11 @@ rm -rf $WORK/*
 rm -rf $BUILD
 mkdir -p $BUILD
 
+pushd $SRC/brotli
+cmake . -DBUILD_SHARED_LIBS=False -DCMAKE_BUILD_TYPE=debug
+make -j$(nproc) install
+popd
+
 # Temporarily Add -D_GNU_SOURCE to CFLAGS to fix freetype's dependence on GNU
 # extensions for dlsym to dynamically load harfbuzz. This feature
 # should potentially be disabled instead of fixing the compilation. But that is
@@ -38,7 +43,7 @@ mkdir -p $BUILD
 export CFLAGS="$CFLAGS -D_GNU_SOURCE"
 
 # Install Boost headers
-cd $SRC/boost_1_87_0/
+cd $SRC/boost_1_92_0/
 CFLAGS="" CXXFLAGS="" ./bootstrap.sh
 CFLAGS="" CXXFLAGS="" ./b2 headers
 ./b2 --with-math install
@@ -48,7 +53,7 @@ mkdir build && cd build
 CFLAGS=-fPIC ../configure --static --prefix=$PREFIX
 make install -j$(nproc)
 
-pushd $SRC/nss-3.99
+pushd $SRC/nss-3.130
 nss_flag=""
 SAVE_CFLAGS="$CFLAGS"
 SAVE_CXXFLAGS="$CXXFLAGS"
@@ -73,8 +78,8 @@ CXXFLAGS="$SAVE_CXXFLAGS"
 
 # NSS has a .pc.in file but doesn't do anything with it
 cp nss/pkg/pkg-config/nss.pc.in $PREFIX/lib/pkgconfig/nss.pc
-sed -i "s#\${libdir}#${SRC}/nss-3.99/dist/Debug/lib#g" $PREFIX/lib/pkgconfig/nss.pc
-sed -i "s#\${includedir}#${SRC}/nss-3.99/dist/public/nss#g" $PREFIX/lib/pkgconfig/nss.pc
+sed -i "s#\${libdir}#${SRC}/nss-3.130/dist/Debug/lib#g" $PREFIX/lib/pkgconfig/nss.pc
+sed -i "s#\${includedir}#${SRC}/nss-3.130/dist/public/nss#g" $PREFIX/lib/pkgconfig/nss.pc
 sed -i "s#%NSS_VERSION%#3.99#g" $PREFIX/lib/pkgconfig/nss.pc
 cp dist/Debug/lib/pkgconfig/nspr.pc $PREFIX/lib/pkgconfig/
 
@@ -107,7 +112,7 @@ if [ "$SANITIZER" != "memory" ]; then
     ninja -C _builddir install
     popd
 
-    pushd $SRC/glib-2.80.0
+    pushd $SRC/glib-2.88.3
     meson \
         --prefix=$PREFIX \
         --libdir=lib \
@@ -149,6 +154,16 @@ if [ "$SANITIZER" != "memory" ]; then
     popd
 fi
 
+pushd $SRC/harfbuzz
+meson \
+    --prefix=$PREFIX \
+    --libdir=lib \
+    --default-library=static \
+    _builddir
+ninja -C _builddir
+ninja -C _builddir install
+popd
+
 QT6_LDFLAGS=""
 if [[ $FUZZING_ENGINE == "afl" ]]; then
     QT6_LDFLAGS="-fuse-ld=lld"
@@ -171,6 +186,12 @@ else
     POPPLER_FONT_CONFIGURATION=generic
 fi
 
+if [ "$POPPLER_FONT_CONFIGURATION" = "fontconfig" ]; then
+    POPPLER_ENABLE_HARFBUZZ=ON
+else
+    POPPLER_ENABLE_HARFBUZZ=OFF
+fi
+
 mkdir -p $SRC/poppler/build
 pushd $SRC/poppler/build
 cmake .. \
@@ -178,7 +199,6 @@ cmake .. \
   -DBUILD_SHARED_LIBS=OFF \
   -DENABLE_FUZZER=OFF \
   -DFONT_CONFIGURATION=$POPPLER_FONT_CONFIGURATION \
-  -DENABLE_DCTDECODER=none \
   -DENABLE_GOBJECT_INTROSPECTION=OFF \
   -DENABLE_LIBPNG=OFF \
   -DENABLE_ZLIB=OFF \
@@ -190,6 +210,7 @@ cmake .. \
   -DENABLE_QT6=ON \
   -DENABLE_QT5=OFF \
   -DENABLE_UTILS=OFF \
+  -DENABLE_HARFBUZZ=$POPPLER_ENABLE_HARFBUZZ \
   -DWITH_Cairo=$POPPLER_ENABLE_GLIB \
   -DCMAKE_INSTALL_PREFIX=$PREFIX
 
@@ -200,14 +221,14 @@ if [ "$SANITIZER" != "memory" ]; then
 fi
 
 PREDEPS_LDFLAGS="-Wl,-Bdynamic -ldl -lm -lc -lz -pthread -lrt -lpthread"
-DEPS="freetype2 lcms2 libopenjp2"
+DEPS="freetype2 lcms2 libopenjp2 harfbuzz-subset"
 if [ "$SANITIZER" != "memory" ]; then
     DEPS="$DEPS fontconfig libpng"
 fi
 BUILD_CFLAGS="$CFLAGS `pkg-config --static --cflags $DEPS`"
 BUILD_LDFLAGS="-Wl,-static `pkg-config --static --libs $DEPS`"
 # static linking is hard ^_^
-NSS_STATIC_LIBS=`ls $SRC/nss-3.99/dist/Debug/lib/lib*.a`
+NSS_STATIC_LIBS=`ls $SRC/nss-3.130/dist/Debug/lib/lib*.a`
 NSS_STATIC_LIBS="$NSS_STATIC_LIBS $NSS_STATIC_LIBS $NSS_STATIC_LIBS"
 BUILD_LDFLAGS="$BUILD_LDFLAGS $NSS_STATIC_LIBS"
 
@@ -228,7 +249,7 @@ for f in $fuzzers; do
 done
 
 if [ "$SANITIZER" != "memory" ]; then
-    DEPS="gmodule-2.0 glib-2.0 gio-2.0 gobject-2.0 freetype2 lcms2 libopenjp2 cairo cairo-gobject pango fontconfig libpng"
+    DEPS="gmodule-2.0 glib-2.0 gio-2.0 gobject-2.0 freetype2 lcms2 libopenjp2 cairo cairo-gobject pango fontconfig libpng harfbuzz-subset"
     BUILD_CFLAGS="$CFLAGS `pkg-config --static --cflags $DEPS`"
     BUILD_LDFLAGS="-Wl,-static `pkg-config --static --libs $DEPS`"
     BUILD_LDFLAGS="$BUILD_LDFLAGS $NSS_STATIC_LIBS"
@@ -251,7 +272,7 @@ if [ "$SANITIZER" != "memory" ]; then
 fi
 
 PREDEPS_LDFLAGS="-Wl,-Bdynamic -ldl -lm -lc -lz -pthread -lrt -lpthread"
-DEPS="freetype2 lcms2 libopenjp2"
+DEPS="freetype2 lcms2 libopenjp2 harfbuzz-subset"
 if [ "$SANITIZER" != "memory" ]; then
     DEPS="$DEPS fontconfig"
 fi

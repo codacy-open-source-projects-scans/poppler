@@ -7,9 +7,10 @@
 // Pino Toscano <pino@kde.org> (c) 2008
 // Carlos Garcia Campos <carlosgc@gnome.org> (c) 2010
 // Tobias Koenig <tobias.koenig@kdab.com> (c) 2012
-// Albert Astals Cid <aacid@kde.org> (C) 2017, 2018, 2024, 2025
-// g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk> (C) 2025
+// Albert Astals Cid <aacid@kde.org> (C) 2017, 2018, 2024-2026
+// g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk> (C) 2025, 2026
 // 2025 Arnav V <arnav0872@gmail.com> (C) 2025
+// Stefan Brüns <stefan.bruens@rwth-aachen.de> (C) 2026
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -27,6 +28,7 @@
 //*********************************************************************************
 
 #include "Rendition.h"
+#include "Stream.h"
 
 MediaWindowParameters::MediaWindowParameters()
 {
@@ -192,10 +194,10 @@ void MediaParameters::parseMediaPlayParameters(const Dict &playDict)
     if (tmp.isDict()) {
         Object oname = tmp.dictLookup("S");
         if (oname.isName()) {
-            const char *name = oname.getName();
-            if (!strcmp(name, "F")) {
+            const std::string &name = oname.getNameString();
+            if (name == "F") {
                 duration = -1; // infinity
-            } else if (!strcmp(name, "T")) {
+            } else if (name == "T") {
                 Object ddict = tmp.dictLookup("T");
                 if (ddict.isDict()) {
                     Object tmp2 = ddict.dictLookup("V");
@@ -286,7 +288,7 @@ MediaRendition::MediaRendition(const Dict &dict)
         hasClip = true;
         Object tmp = tmp2.dictLookup("S");
         if (tmp.isName()) {
-            if (!strcmp(tmp.getName(), "MCD")) { // media clip data
+            if (tmp.getNameString() == "MCD") { // media clip data
                 Object obj1 = tmp2.dictLookup("D");
                 if (obj1.isDict()) {
                     Object obj2 = obj1.dictLookup("F");
@@ -313,7 +315,7 @@ MediaRendition::MediaRendition(const Dict &dict)
                 if (obj1.isString()) {
                     contentType = obj1.takeString();
                 }
-            } else if (!strcmp(tmp.getName(), "MCS")) { // media clip data
+            } else if (tmp.getNameString() == "MCS") { // media clip data
                 // TODO
             }
         } else {
@@ -332,11 +334,13 @@ MediaRendition::MediaRendition(const Dict &dict)
     if (tmp2.isDict()) { // media play parameters
         Object params = tmp2.dictLookup("MH");
         if (params.isDict()) {
-            MH.parseMediaPlayParameters(*params.getDict());
+            MH = MediaParameters {};
+            MH->parseMediaPlayParameters(*params.getDict());
         }
         params = tmp2.dictLookup("BE");
         if (params.isDict()) {
-            BE.parseMediaPlayParameters(*params.getDict());
+            BE = MediaParameters {};
+            BE->parseMediaPlayParameters(*params.getDict());
         }
     } else if (!hasClip) {
         error(errSyntaxError, -1, "Invalid Media Rendition");
@@ -349,11 +353,17 @@ MediaRendition::MediaRendition(const Dict &dict)
     if (tmp2.isDict()) { // media screen parameters
         Object params = tmp2.dictLookup("MH");
         if (params.isDict()) {
-            MH.parseMediaScreenParameters(*params.getDict());
+            if (!MH) {
+                MH = MediaParameters {};
+            }
+            MH->parseMediaScreenParameters(*params.getDict());
         }
         params = tmp2.dictLookup("BE");
         if (params.isDict()) {
-            BE.parseMediaScreenParameters(*params.getDict());
+            if (!BE) {
+                BE = MediaParameters {};
+            }
+            BE->parseMediaScreenParameters(*params.getDict());
         }
     }
 }
@@ -381,12 +391,13 @@ void MediaRendition::outputToFile(FILE *fp)
         return;
     }
 
-    if (!embeddedStreamObject.streamRewind()) {
+    Stream *embeddedStream = embeddedStreamObject.getStream();
+    if (!embeddedStream->rewind()) {
         return;
     }
 
     while (true) {
-        int c = embeddedStreamObject.streamGetChar();
+        int c = embeddedStream->getChar();
         if (c == EOF) {
             break;
         }

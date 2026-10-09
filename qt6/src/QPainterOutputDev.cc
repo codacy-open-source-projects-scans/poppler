@@ -96,7 +96,7 @@ QPainterOutputDevType3Font::QPainterOutputDevType3Font(PDFDoc *doc, const std::s
         codeToGID[i] = 0;
         if (charProcs && (name = enc[i])) {
             for (int j = 0; j < charProcs->getLength(); j++) {
-                if (strcmp(name, charProcs->getKey(j)) == 0) {
+                if (charProcs->getKey(j) == name) {
                     codeToGID[i] = j;
                 }
             }
@@ -122,7 +122,7 @@ const QPicture &QPainterOutputDevType3Font::getGlyph(int gid) const
         auto output_dev = std::make_unique<QPainterOutputDev>(&glyphPainter);
 
         auto gfx = std::make_unique<Gfx>(m_doc, output_dev.get(), resDict,
-                                         &box, // pagebox
+                                         box, // pagebox
                                          nullptr // cropBox
         );
 
@@ -153,11 +153,6 @@ QPainterOutputDev::QPainterOutputDev(QPainter *painter)
     if (error) {
         qCritical() << "An error occurred will initializing the FreeType library";
     }
-
-    // as of FT 2.1.8, CID fonts are indexed by CID instead of GID
-    FT_Int major, minor, patch;
-    FT_Library_Version(m_ftLibrary, &major, &minor, &patch);
-    m_useCIDs = major > 2 || (major == 2 && (minor > 1 || (minor == 1 && patch > 7)));
 }
 
 QPainterOutputDev::~QPainterOutputDev()
@@ -591,13 +586,6 @@ void QPainterOutputDev::updateFont(GfxState *state)
         case fontCIDType0C: {
             std::vector<int> cidToGIDMap;
 
-            // check for a CFF font
-            if (!m_useCIDs) {
-                auto ff = (fontLoc->locType != gfxFontLocEmbedded) ? std::unique_ptr<FoFiType1C>(FoFiType1C::load(fontLoc->path.c_str())) : std::unique_ptr<FoFiType1C>(FoFiType1C::make(std::span(fontBuffer)));
-
-                cidToGIDMap = ff ? ff->getCIDToGIDMap() : std::vector<int> {};
-            }
-
             m_codeToGIDCache[id] = std::move(cidToGIDMap);
 
             break;
@@ -611,14 +599,6 @@ void QPainterOutputDev::updateFont(GfxState *state)
             }
 
             std::vector<int> cidToGIDMap;
-
-            if (codeToGID.empty() && !m_useCIDs) {
-                auto ff = (fontLoc->locType != gfxFontLocEmbedded) ? FoFiTrueType::load(fontLoc->path.c_str(), fontLoc->fontNum) : FoFiTrueType::make(std::span(fontBuffer), fontLoc->fontNum);
-
-                if (ff && ff->isOpenTypeCFF()) {
-                    cidToGIDMap = ff->getCIDToGIDMap();
-                }
-            }
 
             m_codeToGIDCache[id] = !codeToGID.empty() ? codeToGID : cidToGIDMap;
 
@@ -755,7 +735,7 @@ bool QPainterOutputDev::axialShadedFill(GfxState *state, GfxAxialShading *shadin
     QLinearGradient gradient(QPointF(x0 + tMin * (x1 - x0), y0 + tMin * (y1 - y0)), QPointF(x0 + tMax * (x1 - x0), y0 + tMax * (y1 - y0)));
 
     GfxRGB rgb;
-    shading->getColorSpace()->getRGB(&color0, &rgb);
+    shading->getColorSpace()->getRGB(color0, &rgb);
     QColor qColor(colToByte(rgb.r), colToByte(rgb.g), colToByte(rgb.b), dblToByte(opacity));
     gradient.setColorAt(0, qColor);
 
@@ -797,7 +777,7 @@ bool QPainterOutputDev::axialShadedFill(GfxState *state, GfxAxialShading *shadin
         }
 
         // set the color
-        shading->getColorSpace()->getRGB(&color1, &rgb);
+        shading->getColorSpace()->getRGB(color1, &rgb);
         qColor.setRgb(colToByte(rgb.r), colToByte(rgb.g), colToByte(rgb.b), dblToByte(opacity));
         gradient.setColorAt((ta[j] - tMin) / (tMax - tMin), qColor);
 

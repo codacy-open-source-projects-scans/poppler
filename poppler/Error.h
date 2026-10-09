@@ -20,6 +20,7 @@
 // Copyright (C) 2014 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2020 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2026 Sune Stolborg Vuorela <sune@vuorela.dk>, work sponsored by the Direction Interministérielle du Numérique
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -81,6 +82,12 @@ struct ErrorString
     ErrorString                                                                                                                                                                                                                                \
     {                                                                                                                                                                                                                                          \
         std::string { POPPLER_FUNCTION_INFO } + ":" + std::to_string(__LINE__), ErrorStringType::ErrorCodeString                                                                                                                               \
+    }
+
+#define ERROR_IN_CODE_LOCATION_WITH_CODE(code)                                                                                                                                                                                                 \
+    ErrorString                                                                                                                                                                                                                                \
+    {                                                                                                                                                                                                                                          \
+        std::string { POPPLER_FUNCTION_INFO } + ":" + std::to_string(__LINE__) + ":" + std::to_string(code), ErrorStringType::ErrorCodeString                                                                                                  \
     }
 
 #endif

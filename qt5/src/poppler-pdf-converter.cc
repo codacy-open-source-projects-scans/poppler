@@ -9,6 +9,7 @@
  * Copyright (C) 2022, Martin <martinbts@gmx.net>
  * Copyright (C) 2022, Felix Jung <fxjung@posteo.de>
  * Copyright (C) 2024-2026, g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+ * Copyright (C) 2026 Sune Stolborg Vuorela <sune@vuorela.dk>, work sponsored by the Direction Interministérielle du Numérique
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,6 +26,7 @@
  * Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
+#include "CryptoSignBackend.h"
 #include "poppler-qt5.h"
 
 #include "poppler-annotation-helper.h"
@@ -140,9 +142,12 @@ bool PDFConverter::sign(const NewSignatureData &data)
     const auto location = std::unique_ptr<GooString>(data.location().isEmpty() ? nullptr : QStringToUnicodeGooString(data.location()));
     const auto ownerPwd = std::optional<GooString>(data.documentOwnerPassword().constData());
     const auto userPwd = std::optional<GooString>(data.documentUserPassword().constData());
-    auto failure = doc->sign(d->outputFileName.toUtf8().constData(), data.certNickname().toUtf8().constData(), data.password().toUtf8().constData(), QStringToGooString(data.fieldPartialName()), data.page() + 1,
-                             boundaryToPdfRectangle(destPage, data.boundingRectangle(), Annotation::FixedRotation), *gSignatureText, *gSignatureLeftText, data.fontSize(), data.leftFontSize(), convertQColor(data.fontColor()),
-                             data.borderWidth(), convertQColor(data.borderColor()), convertQColor(data.backgroundColor()), reason.get(), location.get(), data.imagePath().toStdString(), ownerPwd, userPwd);
+    CryptoSign::SigningOperationData signingData;
+    signingData.nickName = data.certNickname().toStdString();
+    signingData.possiblePassword = data.password().toStdString();
+    auto failure = doc->sign(d->outputFileName.toStdString(), signingData, QStringToGooString(data.fieldPartialName()), data.page() + 1, boundaryToPdfRectangle(destPage, data.boundingRectangle(), Annotation::FixedRotation), *gSignatureText,
+                             *gSignatureLeftText, data.fontSize(), data.leftFontSize(), convertQColor(data.fontColor()), data.borderWidth(), convertQColor(data.borderColor()), convertQColor(data.backgroundColor()), reason.get(),
+                             location.get(), data.imagePath().toStdString(), ownerPwd, userPwd);
     if (failure) {
         d->lastSigningErrorDetails = fromPopplerCore(failure.value().message);
         d->lastSigningResult = GenericSigningError; // catch all
@@ -164,8 +169,10 @@ bool PDFConverter::sign(const NewSignatureData &data)
             d->lastSigningResult = WriteFailed;
             break;
         case CryptoSign::SigningError::BadPassphrase:
-
             d->lastSigningResult = BadPassphrase;
+            break;
+        case CryptoSign::SigningError::UnsupportedSignatureType:
+            d->lastSigningResult = UnsupportedSignatureType;
             break;
         }
         return false;

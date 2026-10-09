@@ -33,6 +33,7 @@
  * Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
  * Copyright (C) 2025, g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  * Copyright (C) 2025 Stefan Brüns <stefan.bruens@rwth-aachen.de>
+ * Copyright (C) 2026 Sune Stolborg Vuorela <sune@vuorela.dk>, work sponsored by the Direction Interministérielle du Numérique
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -2429,6 +2430,7 @@ public:
         WriteFailed, ///< Write failed (permissions, faulty disk, ...)
         UserCancelled, ///< User cancelled the process
         BadPassphrase, ///< User entered bad passphrase
+        UnsupportedSignatureType, ///< User asked for a signature type that the current backend/key combo can't deliver
     };
 
     /**
@@ -2513,7 +2515,7 @@ public:
     };
 
     /// \cond PRIVATE
-    explicit SoundObject(Sound *popplersound);
+    explicit SoundObject(const Sound *popplersound);
     /// \endcond
 
     ~SoundObject();

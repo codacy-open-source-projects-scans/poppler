@@ -16,7 +16,7 @@
 // Copyright (C) 2006, 2008 Pino Toscano <pino@kde.org>
 // Copyright (C) 2007, 2010, 2011 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2008 Hugo Mercier <hmercier31@gmail.com>
-// Copyright (C) 2008-2010, 2012-2014, 2016-2025 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2008-2010, 2012-2014, 2016-2026 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2009 Kovid Goyal <kovid@kovidgoyal.net>
 // Copyright (C) 2009 Ilya Gorenbein <igorenbein@finjan.com>
 // Copyright (C) 2012 Tobias Koening <tobias.koenig@kdab.com>
@@ -27,6 +27,8 @@
 // Copyright (C) 2020 Marek Kasik <mkasik@redhat.com>
 // Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
 // Copyright (C) 2025, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2026 Aditya Tiwari <adityatiwari342005@gmail.com>
+// Copyright (C) 2026 Stefan Brüns <stefan.bruens@rwth-aachen.de>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -48,6 +50,7 @@
 #include "FileSpec.h"
 #include "Rendition.h"
 #include "Annot.h"
+#include "Stream.h"
 
 //------------------------------------------------------------------------
 // LinkAction
@@ -68,10 +71,12 @@ std::unique_ptr<LinkAction> LinkAction::parseDest(const Object *obj)
 std::unique_ptr<LinkAction> LinkAction::parseAction(const Object *obj, const std::optional<std::string> &baseURI)
 {
     std::set<int> seenNextActions;
-    return parseAction(obj, baseURI, &seenNextActions);
+    return parseAction(obj, baseURI, &seenNextActions, 0);
 }
 
-std::unique_ptr<LinkAction> LinkAction::parseAction(const Object *obj, const std::optional<std::string> &baseURI, std::set<int> *seenNextActions)
+static constexpr int MAX_ACTION_DEPTH = 50;
+
+std::unique_ptr<LinkAction> LinkAction::parseAction(const Object *obj, const std::optional<std::string> &baseURI, std::set<int> *seenNextActions, int depth)
 {
 
     if (!obj->isDict()) {
@@ -159,6 +164,11 @@ std::unique_ptr<LinkAction> LinkAction::parseAction(const Object *obj, const std
         return nullptr;
     }
 
+    if (depth >= MAX_ACTION_DEPTH) {
+        error(errSyntaxWarning, -1, "parseAction: Next action chain too deep, stopping.");
+        return action;
+    }
+
     // parse the next actions
     const Object nextObj = obj->dictLookup("Next");
     std::vector<std::unique_ptr<LinkAction>> actionList;
@@ -176,7 +186,7 @@ std::unique_ptr<LinkAction> LinkAction::parseAction(const Object *obj, const std
         }
 
         actionList.reserve(1);
-        actionList.push_back(parseAction(&nextObj, {}, seenNextActions));
+        actionList.push_back(parseAction(&nextObj, {}, seenNextActions, depth + 1));
     } else if (nextObj.isArray()) {
         const Array *a = nextObj.getArray();
         const int n = a->getLength();
@@ -198,7 +208,7 @@ std::unique_ptr<LinkAction> LinkAction::parseAction(const Object *obj, const std
                 }
             }
 
-            actionList.push_back(parseAction(&obj3, {}, seenNextActions));
+            actionList.push_back(parseAction(&obj3, {}, seenNextActions, depth + 1));
         }
     }
 
@@ -599,15 +609,15 @@ LinkMovie::LinkMovie(const Object *obj)
 
     tmp = obj->dictLookup("Operation");
     if (tmp.isName()) {
-        const char *name = tmp.getName();
+        const std::string &name = tmp.getNameString();
 
-        if (!strcmp(name, "Play")) {
+        if (name == "Play") {
             operation = operationTypePlay;
-        } else if (!strcmp(name, "Stop")) {
+        } else if (name == "Stop") {
             operation = operationTypeStop;
-        } else if (!strcmp(name, "Pause")) {
+        } else if (name == "Pause") {
             operation = operationTypePause;
-        } else if (!strcmp(name, "Resume")) {
+        } else if (name == "Resume") {
             operation = operationTypeResume;
         }
     }
@@ -662,7 +672,6 @@ LinkSound::~LinkSound() = default;
 LinkRendition::LinkRendition(const Object *obj)
 {
     operation = NoRendition;
-    media = nullptr;
     int operationCode = -1;
 
     screenRef = Ref::INVALID();
@@ -689,7 +698,7 @@ LinkRendition::LinkRendition(const Object *obj)
                 // retrieve rendition object
                 Object renditionObj = obj->dictLookup("R");
                 if (renditionObj.isDict()) {
-                    media = new MediaRendition(*renditionObj.getDict());
+                    media = std::make_unique<MediaRendition>(*renditionObj.getDict());
                 } else if (operationCode == 0 || operationCode == 4) {
                     error(errSyntaxWarning, -1, "Invalid Rendition Action: no R field with op = {0:d}", operationCode);
                     renditionObj.setToNull();
@@ -726,10 +735,7 @@ LinkRendition::LinkRendition(const Object *obj)
     }
 }
 
-LinkRendition::~LinkRendition()
-{
-    delete media;
-}
+LinkRendition::~LinkRendition() = default;
 
 //------------------------------------------------------------------------
 // LinkJavaScript
@@ -754,8 +760,8 @@ LinkJavaScript::~LinkJavaScript() = default;
 Object LinkJavaScript::createObject(XRef *xref, const std::string &js)
 {
     auto linkDict = std::make_unique<Dict>(xref);
-    linkDict->add("S", Object(objName, "JavaScript"));
-    linkDict->add("JS", Object(std::make_unique<GooString>(js)));
+    linkDict->add("S", Object::name("JavaScript"));
+    linkDict->add("JS", Object(std::string { js }));
 
     return Object(std::move(linkDict));
 }
@@ -767,24 +773,27 @@ LinkOCGState::LinkOCGState(const Object *obj)
 {
     Object obj1 = obj->dictLookup("State");
     if (obj1.isArray()) {
+        Array *stateArray = obj1.getArray();
         StateList stList;
 
-        for (int i = 0; i < obj1.arrayGetLength(); ++i) {
-            const Object &obj2 = obj1.arrayGetNF(i);
+        for (int i = 0; i < stateArray->getLength(); ++i) {
+            const Object &obj2 = stateArray->getNF(i);
             if (obj2.isName()) {
                 if (!stList.list.empty()) {
                     stateList.push_back(stList);
                 }
 
                 stList.list.clear();
-                if (obj2.isName("ON")) {
+
+                const std::string &name = obj2.getNameString();
+                if (name == "ON") {
                     stList.st = On;
-                } else if (obj2.isName("OFF")) {
+                } else if (name == "OFF") {
                     stList.st = Off;
-                } else if (obj2.isName("Toggle")) {
+                } else if (name == "Toggle") {
                     stList.st = Toggle;
                 } else {
-                    error(errSyntaxWarning, -1, "Invalid name '{0:s}' in OCG Action state array", obj2.getName());
+                    error(errSyntaxWarning, -1, "Invalid name '{0:r}' in OCG Action state array", &name);
                     isValid = false;
                 }
             } else if (obj2.isRef()) {
@@ -844,9 +853,10 @@ LinkResetForm::LinkResetForm(const Object *obj)
 
     obj1 = obj->dictLookup("Fields");
     if (obj1.isArray()) {
-        fields.resize(obj1.arrayGetLength());
-        for (int i = 0; i < obj1.arrayGetLength(); ++i) {
-            const Object &obj2 = obj1.arrayGetNF(i);
+        Array *fieldsArray = obj1.getArray();
+        fields.resize(fieldsArray->getLength());
+        for (int i = 0; i < fieldsArray->getLength(); ++i) {
+            const Object &obj2 = fieldsArray->getNF(i);
             if (obj2.isName()) {
                 fields[i] = obj2.getNameString();
             } else if (obj2.isString()) {
@@ -886,9 +896,10 @@ LinkSubmitForm::LinkSubmitForm(const Object *obj)
 
     const Object objFields = obj->dictLookup("Fields");
     if (objFields.isArray()) {
-        fields.resize(objFields.arrayGetLength());
-        for (int i = 0; i < objFields.arrayGetLength(); ++i) {
-            const Object &objNF = objFields.arrayGetNF(i);
+        Array *fieldsArray = objFields.getArray();
+        fields.resize(fieldsArray->getLength());
+        for (int i = 0; i < fieldsArray->getLength(); ++i) {
+            const Object &objNF = fieldsArray->getNF(i);
             if (objNF.isName()) {
                 fields[i] = objNF.getNameString();
             } else if (objNF.isString()) {

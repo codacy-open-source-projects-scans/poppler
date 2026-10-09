@@ -142,7 +142,7 @@ double page::duration() const
  */
 rectf page::page_rect(page_box_enum box) const
 {
-    const PDFRectangle *r = nullptr;
+    std::optional<PDFRectangle> r;
     switch (box) {
     case media_box:
         r = d->page->getMediaBox();
@@ -171,12 +171,12 @@ rectf page::page_rect(page_box_enum box) const
  */
 ustring page::label() const
 {
-    GooString goo;
-    if (!d->doc->doc->getCatalog()->indexToLabel(d->index, &goo)) {
+    std::string label;
+    if (!d->doc->doc->getCatalog()->indexToLabel(d->index, &label)) {
         return ustring();
     }
 
-    return detail::unicode_GooString_to_ustring(&goo);
+    return detail::unicode_string_to_ustring(label);
 }
 
 /**

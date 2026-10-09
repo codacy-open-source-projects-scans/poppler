@@ -5,12 +5,13 @@
  * Copyright (C) 2018, 2019, 2021, 2022 Marek Kasik <mkasik@redhat.com>
  * Copyright (C) 2019 Masamichi Hosoda <trueroad@trueroad.jp>
  * Copyright (C) 2019, 2021, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
- * Copyright (C) 2020, 2022, 2025 Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2020, 2022, 2025, 2026 Albert Astals Cid <aacid@kde.org>
  * Copyright (C) 2021 André Guerreiro <aguerreiro1985@gmail.com>
  * Copyright (C) 2024-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  * Copyright (C) 2025 Marco Trevisan <mail@3v1n0.net>
  * Copyright (C) 2025 lbaudin <lbaudin@gnome.org>
  * Copyright (C) 2026 Adam Sampson <ats@offog.org>
+ * Copyright (C) 2026 Sune Stolborg Vuorela <sune@vuorela.dk>, work sponsored by the Direction Interministérielle du Numérique
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,6 +28,7 @@
  * Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
+#include "CryptoSignBackend.h"
 #include "config.h"
 #include <cstring>
 
@@ -268,7 +270,7 @@ PopplerDocument *poppler_document_new_from_data(char *data, int length, const ch
     if (!newDoc->isOk() && newDoc->getErrorCode() == errEncrypted && password) {
         /* Try again with original password (which comes from GTK in UTF8) Issue #824 */
         str = std::make_unique<MemStream>(data, 0, length, Object::null());
-        newDoc = std::make_unique<PDFDoc>(std::move(str), password ? std::optional<GooString>(password) : std::nullopt, password ? std::optional<GooString>(password) : std::nullopt);
+        newDoc = std::make_unique<PDFDoc>(std::move(str), std::optional<GooString>(password), std::optional<GooString>(password));
     }
 
     return _poppler_document_new_from_pdfdoc(std::move(initer), std::move(newDoc), error);
@@ -329,7 +331,7 @@ PopplerDocument *poppler_document_new_from_bytes(GBytes *bytes, const char *pass
     if (!newDoc->isOk() && newDoc->getErrorCode() == errEncrypted && password) {
         /* Try again with original password (which comes from GTK in UTF8) Issue #824 */
         str = std::make_unique<BytesStream>(bytes, Object::null());
-        newDoc = std::make_unique<PDFDoc>(std::move(str), password ? std::optional<GooString>(password) : std::nullopt, password ? std::optional<GooString>(password) : std::nullopt);
+        newDoc = std::make_unique<PDFDoc>(std::move(str), std::optional<GooString>(password), std::optional<GooString>(password));
     }
 
     return _poppler_document_new_from_pdfdoc(std::move(initer), std::move(newDoc), error);
@@ -390,7 +392,7 @@ PopplerDocument *poppler_document_new_from_stream(GInputStream *stream, goffset 
     auto newDoc = std::make_unique<PDFDoc>(std::move(str), password_g, password_g);
     if (!newDoc->isOk() && newDoc->getErrorCode() == errEncrypted && password) {
         /* Try again with original password (which comes from GTK in UTF8) Issue #824 */
-        newDoc = std::make_unique<PDFDoc>(newDoc->getBaseStream()->copy(), password ? std::optional<GooString>(password) : std::nullopt, password ? std::optional<GooString>(password) : std::nullopt);
+        newDoc = std::make_unique<PDFDoc>(newDoc->getBaseStream()->copy(), std::optional<GooString>(password), std::optional<GooString>(password));
     }
 
     return _poppler_document_new_from_pdfdoc(std::move(initer), std::move(newDoc), error);
@@ -511,7 +513,7 @@ PopplerDocument *poppler_document_new_from_fd(int fd, const char *password, GErr
     auto newDoc = std::make_unique<PDFDoc>(std::move(stream), password_g, password_g);
     if (!newDoc->isOk() && newDoc->getErrorCode() == errEncrypted && password) {
         /* Try again with original password (which comes from GTK in UTF8) Issue #824 */
-        newDoc = std::make_unique<PDFDoc>(newDoc->getBaseStream()->copy(), password ? std::optional<GooString>(password) : std::nullopt, password ? std::optional<GooString>(password) : std::nullopt);
+        newDoc = std::make_unique<PDFDoc>(newDoc->getBaseStream()->copy(), std::optional<GooString>(password), std::optional<GooString>(password));
     }
 
     return _poppler_document_new_from_pdfdoc(std::move(initer), std::move(newDoc), error);
@@ -782,7 +784,7 @@ PopplerPage *poppler_document_get_page_by_label(PopplerDocument *document, const
     int index;
 
     catalog = document->doc->getCatalog();
-    if (!catalog->labelToIndex(label_g, &index)) {
+    if (!catalog->labelToIndex(label_g.toStr(), &index)) {
         return nullptr;
     }
 
@@ -1306,8 +1308,8 @@ gchar *poppler_document_get_title(PopplerDocument *document)
 {
     g_return_val_if_fail(POPPLER_IS_DOCUMENT(document), NULL);
 
-    const std::unique_ptr<GooString> goo_title = document->doc->getDocInfoTitle();
-    return goo_title ? _poppler_goo_string_to_utf8(goo_title->toStr()) : nullptr;
+    const std::optional<std::string> goo_title = document->doc->getDocInfoTitle();
+    return goo_title ? _poppler_goo_string_to_utf8(goo_title.value()) : nullptr;
 }
 
 /**
@@ -1349,8 +1351,8 @@ gchar *poppler_document_get_author(PopplerDocument *document)
 {
     g_return_val_if_fail(POPPLER_IS_DOCUMENT(document), NULL);
 
-    const std::unique_ptr<GooString> goo_author = document->doc->getDocInfoAuthor();
-    return goo_author ? _poppler_goo_string_to_utf8(goo_author->toStr()) : nullptr;
+    const std::optional<std::string> goo_author = document->doc->getDocInfoAuthor();
+    return goo_author ? _poppler_goo_string_to_utf8(goo_author.value()) : nullptr;
 }
 
 /**
@@ -1392,8 +1394,8 @@ gchar *poppler_document_get_subject(PopplerDocument *document)
 {
     g_return_val_if_fail(POPPLER_IS_DOCUMENT(document), NULL);
 
-    const std::unique_ptr<GooString> goo_subject = document->doc->getDocInfoSubject();
-    return goo_subject ? _poppler_goo_string_to_utf8(goo_subject->toStr()) : nullptr;
+    const std::optional<std::string> goo_subject = document->doc->getDocInfoSubject();
+    return goo_subject ? _poppler_goo_string_to_utf8(goo_subject.value()) : nullptr;
 }
 
 /**
@@ -1435,8 +1437,8 @@ gchar *poppler_document_get_keywords(PopplerDocument *document)
 {
     g_return_val_if_fail(POPPLER_IS_DOCUMENT(document), NULL);
 
-    const std::unique_ptr<GooString> goo_keywords = document->doc->getDocInfoKeywords();
-    return goo_keywords ? _poppler_goo_string_to_utf8(goo_keywords->toStr()) : nullptr;
+    const std::optional<std::string> goo_keywords = document->doc->getDocInfoKeywords();
+    return goo_keywords ? _poppler_goo_string_to_utf8(goo_keywords.value()) : nullptr;
 }
 
 /**
@@ -1480,8 +1482,8 @@ gchar *poppler_document_get_creator(PopplerDocument *document)
 {
     g_return_val_if_fail(POPPLER_IS_DOCUMENT(document), NULL);
 
-    const std::unique_ptr<GooString> goo_creator = document->doc->getDocInfoCreator();
-    return goo_creator ? _poppler_goo_string_to_utf8(goo_creator->toStr()) : nullptr;
+    const std::optional<std::string> goo_creator = document->doc->getDocInfoCreator();
+    return goo_creator ? _poppler_goo_string_to_utf8(goo_creator.value()) : nullptr;
 }
 
 /**
@@ -1525,8 +1527,8 @@ gchar *poppler_document_get_producer(PopplerDocument *document)
 {
     g_return_val_if_fail(POPPLER_IS_DOCUMENT(document), NULL);
 
-    const std::unique_ptr<GooString> goo_producer = document->doc->getDocInfoProducer();
-    return goo_producer ? _poppler_goo_string_to_utf8(goo_producer->toStr()) : nullptr;
+    const std::optional<std::string> goo_producer = document->doc->getDocInfoProducer();
+    return goo_producer ? _poppler_goo_string_to_utf8(goo_producer.value()) : nullptr;
 }
 
 /**
@@ -1567,13 +1569,13 @@ time_t poppler_document_get_creation_date(PopplerDocument *document)
 {
     g_return_val_if_fail(POPPLER_IS_DOCUMENT(document), (time_t)-1);
 
-    const std::unique_ptr<GooString> str = document->doc->getDocInfoCreatDate();
+    const std::optional<std::string> str = document->doc->getDocInfoCreatDate();
     if (!str) {
         return static_cast<time_t>(-1);
     }
 
     time_t date;
-    gboolean success = _poppler_convert_pdf_date_to_gtime(str->toStr(), &date);
+    gboolean success = _poppler_convert_pdf_date_to_gtime(str.value(), &date);
 
     return success ? date : static_cast<time_t>(-1);
 }
@@ -1610,13 +1612,13 @@ GDateTime *poppler_document_get_creation_date_time(PopplerDocument *document)
 {
     g_return_val_if_fail(POPPLER_IS_DOCUMENT(document), nullptr);
 
-    std::unique_ptr<GooString> str { document->doc->getDocInfoCreatDate() };
+    std::optional<std::string> str { document->doc->getDocInfoCreatDate() };
 
     if (!str) {
         return nullptr;
     }
 
-    return _poppler_convert_pdf_date_to_date_time(str->toStr());
+    return _poppler_convert_pdf_date_to_date_time(str.value());
 }
 
 /**
@@ -1656,13 +1658,13 @@ time_t poppler_document_get_modification_date(PopplerDocument *document)
 {
     g_return_val_if_fail(POPPLER_IS_DOCUMENT(document), (time_t)-1);
 
-    const std::unique_ptr<GooString> str = document->doc->getDocInfoModDate();
+    const std::optional<std::string> str = document->doc->getDocInfoModDate();
     if (!str) {
         return static_cast<time_t>(-1);
     }
 
     time_t date;
-    gboolean success = _poppler_convert_pdf_date_to_gtime(str->toStr(), &date);
+    gboolean success = _poppler_convert_pdf_date_to_gtime(str.value(), &date);
 
     return success ? date : static_cast<time_t>(-1);
 }
@@ -1699,13 +1701,13 @@ GDateTime *poppler_document_get_modification_date_time(PopplerDocument *document
 {
     g_return_val_if_fail(POPPLER_IS_DOCUMENT(document), nullptr);
 
-    std::unique_ptr<GooString> str { document->doc->getDocInfoModDate() };
+    std::optional<std::string> str { document->doc->getDocInfoModDate() };
 
     if (!str) {
         return nullptr;
     }
 
-    return _poppler_convert_pdf_date_to_date_time(str->toStr());
+    return _poppler_convert_pdf_date_to_date_time(str.value());
 }
 
 /**
@@ -2065,7 +2067,7 @@ gchar *poppler_document_get_pdf_subtype_string(PopplerDocument *document)
 {
     g_return_val_if_fail(POPPLER_IS_DOCUMENT(document), NULL);
 
-    std::unique_ptr<GooString> infostring;
+    std::optional<std::string> infostring;
 
     switch (document->doc->getPDFSubtype()) {
     case subtypePDFA:
@@ -2090,7 +2092,7 @@ gchar *poppler_document_get_pdf_subtype_string(PopplerDocument *document)
     }
     }
 
-    return infostring ? _poppler_goo_string_to_utf8(infostring->toStr()) : nullptr;
+    return infostring ? _poppler_goo_string_to_utf8(infostring.value()) : nullptr;
 }
 
 /**
@@ -2165,7 +2167,7 @@ gchar *poppler_document_get_metadata(PopplerDocument *document)
 
     catalog = document->doc->getCatalog();
     if (catalog && catalog->isOk()) {
-        std::unique_ptr<GooString> s = catalog->readMetadata();
+        std::optional<std::string> s = catalog->readMetadata();
 
         if (s) {
             retval = g_strdup(s->c_str());
@@ -3878,13 +3880,15 @@ static void _poppler_sign_document_thread(GTask *task, PopplerDocument *document
     const auto location = std::unique_ptr<GooString>(poppler_signing_data_get_location(signing_data) ? new GooString(poppler_signing_data_get_location(signing_data), strlen(poppler_signing_data_get_location(signing_data))) : nullptr);
     const PopplerRectangle *rect = poppler_signing_data_get_signature_rectangle(signing_data);
 
+    CryptoSign::SigningOperationData signingData;
+    signingData.nickName = poppler_certificate_info_get_id(const_cast<PopplerCertificateInfo *>(certificate_info));
+    signingData.possiblePassword = poppler_signing_data_get_password(signing_data) ? poppler_signing_data_get_password(signing_data) : "",
+
     ret = !document->doc
-                   ->sign(signing_data_destination_filename, poppler_certificate_info_get_id(const_cast<PopplerCertificateInfo *>(certificate_info)),
-                          poppler_signing_data_get_password(signing_data) ? poppler_signing_data_get_password(signing_data) : "", std::move(field_partial_name), poppler_signing_data_get_page(signing_data) + 1,
-                          PDFRectangle(rect->x1, rect->y1, rect->x2, rect->y2), signature_text, signature_text_left, poppler_signing_data_get_font_size(signing_data), poppler_signing_data_get_left_font_size(signing_data),
-                          _poppler_convert_poppler_color_to_annot_color(font_color), poppler_signing_data_get_border_width(signing_data), _poppler_convert_poppler_color_to_annot_color(border_color),
-                          _poppler_convert_poppler_color_to_annot_color(background_color), reason.get(), location.get(), poppler_signing_data_get_image_path(signing_data) ? poppler_signing_data_get_image_path(signing_data) : "", owner_pwd,
-                          user_pwd)
+                   ->sign(signing_data_destination_filename, signingData, std::move(field_partial_name), poppler_signing_data_get_page(signing_data) + 1, PDFRectangle(rect->x1, rect->y1, rect->x2, rect->y2), signature_text,
+                          signature_text_left, poppler_signing_data_get_font_size(signing_data), poppler_signing_data_get_left_font_size(signing_data), _poppler_convert_poppler_color_to_annot_color(font_color),
+                          poppler_signing_data_get_border_width(signing_data), _poppler_convert_poppler_color_to_annot_color(border_color), _poppler_convert_poppler_color_to_annot_color(background_color), reason.get(), location.get(),
+                          poppler_signing_data_get_image_path(signing_data) ? poppler_signing_data_get_image_path(signing_data) : "", owner_pwd, user_pwd)
                    .has_value();
 
     g_task_return_boolean(task, ret);

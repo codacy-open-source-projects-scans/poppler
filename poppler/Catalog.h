@@ -14,7 +14,7 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2005 Kristian Høgsberg <krh@redhat.com>
-// Copyright (C) 2005, 2007, 2009-2011, 2013, 2017-2025 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005, 2007, 2009-2011, 2013, 2017-2026 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2005 Jonathan Blandford <jrb@redhat.com>
 // Copyright (C) 2005, 2006, 2008 Brad Hards <bradh@frogmouth.net>
 // Copyright (C) 2007 Julien Rebetez <julienr@svn.gnome.org>
@@ -32,7 +32,7 @@
 // Copyright (C) 2020 Katarina Behrens <Katarina.Behrens@cib.de>
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
 // Copyright (C) 2021 RM <rm+git@arcsin.org>
-// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2024 Hubert Figuière <hub@figuiere.net>
 // Copyright (C) 2025 Trystan Mata <trystan.mata@tytanium.xyz>
 //
@@ -134,9 +134,9 @@ public:
     // Return base URI, or NULL if none.
     const std::optional<std::string> &getBaseURI() const { return baseURI; }
 
-    // Return the contents of the metadata stream, or NULL if there is
+    // Return the contents of the metadata stream, or nullopt if there is
     // no metadata.
-    std::unique_ptr<GooString> readMetadata();
+    std::optional<std::string> readMetadata();
 
     // Return the structure tree root object.
     StructTreeRoot *getStructTreeRoot();
@@ -201,8 +201,8 @@ public:
     std::string getJS(int i);
 
     // Convert between page indices and page labels.
-    bool labelToIndex(const GooString &label, int *index);
-    bool indexToLabel(int index, GooString *label);
+    bool labelToIndex(const std::string &label, int *index);
+    bool indexToLabel(int index, std::string *label);
 
     Object *getOutline();
     // returns the existing outline or new one if it doesn't exist

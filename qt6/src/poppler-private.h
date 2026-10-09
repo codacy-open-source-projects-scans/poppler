@@ -1,7 +1,7 @@
 /* poppler-private.h: qt interface to poppler
  * Copyright (C) 2005, Net Integration Technologies, Inc.
  * Copyright (C) 2005, 2008, Brad Hards <bradh@frogmouth.net>
- * Copyright (C) 2006-2009, 2011, 2012, 2017-2022, 2024, 2025 by Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2006-2009, 2011, 2012, 2017-2022, 2024-2026 by Albert Astals Cid <aacid@kde.org>
  * Copyright (C) 2007-2009, 2011, 2014 by Pino Toscano <pino@kde.org>
  * Copyright (C) 2011 Andreas Hartmetz <ahartmetz@gmail.com>
  * Copyright (C) 2011 Hib Eris <hib@hiberis.nl>
@@ -22,6 +22,7 @@
  * Copyright (C) 2021 Hubert Figuiere <hub@figuiere.net>
  * Copyright (C) 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
  * Copyright (C) 2024-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+ * Copyright (C) 2026 Sune Stolborg Vuorela <sune@vuorela.dk>, work sponsored by the Direction Interministérielle du Numérique
  * Inspired on code by
  * Copyright (C) 2004 by Albert Astals Cid <tsdgeos@terra.es>
  * Copyright (C) 2004 by Enrico Ros <eros.kde@email.it>
@@ -52,16 +53,18 @@
 #include <functional>
 #include <config.h>
 #include <poppler-config.h>
+#include <Annot.h>
 #include <GfxState.h>
 #include <GlobalParams.h>
 #include <FileSpec.h>
-#include <Form.h>
 #include <PDFDoc.h>
 #include <FontInfo.h>
 #include <OutputDev.h>
 #include <Error.h>
 #include <SplashOutputDev.h>
 
+#include "CertificateInfo.h"
+#include "poppler-converter.h"
 #include "poppler-qt6.h"
 #include "poppler-embeddedfile-private.h"
 #include "poppler-qiodeviceinstream-private.h"
@@ -267,6 +270,45 @@ inline Poppler::ErrorString fromPopplerCore(const ::ErrorString &str)
     res.type = fromPopplerCore(str.type);
     res.data = QString::fromStdString(str.text);
     return res;
+}
+
+inline Poppler::SMimeSignatureType fromPopplerCore(CryptoSign::SMimeSignatureType type)
+{
+    switch (type) {
+    case CryptoSign::SMimeSignatureType::none:
+        return SMimeSignatureType::none;
+    case CryptoSign::SMimeSignatureType::adbe_pkcs7_detached:
+        return SMimeSignatureType::adbe_pkcs7_detached;
+    case CryptoSign::SMimeSignatureType::ETSI_CAdES_B:
+        return SMimeSignatureType::ETSI_CAdES_B;
+    case CryptoSign::SMimeSignatureType::ETSI_CAdES_T:
+        return SMimeSignatureType::ETSI_CAdES_T;
+    case CryptoSign::SMimeSignatureType::ETSI_CAdES_LT:
+        return SMimeSignatureType::ETSI_CAdES_LT;
+    case CryptoSign::SMimeSignatureType::ETSI_CAdES_LTA:
+        return SMimeSignatureType::ETSI_CAdES_LTA;
+    }
+    return SMimeSignatureType::none;
+}
+
+inline CryptoSign::SMimeSignatureType toPopplerCore(Poppler::SMimeSignatureType type)
+{
+    switch (type) {
+    case Poppler::SMimeSignatureType::none:
+        return CryptoSign::SMimeSignatureType::none;
+    case Poppler::SMimeSignatureType::adbe_pkcs7_detached:
+        return CryptoSign::SMimeSignatureType::adbe_pkcs7_detached;
+    case Poppler::SMimeSignatureType::ETSI_CAdES_B:
+        return CryptoSign::SMimeSignatureType::ETSI_CAdES_B;
+    case Poppler::SMimeSignatureType::ETSI_CAdES_T:
+        return CryptoSign::SMimeSignatureType::ETSI_CAdES_T;
+    case Poppler::SMimeSignatureType::ETSI_CAdES_LT:
+        return CryptoSign::SMimeSignatureType::ETSI_CAdES_LT;
+
+    case Poppler::SMimeSignatureType::ETSI_CAdES_LTA:
+        return CryptoSign::SMimeSignatureType::ETSI_CAdES_LTA;
+    }
+    return CryptoSign::SMimeSignatureType::none;
 }
 
 class FormFieldData

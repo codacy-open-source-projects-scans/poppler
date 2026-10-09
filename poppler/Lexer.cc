@@ -18,7 +18,7 @@
 // Copyright (C) 2010 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2012, 2013 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
-// Copyright (C) 2023, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2023, 2025, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2023 Even Rouault <even.rouault@mines-paris.org>
 // Copyright (C) 2023 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2025 Jonathan Hähne <jonathan.haehne@hotmail.com>
@@ -78,7 +78,7 @@ Lexer::Lexer(XRef *xrefA, std::unique_ptr<Stream> &&str)
     streams->add(curStr.copy());
     strPtr = 0;
     freeArray = true;
-    (void)curStr.streamRewind();
+    (void)curStr.getStream()->rewind();
 }
 
 Lexer::Lexer(XRef *xrefA, Object *obj)
@@ -98,7 +98,7 @@ Lexer::Lexer(XRef *xrefA, Object *obj)
     if (streams->getLength() > 0) {
         curStr = streams->get(strPtr);
         if (curStr.isStream()) {
-            (void)curStr.streamRewind();
+            (void)curStr.getStream()->rewind();
         }
     }
 }
@@ -106,7 +106,7 @@ Lexer::Lexer(XRef *xrefA, Object *obj)
 Lexer::~Lexer()
 {
     if (curStr.isStream()) {
-        curStr.streamClose();
+        curStr.getStream()->close();
     }
     if (freeArray) {
         delete streams;
@@ -124,17 +124,17 @@ int Lexer::getChar(bool comesFromLook)
     }
 
     c = EOF;
-    while (curStr.isStream() && (c = curStr.streamGetChar()) == EOF) {
+    while (curStr.isStream() && (c = curStr.getStream()->getChar()) == EOF) {
         if (comesFromLook) {
             return EOF;
         }
-        curStr.streamClose();
+        curStr.getStream()->close();
         curStr = Object();
         ++strPtr;
         if (strPtr < streams->getLength()) {
             curStr = streams->get(strPtr);
             if (curStr.isStream()) {
-                if (!curStr.streamRewind()) {
+                if (!curStr.getStream()->rewind()) {
                     return EOF;
                 }
             }
@@ -469,18 +469,17 @@ Object Lexer::getObj(int objNum)
             }
         }
         if (n < tokBufSize) {
-            return Object(objName, std::string_view(tokBuf, n));
+            return Object::name(std::string_view(tokBuf, n));
         }
-        Object obj(objName, s);
-        return obj;
+        return Object::name(s);
         break;
     }
 
     // array punctuation
     case '[':
-        return Object(objCmd, std::string_view("[", 1));
+        return Object::cmd("[");
     case ']':
-        return Object(objCmd, std::string_view("]", 1));
+        return Object::cmd("]");
 
     // hex string or dict punctuation
     case '<': {
@@ -489,7 +488,7 @@ Object Lexer::getObj(int objNum)
         // dict punctuation
         if (c == '<') {
             getChar();
-            return Object(objCmd, std::string_view("<<", 2));
+            return Object::cmd("<<");
 
             // hex string
         }
@@ -545,7 +544,7 @@ Object Lexer::getObj(int objNum)
         c = lookChar();
         if (c == '>') {
             getChar();
-            return Object(objCmd, std::string_view(">>", 2));
+            return Object::cmd(">>");
         }
         error(errSyntaxError, getPos(), "Illegal character '>'");
         return Object::error();
@@ -583,7 +582,7 @@ Object Lexer::getObj(int objNum)
         if (res == "null") {
             return Object::null();
         }
-        return Object(objCmd, res);
+        return Object::cmd(res);
 
         break;
     }
@@ -630,7 +629,7 @@ Object Lexer::getObj(std::string_view cmdA, int objNum)
         }
     }
 
-    return Object(objCmd, std::string_view(tokBuf, p));
+    return Object::cmd(std::string_view(tokBuf, p));
 }
 
 void Lexer::skipToNextLine()

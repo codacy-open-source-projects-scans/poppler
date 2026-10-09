@@ -13,12 +13,13 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2009, 2010, 2018, 2019, 2021, 2024, 2025 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2009, 2010, 2018, 2019, 2021, 2024-2026 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2010 Christian Feuersänger <cfeuersaenger@googlemail.com>
 // Copyright (C) 2011 Andrea Canciani <ranma42@gmail.com>
 // Copyright (C) 2012 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2012 Adam Reichold <adamreichold@myopera.com>
-// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2025, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2026 Stefan Brüns <stefan.bruens@rwth-aachen.de>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -28,12 +29,18 @@
 #ifndef FUNCTION_H
 #define FUNCTION_H
 
-#include "Object.h"
+#include "poppler_private_export.h"
+
+#include <array>
+#include <memory>
+#include <vector>
 
 class Dict;
+class Object;
 class Stream;
 struct PSObject;
 class PSStack;
+struct RefRecursionChecker;
 
 //------------------------------------------------------------------------
 // Function
@@ -249,21 +256,20 @@ public:
     void transform(const double *in, double *out) const override;
     bool isOk() const override { return ok; }
 
-    const GooString *getCodeString() const { return codeString.get(); }
+    const std::string &getCodeString() const { return codeString; }
 
     explicit PostScriptFunction(const PostScriptFunction *func, PrivateTag /*unused*/ = {});
 
 private:
     bool parseCode(Stream *str, int *codePtr, int &recursionCounter);
-    std::unique_ptr<GooString> getToken(Stream *str);
+    std::string getToken(Stream *str);
     void resizeCode(int newSize);
     void exec(PSStack *stack, int codePtr) const;
 
-    std::unique_ptr<GooString> codeString;
-    PSObject *code;
-    int codeSize;
-    mutable double cacheIn[funcMaxInputs];
-    mutable double cacheOut[funcMaxOutputs];
+    std::string codeString;
+    std::vector<PSObject> code;
+    mutable std::array<double, funcMaxInputs> cacheIn;
+    mutable std::array<double, funcMaxOutputs> cacheOut;
     bool ok;
 };
 

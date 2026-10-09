@@ -7,7 +7,7 @@
  * Copyright (C) 2018, 2020 Adam Reichold <adam.reichold@t-online.de>
  * Copyright (C) 2018, 2020, 2024 Albert Astals Cid <aacid@kde.org>
  * Copyright (C) 2018, Zsombor Hollay-Horvath <hollay.horvath@gmail.com>
- * Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+ * Copyright (C) 2025, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -51,7 +51,7 @@ void error_function(ErrorCategory category, Goffset pos, const char *msg);
 
 rectf pdfrectangle_to_rectf(const PDFRectangle &pdfrect);
 
-ustring unicode_GooString_to_ustring(const GooString *str);
+ustring unicode_string_to_ustring(const std::string &str);
 ustring unicode_to_ustring(const Unicode *u, int length);
 std::unique_ptr<GooString> ustring_to_unicode_GooString(const ustring &str);
 

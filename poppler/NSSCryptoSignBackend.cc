@@ -18,12 +18,14 @@
 // Copyright 2021, 2025, 2026 Marek Kasik <mkasik@redhat.com>
 // Copyright 2022 Erich E. Hoover <erich.e.hoover@gmail.com>
 // Copyright 2023 Tobias Deiminger <tobias.deiminger@posteo.de>
-// Copyright 2023-2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2023-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright 2023 Ingo Klöcker <kloecker@kde.org>
 // Copyright 2025, 2026 Juraj Šarinay <juraj@sarinay.com>
+// Copyright 2026 Sune Stolborg Vuorela <sune@vuorela.dk>, work sponsored by the Direction Interministérielle du Numérique
 //
 //========================================================================
 
+#include <chrono>
 #include <config.h>
 
 #include "CryptoSignBackend.h"
@@ -119,7 +121,7 @@ const SEC_ASN1Template GeneralNameTemplate[] = { { .kind = SEC_ASN1_SEQUENCE, .o
  * GeneralNames ::= SEQUENCE SIZE (1..MAX) OF GeneralName
  */
 const SEC_ASN1Template GeneralNamesTemplate[] = { { .kind = SEC_ASN1_SEQUENCE, .offset = 0, .sub = nullptr, .size = sizeof(GeneralNames) },
-                                                  { .kind = SEC_ASN1_INLINE | SEC_ASN1_CONTEXT_SPECIFIC | 4, .offset = offsetof(GeneralNames, names), .sub = GeneralNameTemplate, .size = 0 },
+                                                  { .kind = SEC_ASN1_CONTEXT_SPECIFIC | 4, .offset = offsetof(GeneralNames, names), .sub = GeneralNameTemplate, .size = 0 },
                                                   { .kind = 0, .offset = 0, .sub = nullptr, .size = 0 } };
 
 /**
@@ -162,7 +164,7 @@ const SEC_ASN1Template SigningCertificateV2Template[] = { { .kind = SEC_ASN1_SEQ
 const SEC_ASN1Template ESSCertIDv2DecodingTemplate[] = { { .kind = SEC_ASN1_SEQUENCE, .offset = 0, .sub = nullptr, .size = sizeof(ESSCertIDv2) },
                                                          { .kind = SEC_ASN1_INLINE | SEC_ASN1_OPTIONAL, .offset = offsetof(ESSCertIDv2, hashAlgorithm), .sub = SEC_ASN1_GET(SECOID_AlgorithmIDTemplate), .size = 0 },
                                                          { .kind = SEC_ASN1_OCTET_STRING, .offset = offsetof(ESSCertIDv2, certHash), .sub = nullptr, .size = 0 },
-                                                         { .kind = SEC_ASN1_INLINE | SEC_ASN1_OPTIONAL | SEC_ASN1_SKIP, .offset = offsetof(ESSCertIDv2, issuerSerial), .sub = IssuerSerialTemplate, .size = 0 },
+                                                         { .kind = SEC_ASN1_INLINE | SEC_ASN1_OPTIONAL, .offset = offsetof(ESSCertIDv2, issuerSerial), .sub = IssuerSerialTemplate, .size = 0 },
                                                          { .kind = 0, .offset = 0, .sub = nullptr, .size = 0 } };
 
 const SEC_ASN1Template SigningCertificateV2DecodingTemplate[] = { { .kind = SEC_ASN1_SEQUENCE, .offset = 0, .sub = nullptr, .size = sizeof(SigningCertificateV2) },
@@ -172,7 +174,7 @@ const SEC_ASN1Template SigningCertificateV2DecodingTemplate[] = { { .kind = SEC_
 
 const SEC_ASN1Template ESSCertIDDecodingTemplate[] = { { .kind = SEC_ASN1_SEQUENCE, .offset = 0, .sub = nullptr, .size = sizeof(ESSCertIDv2) },
                                                        { .kind = SEC_ASN1_OCTET_STRING, .offset = offsetof(ESSCertIDv2, certHash), .sub = nullptr, .size = 0 },
-                                                       { .kind = SEC_ASN1_INLINE | SEC_ASN1_OPTIONAL | SEC_ASN1_SKIP, .offset = offsetof(ESSCertIDv2, issuerSerial), .sub = IssuerSerialTemplate, .size = 0 },
+                                                       { .kind = SEC_ASN1_INLINE | SEC_ASN1_OPTIONAL, .offset = offsetof(ESSCertIDv2, issuerSerial), .sub = IssuerSerialTemplate, .size = 0 },
                                                        { .kind = 0, .offset = 0, .sub = nullptr, .size = 0 } };
 
 const SEC_ASN1Template SigningCertificateDecodingTemplate[] = { { .kind = SEC_ASN1_SEQUENCE, .offset = 0, .sub = nullptr, .size = sizeof(SigningCertificateV2) },
@@ -234,9 +236,22 @@ static NSSCMSMessage *CMS_MessageCreate(SECItem *cms_item);
 static NSSCMSSignedData *CMS_SignedDataCreate(NSSCMSMessage *cms_msg);
 static NSSCMSSignerInfo *CMS_SignerInfoCreate(NSSCMSSignedData *cms_sig_data);
 
-// a dummy, actually
-static char *passwordCallback(PK11SlotInfo * /*slot*/, PRBool /*retry*/, void *arg)
+static Certificate::timePointSeconds fromPRTime(PRTime time)
 {
+    return Certificate::timePointSeconds { std::chrono::duration_cast<std::chrono::seconds>(std::chrono::microseconds { time }) };
+}
+
+static std::function<char *(const char *)> PasswordFunction;
+
+static char *passwordCallback(PK11SlotInfo *slot, PRBool retry, void *arg)
+{
+    if (retry) {
+        if (PasswordFunction) {
+            const char *name = PK11_GetTokenName(slot);
+            return PasswordFunction(name);
+        }
+        return nullptr;
+    }
     return PL_strdup(static_cast<char *>(arg));
 }
 
@@ -516,7 +531,7 @@ std::string NSSSignatureVerification::getSignerSubjectDN() const
     return std::string { signing_cert->subjectName };
 }
 
-std::chrono::system_clock::time_point NSSSignatureVerification::getSigningTime() const
+Certificate::timePointSeconds NSSSignatureVerification::getSigningTime() const
 {
     if (!CMSSignerInfo) {
         return {};
@@ -527,7 +542,7 @@ std::chrono::system_clock::time_point NSSSignatureVerification::getSigningTime()
         return {};
     }
 
-    return std::chrono::system_clock::from_time_t(static_cast<time_t>(sTime / 1000000));
+    return fromPRTime(sTime);
 }
 
 static X509CertificateInfo::EntityInfo getEntityInfo(CERTName *entityName)
@@ -575,7 +590,11 @@ static std::unique_ptr<X509CertificateInfo> getCertificateInfoFromCERT(CERTCerti
 {
     auto certInfo = std::make_unique<X509CertificateInfo>();
 
-    certInfo->setVersion(DER_GetInteger(&cert->version) + 1);
+    long version = 0;
+    if (cert->version.data && cert->version.len) {
+        version = DER_GetInteger(&cert->version);
+    }
+    certInfo->setVersion(version + 1);
     certInfo->setSerialNumber(SECItemToGooString(cert->serialNumber));
 
     // issuer info
@@ -585,8 +604,8 @@ static std::unique_ptr<X509CertificateInfo> getCertificateInfoFromCERT(CERTCerti
     PRTime notBefore, notAfter;
     CERT_GetCertTimes(cert, &notBefore, &notAfter);
     X509CertificateInfo::Validity certValidity;
-    certValidity.notBefore = static_cast<time_t>(notBefore / 1000000);
-    certValidity.notAfter = static_cast<time_t>(notAfter / 1000000);
+    certValidity.notBefore = fromPRTime(notBefore);
+    certValidity.notAfter = fromPRTime(notAfter);
     certInfo->setValidity(certValidity);
 
     // subject info
@@ -625,8 +644,11 @@ static std::unique_ptr<X509CertificateInfo> getCertificateInfoFromCERT(CERTCerti
     certInfo->setPublicKeyInfo(std::move(pkInfo));
 
     certInfo->setKeyUsageExtensions(cert->keyUsage);
-    certInfo->setCertificateDER(SECItemToGooString(cert->derCert));
+    certInfo->setCertificateDER(std::vector<unsigned char>(cert->derCert.data, cert->derCert.data + cert->derCert.len));
     certInfo->setIsSelfSigned(CERT_CompareName(&cert->subject, &cert->issuer) == SECEqual);
+    if (cert->slot) {
+        certInfo->setKeyLocation(PK11_IsHW(cert->slot) ? KeyLocation::HardwareToken : KeyLocation::Computer);
+    }
 
     return certInfo;
 }
@@ -760,11 +782,14 @@ std::string NSSSignatureConfiguration::getNSSDir()
     return sNssDir;
 }
 
-static std::function<char *(const char *)> PasswordFunction;
-
 void NSSSignatureConfiguration::setNSSPasswordCallback(const std::function<char *(const char *)> &f)
 {
     PasswordFunction = f;
+}
+
+bool NSSSignatureConfiguration::hasNSSPasswordCallback()
+{
+    return static_cast<bool>(PasswordFunction);
 }
 
 NSSSignatureVerification::NSSSignatureVerification(std::vector<unsigned char> &&p7data, CryptoSign::SignatureType subfilter) : p7(std::move(p7data)), type(subfilter)
@@ -793,7 +818,7 @@ NSSSignatureVerification::NSSSignatureVerification(std::vector<unsigned char> &&
     }
 }
 
-NSSSignatureCreation::NSSSignatureCreation(const std::string &certNickname, HashAlgorithm digestAlgTag) : hashContext(HashContext::create(digestAlgTag))
+NSSSignatureCreation::NSSSignatureCreation(const std::string &certNickname, HashAlgorithm digestAlgTag, CryptoSign::SMimeSignatureType requestedType) : hashContext(HashContext::create(digestAlgTag)), m_requestedType(requestedType)
 {
     NSSSignatureConfiguration::setNSSDir({});
     signing_cert = CERT_FindCertByNickname(CERT_GetDefaultCertDB(), certNickname.c_str());
@@ -851,6 +876,40 @@ void NSSSignatureVerification::addData(unsigned char *data_block, int data_len)
 void NSSSignatureCreation::addData(unsigned char *data_block, int data_len)
 {
     hashContext->updateHash(data_block, data_len);
+}
+
+CryptoSign::SignatureType NSSSignatureCreation::signatureType() const
+{
+    switch (m_requestedType) {
+    case CryptoSign::SMimeSignatureType::none:
+    case CryptoSign::SMimeSignatureType::adbe_pkcs7_detached:
+        return CryptoSign::SignatureType::adbe_pkcs7_detached;
+    case CryptoSign::SMimeSignatureType::ETSI_CAdES_B:
+        return CryptoSign::SignatureType::ETSI_CAdES_detached;
+    case CryptoSign::SMimeSignatureType::ETSI_CAdES_T:
+    case CryptoSign::SMimeSignatureType::ETSI_CAdES_LT:
+    case CryptoSign::SMimeSignatureType::ETSI_CAdES_LTA:
+        return CryptoSign::SignatureType::unknown_signature_type;
+    }
+    return CryptoSign::SignatureType::unknown_signature_type;
+}
+
+std::optional<CryptoSign::SigningErrorMessage> NSSSignatureCreation::checkOk() const
+{
+    if (!signing_cert) {
+        return CryptoSign::SigningErrorMessage { .type = CryptoSign::SigningError::KeyMissing, .message = ERROR_IN_CODE_LOCATION };
+    }
+    switch (m_requestedType) {
+    case CryptoSign::SMimeSignatureType::none:
+    case CryptoSign::SMimeSignatureType::adbe_pkcs7_detached:
+    case CryptoSign::SMimeSignatureType::ETSI_CAdES_B:
+        break;
+    case CryptoSign::SMimeSignatureType::ETSI_CAdES_T:
+    case CryptoSign::SMimeSignatureType::ETSI_CAdES_LT:
+    case CryptoSign::SMimeSignatureType::ETSI_CAdES_LTA:
+        return CryptoSign::SigningErrorMessage { .type = CryptoSign::SigningError::UnsupportedSignatureType, .message = ERROR_IN_CODE_LOCATION };
+    }
+    return std::nullopt;
 }
 
 unsigned int NSSSignatureCreation::estimateSize() const
@@ -1019,7 +1078,7 @@ void NSSSignatureVerification::validateCertificateAsync(std::chrono::system_cloc
     CERTCertificate *cert;
 
     if (!CMSSignerInfo) {
-        validationStatus = std::async([doneCallback]() {
+        validationStatus = std::async([doneCallback] {
             if (doneCallback) {
                 doneCallback();
             }
@@ -1053,9 +1112,30 @@ void NSSSignatureVerification::validateCertificateAsync(std::chrono::system_cloc
         inParams[2].type = cert_pi_end;
     }
 
+    // Unfortunately NSS does not have a "can sign pdf files" usage so
+    // we are using a wider range of usages.
+    // These match what libreoffice does in securityenvironment_nssimpl.cxx
+    // (removing certificateUsageSSLServer, certificateUsageSSLCA because they seem to server-y)
+    // in a different order, we keep certificateUsageEmailSigner first for
+    // compatibility with ourselves in error reporting
+    constexpr std::array<SECCertificateUsage, 3> certificateUsages = {
+        certificateUsageEmailSigner,
+        certificateUsageEmailRecipient,
+        certificateUsageSSLClient,
+    };
+
     int result = 0;
-    if (CERT_PKIXVerifyCert(cert, certificateUsageEmailSigner, inParams, nullptr, CMSSignerInfo->cmsg->pwfn_arg) != SECSuccess) {
-        result = PORT_GetError();
+    bool hasFailed = false;
+    for (const SECCertificateUsage usage : certificateUsages) {
+        if (CERT_PKIXVerifyCert(cert, usage, inParams, nullptr, CMSSignerInfo->cmsg->pwfn_arg) == SECSuccess) {
+            result = 0;
+            break;
+        }
+        const PRErrorCode err = PORT_GetError();
+        if (!hasFailed || err == SEC_ERROR_UNTRUSTED_ISSUER) {
+            result = err;
+            hasFailed = true;
+        }
     }
 
     // Here we are just faking the asynchronousness. It should
@@ -1063,7 +1143,7 @@ void NSSSignatureVerification::validateCertificateAsync(std::chrono::system_cloc
     // be put in the thread, but I'm not sure about all of the
     // thread safety of nss.
 
-    validationStatus = std::async([result, doneCallback]() {
+    validationStatus = std::async([result, doneCallback] {
         if (doneCallback) {
             doneCallback();
         }
@@ -1107,6 +1187,9 @@ std::variant<std::vector<unsigned char>, CryptoSign::SigningErrorMessage> NSSSig
 {
     if (!hashContext) {
         return CryptoSign::SigningErrorMessage { .type = CryptoSign::SigningError::InternalError, .message = ERROR_IN_CODE_LOCATION };
+    }
+    if (!signing_cert) {
+        return CryptoSign::SigningErrorMessage { .type = CryptoSign::SigningError::KeyMissing, .message = ERROR_IN_CODE_LOCATION };
     }
     std::vector<unsigned char> digest_buffer = hashContext->endHash();
     SECItem digest;
@@ -1249,8 +1332,9 @@ std::variant<std::vector<unsigned char>, CryptoSign::SigningErrorMessage> NSSSig
         return CryptoSign::SigningErrorMessage { .type = CryptoSign::SigningError::GenericError, .message = ERROR_IN_CODE_LOCATION };
     }
 
-    if (NSS_CMSEncoder_Finish(cms_ecx) != SECSuccess) {
-        return CryptoSign::SigningErrorMessage { .type = CryptoSign::SigningError::GenericError, .message = ERROR_IN_CODE_LOCATION };
+    auto finishResult = NSS_CMSEncoder_Finish(cms_ecx);
+    if (finishResult != SECSuccess) {
+        return CryptoSign::SigningErrorMessage { .type = CryptoSign::SigningError::GenericError, .message = ERROR_IN_CODE_LOCATION_WITH_CODE(PORT_GetError()) };
     }
 
     auto signature = std::vector<unsigned char>(cms_output.data, cms_output.data + cms_output.len);
@@ -1352,9 +1436,9 @@ std::unique_ptr<CryptoSign::VerificationInterface> NSSCryptoSignBackend::createV
     return {};
 }
 
-std::unique_ptr<CryptoSign::SigningInterface> NSSCryptoSignBackend::createSigningHandler(const std::string &certID, HashAlgorithm digestAlgTag)
+std::unique_ptr<CryptoSign::SigningInterface> NSSCryptoSignBackend::createSigningHandler(const std::string &certID, HashAlgorithm digestAlgTag, CryptoSign::SMimeSignatureType requestedType)
 {
-    return std::make_unique<NSSSignatureCreation>(certID, digestAlgTag);
+    return std::make_unique<NSSSignatureCreation>(certID, digestAlgTag, requestedType);
 }
 
 std::vector<std::unique_ptr<X509CertificateInfo>> NSSCryptoSignBackend::getAvailableSigningCertificates()
@@ -1385,6 +1469,7 @@ std::vector<std::unique_ptr<X509CertificateInfo>> NSSCryptoSignBackend::getAvail
                         CERTCertificate *cert = PK11_GetCertFromPrivateKey(curPri->key);
                         if (cert) {
                             certsList.push_back(getCertificateInfoFromCERT(cert));
+                            certsList.back()->setSupportedSMimeSignatureTypes({ CryptoSign::SMimeSignatureType::adbe_pkcs7_detached, CryptoSign::SMimeSignatureType::ETSI_CAdES_B });
                             CERT_DestroyCertificate(cert);
                         }
                     }

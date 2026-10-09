@@ -1,3 +1,123 @@
+Release 26.10.0:
+        core:
+         * Support for eidas (cades-b) signatures
+         * Enable font subsetting when using the windows font backend
+         * Enable brotli streams
+         * NSS-signatures-backend: Be a bit more lenient on what we consider valid cert usage
+         * NSS-signatures-backend: Mark hardware keys as such
+         * NSS-signatures-backend: Reuse password callback for token PIN prompts
+         * PSOutputDev: fix rendering of files when using -preload
+         * Fix rendering of some Forms
+         * Improve code a bit when finding fonts fails
+         * Fix dest dict to name tree fallback when resolving named destination. Issue #1788
+         * Internal code improvements
+         * Fix crashes in malformed documents
+
+        utils:
+         * pdfsig: Write some error message if signing fails
+         * pdfsig: Replace -etsi with -etsi-cades-b and support it with -add-signature
+
+        qt5:
+         * Deprecate CertificateInfo::publicKey()
+         * Map the annotation rules flags a bit closer to the spec
+
+        qt6:
+         * Deprecate CertificateInfo::publicKey()
+         * Map the annotation rules flags a bit closer to the spec
+         * Add API to query and select CAdES-B / S/MIME signature type
+
+        build system:
+         * libbrotlidec is now required for brotli stream support
+         * Find libharfbuzz via pkgconfig
+         * Conditionalise test builds and test dependencies based on enabled frontends
+         * Fix intermittent glib API docs build failure
+         * Don't scan for c++ modules
+         * oss-fuzz build updates
+
+Release 26.09.0:
+        core:
+         * Subset fonts when saving changes in Annotations and Forms when using fontconfig
+         * NSS: Don't infinite loop on wrong password
+         * Internal code improvements
+         * Fix crashes in malformed documents
+
+        utils:
+         * pdftotext: Add -urls option to print link URLs next to their text
+         * pdftohtml: Improve speed by ignoring tiling patterns earlier
+         * pdfimages: Fix typo in manpage
+
+        glib:
+         * Remove G_GNUC_CONST in enum _get_type funcs
+
+        build system:
+         * harfbuzz is now required for font subsetting
+
+Release 26.08.0:
+        core:
+         * GPG based signature improvements
+         * Internal code improvements
+
+        utils:
+         * pdftohtml: Fix crash when using dataurls. Issue #1751
+         * pdfimages: Add min-height and min-width options
+
+        glib:
+         * Stop using G_GNUC_CONST in _get_type funcs
+
+        build system:
+         * Slight increase in compilation of utils folder
+         * Fix -Wunused-command-line-argument when using clang
+         * Use cmake modern way to check for linker support
+
+Release 26.07.0:
+        core:
+         * Remove deprecated DCT and JPX decoders
+         * Fix signature regression in some cases. KDE bug #520496
+         * Fix added annotations getting lost in some cases. Issue #1732
+         * GPG based signature improvements
+         * Internal code improvements
+         * Fix crashes in malformed documents
+
+        utils:
+         * pdfinfo: sanitize output
+
+        cpp:
+         * Add render_hint::ignore_paper_color to allow transparent paper
+
+        glib:
+         * construct PopplerPage::mutex (fixes crash on macOS). Issue #1743
+
+        qt5:
+         * Fix crash in some signature operations. Issue #1737
+
+        qt6:
+         * Fix crash in some signature operations. Issue #1737
+
+Release 26.06.0:
+        core:
+         * Improve annotations initialization thread-safety
+         * CairoFontEngine: Properly honor font face index
+         * Internal code improvements
+         * Fix crashes in malformed documents
+
+Release 26.05.0:
+        core:
+         * Improve reconstruction of damaged files. Issue #1693
+         * PSOutputDev: Remove "pipe as filename" feature
+         * PSOutputDev: Respect pre-existing PageSize policies. Issue #1610
+         * Internal code improvements
+         * Fix crashes in malformed documents
+
+        glib:
+         * Improve PopplerPage thread-safety
+
+        utils:
+         * pdftotext: Add -remove-hyphens option
+         * pdftotext: Do not abort on empty strings. Issue #1699
+
+        build system:
+         * Increase minimum required dependency versions to those of Ubuntu 24.04
+
 Release 26.04.0:
         core:
          * Splash: Improve knockout groups rendering. Issue #1538

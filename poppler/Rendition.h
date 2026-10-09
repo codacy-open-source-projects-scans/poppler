@@ -6,6 +6,7 @@
 // Hugo Mercier <hmercier31[at]gmail.com> (c) 2008
 // Carlos Garcia Campos <carlosgc@gnome.org> (c) 2010
 // Albert Astals Cid <aacid@kde.org> (C) 2017, 2018, 2021, 2024, 2025
+// g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk> (C) 2026
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -128,8 +129,8 @@ public:
 
     bool isOk() const { return ok; }
 
-    const MediaParameters *getMHParameters() const { return &MH; }
-    const MediaParameters *getBEParameters() const { return &BE; }
+    const std::optional<MediaParameters> &getMHParameters() const { return MH; }
+    const std::optional<MediaParameters> &getBEParameters() const { return BE; }
 
     const GooString *getContentType() const { return contentType.get(); }
     const GooString *getFileName() const { return fileName.get(); }
@@ -146,9 +147,9 @@ private:
     bool ok;
 
     // "Must Honor" parameters
-    MediaParameters MH;
+    std::optional<MediaParameters> MH;
     // "Best Effort" parameters
-    MediaParameters BE;
+    std::optional<MediaParameters> BE;
 
     bool isEmbedded;
 

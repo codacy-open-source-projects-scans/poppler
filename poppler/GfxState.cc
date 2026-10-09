@@ -42,6 +42,7 @@
 // Copyright (C) 2025 Trystan Mata <trystan.mata@tytanium.xyz>
 // Copyright (C) 2025 Arnav V <arnav0872@gmail.com>
 // Copyright (C) 2026 Adam Sampson <ats@offog.org>
+// Copyright (C) 2026 Stefan Brüns <stefan.bruens@rwth-aachen.de>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -55,7 +56,6 @@
 #include <cstddef>
 #include <cmath>
 #include <cstring>
-#include "goo/gfile.h"
 #include "goo/gmem.h"
 #include "Error.h"
 #include "Object.h"
@@ -66,8 +66,8 @@
 #include "GfxState_helpers.h"
 #include "GfxFont.h"
 #include "GlobalParams.h"
-#include "PopplerCache.h"
 #include "OutputDev.h"
+#include "Stream.h"
 #include "splash/SplashTypes.h"
 
 //------------------------------------------------------------------------
@@ -233,7 +233,8 @@ std::unique_ptr<GfxColorSpace> GfxColorSpace::parse(GfxResources *res, Object *c
     }
 
     if (csObj->isName()) {
-        if (csObj->isName("DeviceGray") || csObj->isName("G")) {
+        const std::string &csName = csObj->getNameString();
+        if (csName == "DeviceGray" || csName == "G") {
             if (res != nullptr) {
                 Object objCS = res->lookupColorSpace("DefaultGray");
                 if (objCS.isNull()) {
@@ -243,7 +244,7 @@ std::unique_ptr<GfxColorSpace> GfxColorSpace::parse(GfxResources *res, Object *c
             }
             return state->copyDefaultGrayColorSpace();
         }
-        if (csObj->isName("DeviceRGB") || csObj->isName("RGB")) {
+        if (csName == "DeviceRGB" || csName == "RGB") {
             if (res != nullptr) {
                 Object objCS = res->lookupColorSpace("DefaultRGB");
                 if (objCS.isNull()) {
@@ -253,7 +254,7 @@ std::unique_ptr<GfxColorSpace> GfxColorSpace::parse(GfxResources *res, Object *c
             }
             return state->copyDefaultRGBColorSpace();
         }
-        if (csObj->isName("DeviceCMYK") || csObj->isName("CMYK")) {
+        if (csName == "DeviceCMYK" || csName == "CMYK") {
             if (res != nullptr) {
                 Object objCS = res->lookupColorSpace("DefaultCMYK");
                 if (objCS.isNull()) {
@@ -263,10 +264,10 @@ std::unique_ptr<GfxColorSpace> GfxColorSpace::parse(GfxResources *res, Object *c
             }
             return state->copyDefaultCMYKColorSpace();
         }
-        if (csObj->isName("Pattern")) {
+        if (csName == "Pattern") {
             return std::make_unique<GfxPatternColorSpace>(nullptr);
         }
-        error(errSyntaxWarning, -1, "Bad color space '{0:s}'", csObj->getName());
+        error(errSyntaxWarning, -1, "Bad color space '{0:r}'", &csName);
 
     } else if (csObj->isArrayOfLengthAtLeast(1)) {
         obj1 = csObj->arrayGet(0);
@@ -538,9 +539,9 @@ std::unique_ptr<GfxColorSpace> GfxDeviceGrayColorSpace::copy() const
     return std::make_unique<GfxDeviceGrayColorSpace>();
 }
 
-void GfxDeviceGrayColorSpace::getGray(const GfxColor *color, GfxGray *gray) const
+void GfxDeviceGrayColorSpace::getGray(const GfxColor &color, GfxGray *gray) const
 {
-    *gray = clip01(color->c[0]);
+    *gray = clip01(color.c[0]);
 }
 
 void GfxDeviceGrayColorSpace::getGrayLine(unsigned char *in, unsigned char *out, int length)
@@ -548,9 +549,9 @@ void GfxDeviceGrayColorSpace::getGrayLine(unsigned char *in, unsigned char *out,
     memcpy(out, in, length);
 }
 
-void GfxDeviceGrayColorSpace::getRGB(const GfxColor *color, GfxRGB *rgb) const
+void GfxDeviceGrayColorSpace::getRGB(const GfxColor &color, GfxRGB *rgb) const
 {
-    rgb->r = rgb->g = rgb->b = clip01(color->c[0]);
+    rgb->r = rgb->g = rgb->b = clip01(color.c[0]);
 }
 
 void GfxDeviceGrayColorSpace::getRGBLine(unsigned char *in, unsigned int *out, int length)
@@ -602,16 +603,16 @@ void GfxDeviceGrayColorSpace::getDeviceNLine(unsigned char *in, unsigned char *o
     }
 }
 
-void GfxDeviceGrayColorSpace::getCMYK(const GfxColor *color, GfxCMYK *cmyk) const
+void GfxDeviceGrayColorSpace::getCMYK(const GfxColor &color, GfxCMYK *cmyk) const
 {
     cmyk->c = cmyk->m = cmyk->y = 0;
-    cmyk->k = clip01(gfxColorComp1 - color->c[0]);
+    cmyk->k = clip01(gfxColorComp1 - color.c[0]);
 }
 
-void GfxDeviceGrayColorSpace::getDeviceN(const GfxColor *color, GfxColor *deviceN) const
+void GfxDeviceGrayColorSpace::getDeviceN(const GfxColor &color, GfxColor *deviceN) const
 {
     clearGfxColor(deviceN);
-    deviceN->c[3] = clip01(gfxColorComp1 - color->c[0]);
+    deviceN->c[3] = clip01(gfxColorComp1 - color.c[0]);
 }
 
 void GfxDeviceGrayColorSpace::getDefaultColor(GfxColor *color) const
@@ -756,16 +757,16 @@ std::unique_ptr<GfxColorSpace> GfxCalGrayColorSpace::parse(const Array &arr, Gfx
 }
 
 // convert CalGray to media XYZ color space
-void GfxCalGrayColorSpace::getXYZ(const GfxColor *color, double *pX, double *pY, double *pZ) const
+void GfxCalGrayColorSpace::getXYZ(const GfxColor &color, double *pX, double *pY, double *pZ) const
 {
-    const double A = colToDbl(color->c[0]);
+    const double A = colToDbl(color.c[0]);
     const double xyzColor = pow(A, gamma);
     *pX = whiteX * xyzColor;
     *pY = whiteY * xyzColor;
     *pZ = whiteZ * xyzColor;
 }
 
-void GfxCalGrayColorSpace::getGray(const GfxColor *color, GfxGray *gray) const
+void GfxCalGrayColorSpace::getGray(const GfxColor &color, GfxGray *gray) const
 {
     GfxRGB rgb;
 
@@ -789,7 +790,7 @@ void GfxCalGrayColorSpace::getGray(const GfxColor *color, GfxGray *gray) const
     *gray = clip01(static_cast<GfxColorComp>(0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b + 0.5));
 }
 
-void GfxCalGrayColorSpace::getRGB(const GfxColor *color, GfxRGB *rgb) const
+void GfxCalGrayColorSpace::getRGB(const GfxColor &color, GfxRGB *rgb) const
 {
     double X, Y, Z;
     double r, g, b;
@@ -821,7 +822,7 @@ void GfxCalGrayColorSpace::getRGB(const GfxColor *color, GfxRGB *rgb) const
     rgb->b = dblToCol(srgb_gamma_function(clip01(b)));
 }
 
-void GfxCalGrayColorSpace::getCMYK(const GfxColor *color, GfxCMYK *cmyk) const
+void GfxCalGrayColorSpace::getCMYK(const GfxColor &color, GfxCMYK *cmyk) const
 {
     GfxRGB rgb;
     GfxColorComp c, m, y, k;
@@ -862,7 +863,7 @@ void GfxCalGrayColorSpace::getCMYK(const GfxColor *color, GfxCMYK *cmyk) const
     cmyk->k = k;
 }
 
-void GfxCalGrayColorSpace::getDeviceN(const GfxColor *color, GfxColor *deviceN) const
+void GfxCalGrayColorSpace::getDeviceN(const GfxColor &color, GfxColor *deviceN) const
 {
     GfxCMYK cmyk;
     clearGfxColor(deviceN);
@@ -891,9 +892,9 @@ std::unique_ptr<GfxColorSpace> GfxDeviceRGBColorSpace::copy() const
     return std::make_unique<GfxDeviceRGBColorSpace>();
 }
 
-void GfxDeviceRGBColorSpace::getGray(const GfxColor *color, GfxGray *gray) const
+void GfxDeviceRGBColorSpace::getGray(const GfxColor &color, GfxGray *gray) const
 {
-    *gray = clip01(static_cast<GfxColorComp>(0.3 * color->c[0] + 0.59 * color->c[1] + 0.11 * color->c[2] + 0.5));
+    *gray = clip01(static_cast<GfxColorComp>(0.3 * color.c[0] + 0.59 * color.c[1] + 0.11 * color.c[2] + 0.5));
 }
 
 void GfxDeviceRGBColorSpace::getGrayLine(unsigned char *in, unsigned char *out, int length)
@@ -905,11 +906,11 @@ void GfxDeviceRGBColorSpace::getGrayLine(unsigned char *in, unsigned char *out, 
     }
 }
 
-void GfxDeviceRGBColorSpace::getRGB(const GfxColor *color, GfxRGB *rgb) const
+void GfxDeviceRGBColorSpace::getRGB(const GfxColor &color, GfxRGB *rgb) const
 {
-    rgb->r = clip01(color->c[0]);
-    rgb->g = clip01(color->c[1]);
-    rgb->b = clip01(color->c[2]);
+    rgb->r = clip01(color.c[0]);
+    rgb->g = clip01(color.c[1]);
+    rgb->b = clip01(color.c[2]);
 }
 
 void GfxDeviceRGBColorSpace::getRGBLine(unsigned char *in, unsigned int *out, int length)
@@ -989,13 +990,13 @@ void GfxDeviceRGBColorSpace::getDeviceNLine(unsigned char *in, unsigned char *ou
     }
 }
 
-void GfxDeviceRGBColorSpace::getCMYK(const GfxColor *color, GfxCMYK *cmyk) const
+void GfxDeviceRGBColorSpace::getCMYK(const GfxColor &color, GfxCMYK *cmyk) const
 {
     GfxColorComp c, m, y, k;
 
-    c = clip01(gfxColorComp1 - color->c[0]);
-    m = clip01(gfxColorComp1 - color->c[1]);
-    y = clip01(gfxColorComp1 - color->c[2]);
+    c = clip01(gfxColorComp1 - color.c[0]);
+    m = clip01(gfxColorComp1 - color.c[1]);
+    y = clip01(gfxColorComp1 - color.c[2]);
     k = c;
     if (m < k) {
         k = m;
@@ -1009,7 +1010,7 @@ void GfxDeviceRGBColorSpace::getCMYK(const GfxColor *color, GfxCMYK *cmyk) const
     cmyk->k = k;
 }
 
-void GfxDeviceRGBColorSpace::getDeviceN(const GfxColor *color, GfxColor *deviceN) const
+void GfxDeviceRGBColorSpace::getDeviceN(const GfxColor &color, GfxColor *deviceN) const
 {
     GfxCMYK cmyk;
     clearGfxColor(deviceN);
@@ -1142,19 +1143,19 @@ std::unique_ptr<GfxColorSpace> GfxCalRGBColorSpace::parse(const Array &arr, GfxS
 }
 
 // convert CalRGB to XYZ color space
-void GfxCalRGBColorSpace::getXYZ(const GfxColor *color, double *pX, double *pY, double *pZ) const
+void GfxCalRGBColorSpace::getXYZ(const GfxColor &color, double *pX, double *pY, double *pZ) const
 {
     double A, B, C;
 
-    A = pow(colToDbl(color->c[0]), gammaR);
-    B = pow(colToDbl(color->c[1]), gammaG);
-    C = pow(colToDbl(color->c[2]), gammaB);
+    A = pow(colToDbl(color.c[0]), gammaR);
+    B = pow(colToDbl(color.c[1]), gammaG);
+    C = pow(colToDbl(color.c[2]), gammaB);
     *pX = mat[0] * A + mat[3] * B + mat[6] * C;
     *pY = mat[1] * A + mat[4] * B + mat[7] * C;
     *pZ = mat[2] * A + mat[5] * B + mat[8] * C;
 }
 
-void GfxCalRGBColorSpace::getGray(const GfxColor *color, GfxGray *gray) const
+void GfxCalRGBColorSpace::getGray(const GfxColor &color, GfxGray *gray) const
 {
     GfxRGB rgb;
 
@@ -1178,7 +1179,7 @@ void GfxCalRGBColorSpace::getGray(const GfxColor *color, GfxGray *gray) const
     *gray = clip01(static_cast<GfxColorComp>(0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b + 0.5));
 }
 
-void GfxCalRGBColorSpace::getRGB(const GfxColor *color, GfxRGB *rgb) const
+void GfxCalRGBColorSpace::getRGB(const GfxColor &color, GfxRGB *rgb) const
 {
     double X, Y, Z;
     double r, g, b;
@@ -1211,7 +1212,7 @@ void GfxCalRGBColorSpace::getRGB(const GfxColor *color, GfxRGB *rgb) const
     rgb->b = dblToCol(srgb_gamma_function(clip01(b)));
 }
 
-void GfxCalRGBColorSpace::getCMYK(const GfxColor *color, GfxCMYK *cmyk) const
+void GfxCalRGBColorSpace::getCMYK(const GfxColor &color, GfxCMYK *cmyk) const
 {
     GfxRGB rgb;
     GfxColorComp c, m, y, k;
@@ -1252,7 +1253,7 @@ void GfxCalRGBColorSpace::getCMYK(const GfxColor *color, GfxCMYK *cmyk) const
     cmyk->k = k;
 }
 
-void GfxCalRGBColorSpace::getDeviceN(const GfxColor *color, GfxColor *deviceN) const
+void GfxCalRGBColorSpace::getDeviceN(const GfxColor &color, GfxColor *deviceN) const
 {
     GfxCMYK cmyk;
     clearGfxColor(deviceN);
@@ -1283,19 +1284,19 @@ std::unique_ptr<GfxColorSpace> GfxDeviceCMYKColorSpace::copy() const
     return std::make_unique<GfxDeviceCMYKColorSpace>();
 }
 
-void GfxDeviceCMYKColorSpace::getGray(const GfxColor *color, GfxGray *gray) const
+void GfxDeviceCMYKColorSpace::getGray(const GfxColor &color, GfxGray *gray) const
 {
-    *gray = clip01(static_cast<GfxColorComp>(gfxColorComp1 - color->c[3] - 0.3 * color->c[0] - 0.59 * color->c[1] - 0.11 * color->c[2] + 0.5));
+    *gray = clip01(static_cast<GfxColorComp>(gfxColorComp1 - color.c[3] - 0.3 * color.c[0] - 0.59 * color.c[1] - 0.11 * color.c[2] + 0.5));
 }
 
-void GfxDeviceCMYKColorSpace::getRGB(const GfxColor *color, GfxRGB *rgb) const
+void GfxDeviceCMYKColorSpace::getRGB(const GfxColor &color, GfxRGB *rgb) const
 {
     double c, m, y, k, c1, m1, y1, k1, r, g, b;
 
-    c = colToDbl(color->c[0]);
-    m = colToDbl(color->c[1]);
-    y = colToDbl(color->c[2]);
-    k = colToDbl(color->c[3]);
+    c = colToDbl(color.c[0]);
+    m = colToDbl(color.c[1]);
+    y = colToDbl(color.c[2]);
+    k = colToDbl(color.c[3]);
     c1 = 1 - c;
     m1 = 1 - m;
     y1 = 1 - y;
@@ -1379,21 +1380,21 @@ void GfxDeviceCMYKColorSpace::getDeviceNLine(unsigned char *in, unsigned char *o
     }
 }
 
-void GfxDeviceCMYKColorSpace::getCMYK(const GfxColor *color, GfxCMYK *cmyk) const
+void GfxDeviceCMYKColorSpace::getCMYK(const GfxColor &color, GfxCMYK *cmyk) const
 {
-    cmyk->c = clip01(color->c[0]);
-    cmyk->m = clip01(color->c[1]);
-    cmyk->y = clip01(color->c[2]);
-    cmyk->k = clip01(color->c[3]);
+    cmyk->c = clip01(color.c[0]);
+    cmyk->m = clip01(color.c[1]);
+    cmyk->y = clip01(color.c[2]);
+    cmyk->k = clip01(color.c[3]);
 }
 
-void GfxDeviceCMYKColorSpace::getDeviceN(const GfxColor *color, GfxColor *deviceN) const
+void GfxDeviceCMYKColorSpace::getDeviceN(const GfxColor &color, GfxColor *deviceN) const
 {
     clearGfxColor(deviceN);
-    deviceN->c[0] = clip01(color->c[0]);
-    deviceN->c[1] = clip01(color->c[1]);
-    deviceN->c[2] = clip01(color->c[2]);
-    deviceN->c[3] = clip01(color->c[3]);
+    deviceN->c[0] = clip01(color.c[0]);
+    deviceN->c[1] = clip01(color.c[1]);
+    deviceN->c[2] = clip01(color.c[2]);
+    deviceN->c[3] = clip01(color.c[3]);
 }
 
 void GfxDeviceCMYKColorSpace::getDefaultColor(GfxColor *color) const
@@ -1484,7 +1485,7 @@ std::unique_ptr<GfxColorSpace> GfxLabColorSpace::parse(const Array &arr, GfxStat
     return cs;
 }
 
-void GfxLabColorSpace::getGray(const GfxColor *color, GfxGray *gray) const
+void GfxLabColorSpace::getGray(const GfxColor &color, GfxGray *gray) const
 {
     GfxRGB rgb;
 
@@ -1506,13 +1507,13 @@ void GfxLabColorSpace::getGray(const GfxColor *color, GfxGray *gray) const
 
 // convert L*a*b* to media XYZ color space
 // (not multiply by the white point)
-void GfxLabColorSpace::getXYZ(const GfxColor *color, double *pX, double *pY, double *pZ)
+void GfxLabColorSpace::getXYZ(const GfxColor &color, double *pX, double *pY, double *pZ)
 {
     double X, Y, Z;
     double t1, t2;
 
-    t1 = (colToDbl(color->c[0]) + 16) / 116;
-    t2 = t1 + colToDbl(color->c[1]) / 500;
+    t1 = (colToDbl(color.c[0]) + 16) / 116;
+    t2 = t1 + colToDbl(color.c[1]) / 500;
     if (t2 >= (6.0 / 29.0)) {
         X = t2 * t2 * t2;
     } else {
@@ -1523,7 +1524,7 @@ void GfxLabColorSpace::getXYZ(const GfxColor *color, double *pX, double *pY, dou
     } else {
         Y = (108.0 / 841.0) * (t1 - (4.0 / 29.0));
     }
-    t2 = t1 - colToDbl(color->c[2]) / 200;
+    t2 = t1 - colToDbl(color.c[2]) / 200;
     if (t2 >= (6.0 / 29.0)) {
         Z = t2 * t2 * t2;
     } else {
@@ -1534,7 +1535,7 @@ void GfxLabColorSpace::getXYZ(const GfxColor *color, double *pX, double *pY, dou
     *pZ = Z;
 }
 
-void GfxLabColorSpace::getRGB(const GfxColor *color, GfxRGB *rgb) const
+void GfxLabColorSpace::getRGB(const GfxColor &color, GfxRGB *rgb) const
 {
     double X, Y, Z;
 
@@ -1592,7 +1593,7 @@ void GfxLabColorSpace::getRGB(const GfxColor *color, GfxRGB *rgb) const
     rgb->b = dblToCol(srgb_gamma_function(clip01(b)));
 }
 
-void GfxLabColorSpace::getCMYK(const GfxColor *color, GfxCMYK *cmyk) const
+void GfxLabColorSpace::getCMYK(const GfxColor &color, GfxCMYK *cmyk) const
 {
     GfxRGB rgb;
     GfxColorComp c, m, y, k;
@@ -1629,7 +1630,7 @@ void GfxLabColorSpace::getCMYK(const GfxColor *color, GfxCMYK *cmyk) const
     cmyk->k = k;
 }
 
-void GfxLabColorSpace::getDeviceN(const GfxColor *color, GfxColor *deviceN) const
+void GfxLabColorSpace::getDeviceN(const GfxColor &color, GfxColor *deviceN) const
 {
     GfxCMYK cmyk;
     clearGfxColor(deviceN);
@@ -1751,7 +1752,7 @@ std::unique_ptr<GfxColorSpace> GfxICCBasedColorSpace::parse(const Array &arr, Ou
         error(errSyntaxWarning, -1, "Bad ICCBased color space (stream)");
         return nullptr;
     }
-    dict = obj1.streamGetDict();
+    dict = obj1.getStream()->getDict();
     obj2 = dict->lookup("N");
     if (!obj2.isInt()) {
         error(errSyntaxWarning, -1, "Bad ICCBased color space (N)");
@@ -1851,7 +1852,7 @@ void GfxICCBasedColorSpace::buildTransforms(GfxState *state)
 }
 #endif
 
-void GfxICCBasedColorSpace::getGray(const GfxColor *color, GfxGray *gray) const
+void GfxICCBasedColorSpace::getGray(const GfxColor &color, GfxGray *gray) const
 {
 #if USE_CMS
     if (transform != nullptr && transform->getTransformPixelType() == PT_GRAY) {
@@ -1859,12 +1860,12 @@ void GfxICCBasedColorSpace::getGray(const GfxColor *color, GfxGray *gray) const
         unsigned char out[gfxColorMaxComps];
 
         if (nComps == 3 && transform->getInputPixelType() == PT_Lab) {
-            in[0] = colToByte(dblToCol(colToDbl(color->c[0]) / 100.0));
-            in[1] = colToByte(dblToCol((colToDbl(color->c[1]) + 128.0) / 255.0));
-            in[2] = colToByte(dblToCol((colToDbl(color->c[2]) + 128.0) / 255.0));
+            in[0] = colToByte(dblToCol(colToDbl(color.c[0]) / 100.0));
+            in[1] = colToByte(dblToCol((colToDbl(color.c[1]) + 128.0) / 255.0));
+            in[2] = colToByte(dblToCol((colToDbl(color.c[2]) + 128.0) / 255.0));
         } else {
             for (int i = 0; i < nComps; i++) {
-                in[i] = colToByte(color->c[i]);
+                in[i] = colToByte(color.c[i]);
             }
         }
         if (nComps <= 4) {
@@ -1899,7 +1900,7 @@ void GfxICCBasedColorSpace::getGray(const GfxColor *color, GfxGray *gray) const
 #endif
 }
 
-void GfxICCBasedColorSpace::getRGB(const GfxColor *color, GfxRGB *rgb) const
+void GfxICCBasedColorSpace::getRGB(const GfxColor &color, GfxRGB *rgb) const
 {
 #if USE_CMS
     if (transform != nullptr && transform->getTransformPixelType() == PT_RGB) {
@@ -1907,12 +1908,12 @@ void GfxICCBasedColorSpace::getRGB(const GfxColor *color, GfxRGB *rgb) const
         unsigned char out[gfxColorMaxComps];
 
         if (nComps == 3 && transform->getInputPixelType() == PT_Lab) {
-            in[0] = colToByte(dblToCol(colToDbl(color->c[0]) / 100.0));
-            in[1] = colToByte(dblToCol((colToDbl(color->c[1]) + 128.0) / 255.0));
-            in[2] = colToByte(dblToCol((colToDbl(color->c[2]) + 128.0) / 255.0));
+            in[0] = colToByte(dblToCol(colToDbl(color.c[0]) / 100.0));
+            in[1] = colToByte(dblToCol((colToDbl(color.c[1]) + 128.0) / 255.0));
+            in[2] = colToByte(dblToCol((colToDbl(color.c[2]) + 128.0) / 255.0));
         } else {
             for (int i = 0; i < nComps; i++) {
-                in[i] = colToByte(color->c[i]);
+                in[i] = colToByte(color.c[i]);
             }
         }
         if (nComps <= 4) {
@@ -1947,12 +1948,12 @@ void GfxICCBasedColorSpace::getRGB(const GfxColor *color, GfxRGB *rgb) const
         double c, m, y, k, c1, m1, y1, k1, r, g, b;
 
         if (nComps == 3 && transform->getInputPixelType() == PT_Lab) {
-            in[0] = colToByte(dblToCol(colToDbl(color->c[0]) / 100.0));
-            in[1] = colToByte(dblToCol((colToDbl(color->c[1]) + 128.0) / 255.0));
-            in[2] = colToByte(dblToCol((colToDbl(color->c[2]) + 128.0) / 255.0));
+            in[0] = colToByte(dblToCol(colToDbl(color.c[0]) / 100.0));
+            in[1] = colToByte(dblToCol((colToDbl(color.c[1]) + 128.0) / 255.0));
+            in[2] = colToByte(dblToCol((colToDbl(color.c[2]) + 128.0) / 255.0));
         } else {
             for (int i = 0; i < nComps; i++) {
-                in[i] = colToByte(color->c[i]);
+                in[i] = colToByte(color.c[i]);
             }
         }
         if (nComps <= 4) {
@@ -2165,7 +2166,7 @@ void GfxICCBasedColorSpace::getDeviceNLine(unsigned char *in, unsigned char *out
 #endif
 }
 
-void GfxICCBasedColorSpace::getCMYK(const GfxColor *color, GfxCMYK *cmyk) const
+void GfxICCBasedColorSpace::getCMYK(const GfxColor &color, GfxCMYK *cmyk) const
 {
 #if USE_CMS
     if (transform != nullptr && transform->getTransformPixelType() == PT_CMYK) {
@@ -2173,12 +2174,12 @@ void GfxICCBasedColorSpace::getCMYK(const GfxColor *color, GfxCMYK *cmyk) const
         unsigned char out[gfxColorMaxComps];
 
         if (nComps == 3 && transform->getInputPixelType() == PT_Lab) {
-            in[0] = colToByte(dblToCol(colToDbl(color->c[0]) / 100.0));
-            in[1] = colToByte(dblToCol((colToDbl(color->c[1]) + 128.0) / 255.0));
-            in[2] = colToByte(dblToCol((colToDbl(color->c[2]) + 128.0) / 255.0));
+            in[0] = colToByte(dblToCol(colToDbl(color.c[0]) / 100.0));
+            in[1] = colToByte(dblToCol((colToDbl(color.c[1]) + 128.0) / 255.0));
+            in[2] = colToByte(dblToCol((colToDbl(color.c[2]) + 128.0) / 255.0));
         } else {
             for (int i = 0; i < nComps; i++) {
-                in[i] = colToByte(color->c[i]);
+                in[i] = colToByte(color.c[i]);
             }
         }
         if (nComps <= 4) {
@@ -2263,7 +2264,7 @@ bool GfxICCBasedColorSpace::useGetDeviceNLine() const
 #endif
 }
 
-void GfxICCBasedColorSpace::getDeviceN(const GfxColor *color, GfxColor *deviceN) const
+void GfxICCBasedColorSpace::getDeviceN(const GfxColor &color, GfxColor *deviceN) const
 {
     GfxCMYK cmyk;
     clearGfxColor(deviceN);
@@ -2293,15 +2294,16 @@ void GfxICCBasedColorSpace::getDefaultRanges(double *decodeLow, double *decodeRa
 {
     alt->getDefaultRanges(decodeLow, decodeRange, maxImgPixel);
 
-#if 0
-  // this is nominally correct, but some PDF files don't set the
-  // correct ranges in the ICCBased dict
-  int i;
+#define SET_DECODE_LOW_AND_RANGE_FROM_MIN_AND_MAX 0
+#if SET_DECODE_LOW_AND_RANGE_FROM_MIN_AND_MAX
+    // this is nominally correct, but some PDF files don't set the
+    // correct ranges in the ICCBased dict
+    int i;
 
-  for (i = 0; i < nComps; ++i) {
-    decodeLow[i] = rangeMin[i];
-    decodeRange[i] = rangeMax[i] - rangeMin[i];
-  }
+    for (i = 0; i < nComps; ++i) {
+        decodeLow[i] = rangeMin[i];
+        decodeRange[i] = rangeMax[i] - rangeMin[i];
+    }
 #endif
 }
 
@@ -2359,10 +2361,7 @@ std::unique_ptr<GfxColorSpace> GfxIndexedColorSpace::copy() const
 std::unique_ptr<GfxColorSpace> GfxIndexedColorSpace::parse(GfxResources *res, const Array &arr, OutputDev *out, GfxState *state, int recursion)
 {
     std::unique_ptr<GfxColorSpace> baseA;
-    int indexHighA;
     Object obj1;
-    const char *s;
-    int i, j;
 
     if (arr.getLength() != 4) {
         error(errSyntaxWarning, -1, "Bad Indexed color space");
@@ -2378,7 +2377,7 @@ std::unique_ptr<GfxColorSpace> GfxIndexedColorSpace::parse(GfxResources *res, co
         error(errSyntaxWarning, -1, "Bad Indexed color space (hival)");
         return {};
     }
-    indexHighA = obj1.getInt();
+    int indexHighA = obj1.getInt();
     if (indexHighA < 0 || indexHighA > 255) {
         // the PDF spec requires indexHigh to be in [0,255] -- allowing
         // values larger than 255 creates a security hole: if nComps *
@@ -2395,37 +2394,39 @@ std::unique_ptr<GfxColorSpace> GfxIndexedColorSpace::parse(GfxResources *res, co
     auto cs = std::make_unique<GfxIndexedColorSpace>(std::move(baseA), indexHighA);
     obj1 = arr.get(3);
     const int n = cs->getBase()->getNComps();
-    if (obj1.isStream() && obj1.streamRewind()) {
-        for (i = 0; i <= indexHighA; ++i) {
-            const int readChars = obj1.streamGetChars(n, &cs->lookup[i * n]);
-            for (j = readChars; j < n; ++j) {
+    if (obj1.isStream()) {
+        Stream *stream = obj1.getStream();
+        if (!stream->rewind()) {
+            error(errSyntaxWarning, -1, "Bad Indexed color space (stream rewind failed)");
+            return {};
+        }
+        for (int i = 0; i <= indexHighA; ++i) {
+            const int readChars = stream->doGetChars(n, &cs->lookup[i * n]);
+            for (int j = readChars; j < n; ++j) {
                 error(errSyntaxWarning, -1, "Bad Indexed color space (lookup table stream too short) padding with zeroes");
                 cs->lookup[i * n + j] = 0;
             }
         }
-        obj1.streamClose();
+        stream->close();
     } else if (obj1.isString()) {
         if (obj1.getString().size() < static_cast<size_t>(indexHighA + 1) * n) {
             error(errSyntaxWarning, -1, "Bad Indexed color space (lookup table string too short)");
-            goto err3;
+            return {};
         }
-        s = obj1.getString().c_str();
-        for (i = 0; i <= indexHighA; ++i) {
-            for (j = 0; j < n; ++j) {
+        const char *s = obj1.getString().c_str();
+        for (int i = 0; i <= indexHighA; ++i) {
+            for (int j = 0; j < n; ++j) {
                 cs->lookup[i * n + j] = static_cast<unsigned char>(*s++);
             }
         }
     } else {
         error(errSyntaxWarning, -1, "Bad Indexed color space (lookup table)");
-        goto err3;
+        return {};
     }
     return cs;
-
-err3:
-    return {};
 }
 
-GfxColor *GfxIndexedColorSpace::mapColorToBase(const GfxColor *color, GfxColor *baseColor) const
+GfxColor *GfxIndexedColorSpace::mapColorToBase(const GfxColor &color, GfxColor *baseColor) const
 {
     unsigned char *p;
     double low[gfxColorMaxComps], range[gfxColorMaxComps];
@@ -2433,7 +2434,7 @@ GfxColor *GfxIndexedColorSpace::mapColorToBase(const GfxColor *color, GfxColor *
 
     n = base->getNComps();
     base->getDefaultRanges(low, range, indexHigh);
-    const int idx = static_cast<int>(colToDbl(color->c[0]) + 0.5) * n;
+    const int idx = static_cast<int>(colToDbl(color.c[0]) + 0.5) * n;
     if (likely((idx + n - 1 < (indexHigh + 1) * base->getNComps()) && idx >= 0)) {
         p = &lookup[idx];
         for (i = 0; i < n; ++i) {
@@ -2447,18 +2448,18 @@ GfxColor *GfxIndexedColorSpace::mapColorToBase(const GfxColor *color, GfxColor *
     return baseColor;
 }
 
-void GfxIndexedColorSpace::getGray(const GfxColor *color, GfxGray *gray) const
+void GfxIndexedColorSpace::getGray(const GfxColor &color, GfxGray *gray) const
 {
     GfxColor color2;
 
-    base->getGray(mapColorToBase(color, &color2), gray);
+    base->getGray(*mapColorToBase(color, &color2), gray);
 }
 
-void GfxIndexedColorSpace::getRGB(const GfxColor *color, GfxRGB *rgb) const
+void GfxIndexedColorSpace::getRGB(const GfxColor &color, GfxRGB *rgb) const
 {
     GfxColor color2;
 
-    base->getRGB(mapColorToBase(color, &color2), rgb);
+    base->getRGB(*mapColorToBase(color, &color2), rgb);
 }
 
 void GfxIndexedColorSpace::getRGBLine(unsigned char *in, unsigned int *out, int length)
@@ -2551,18 +2552,18 @@ void GfxIndexedColorSpace::getDeviceNLine(unsigned char *in, unsigned char *out,
     gfree(line);
 }
 
-void GfxIndexedColorSpace::getCMYK(const GfxColor *color, GfxCMYK *cmyk) const
+void GfxIndexedColorSpace::getCMYK(const GfxColor &color, GfxCMYK *cmyk) const
 {
     GfxColor color2;
 
-    base->getCMYK(mapColorToBase(color, &color2), cmyk);
+    base->getCMYK(*mapColorToBase(color, &color2), cmyk);
 }
 
-void GfxIndexedColorSpace::getDeviceN(const GfxColor *color, GfxColor *deviceN) const
+void GfxIndexedColorSpace::getDeviceN(const GfxColor &color, GfxColor *deviceN) const
 {
     GfxColor color2;
 
-    base->getDeviceN(mapColorToBase(color, &color2), deviceN);
+    base->getDeviceN(*mapColorToBase(color, &color2), deviceN);
 }
 
 void GfxIndexedColorSpace::getDefaultColor(GfxColor *color) const
@@ -2583,16 +2584,16 @@ void GfxIndexedColorSpace::getDefaultRanges(double *decodeLow, double *decodeRan
 GfxSeparationColorSpace::GfxSeparationColorSpace(std::unique_ptr<GooString> &&nameA, std::unique_ptr<GfxColorSpace> &&altA, std::unique_ptr<Function> funcA) : name(std::move(nameA)), alt(std::move(altA))
 {
     func = std::move(funcA);
-    nonMarking = !name->compare("None");
-    if (!name->compare("Cyan")) {
+    nonMarking = name->toStr() == "None";
+    if (name->toStr() == "Cyan") {
         overprintMask = 0x01;
-    } else if (!name->compare("Magenta")) {
+    } else if (name->toStr() == "Magenta") {
         overprintMask = 0x02;
-    } else if (!name->compare("Yellow")) {
+    } else if (name->toStr() == "Yellow") {
         overprintMask = 0x04;
-    } else if (!name->compare("Black")) {
+    } else if (name->toStr() == "Black") {
         overprintMask = 0x08;
-    } else if (!name->compare("All")) {
+    } else if (name->toStr() == "All") {
         overprintMask = 0xffffffff;
     }
 }
@@ -2647,95 +2648,93 @@ std::unique_ptr<GfxColorSpace> GfxSeparationColorSpace::parse(GfxResources *res,
     }
     if (funcA->getInputSize() != 1) {
         error(errSyntaxWarning, -1, "Bad SeparationColorSpace function");
-        goto err5;
+        return {};
     }
-    if (altA->getNComps() <= funcA->getOutputSize()) {
-        return std::make_unique<GfxSeparationColorSpace>(std::move(nameA), std::move(altA), std::move(funcA));
+    if (altA->getNComps() > funcA->getOutputSize()) {
+        return {};
     }
-
-err5:
-    return {};
+    return std::make_unique<GfxSeparationColorSpace>(std::move(nameA), std::move(altA), std::move(funcA));
 }
 
-void GfxSeparationColorSpace::getGray(const GfxColor *color, GfxGray *gray) const
+void GfxSeparationColorSpace::getGray(const GfxColor &color, GfxGray *gray) const
 {
     double x;
     double c[gfxColorMaxComps];
     GfxColor color2;
     int i;
 
-    if (alt->getMode() == csDeviceGray && name->compare("Black") == 0) {
-        *gray = clip01(gfxColorComp1 - color->c[0]);
+    if (alt->getMode() == csDeviceGray && name->toStr() == "Black") {
+        *gray = clip01(gfxColorComp1 - color.c[0]);
     } else {
-        x = colToDbl(color->c[0]);
+        x = colToDbl(color.c[0]);
         func->transform(&x, c);
         for (i = 0; i < alt->getNComps(); ++i) {
             color2.c[i] = dblToCol(c[i]);
         }
-        alt->getGray(&color2, gray);
+        alt->getGray(color2, gray);
     }
 }
 
-void GfxSeparationColorSpace::getRGB(const GfxColor *color, GfxRGB *rgb) const
+void GfxSeparationColorSpace::getRGB(const GfxColor &color, GfxRGB *rgb) const
 {
     double x;
     double c[gfxColorMaxComps];
     GfxColor color2;
     int i;
 
-    if (alt->getMode() == csDeviceGray && name->compare("Black") == 0) {
-        rgb->r = clip01(gfxColorComp1 - color->c[0]);
-        rgb->g = clip01(gfxColorComp1 - color->c[0]);
-        rgb->b = clip01(gfxColorComp1 - color->c[0]);
+    if (alt->getMode() == csDeviceGray && name->toStr() == "Black") {
+        rgb->r = clip01(gfxColorComp1 - color.c[0]);
+        rgb->g = clip01(gfxColorComp1 - color.c[0]);
+        rgb->b = clip01(gfxColorComp1 - color.c[0]);
     } else {
-        x = colToDbl(color->c[0]);
+        x = colToDbl(color.c[0]);
         func->transform(&x, c);
         const int altNComps = alt->getNComps();
         for (i = 0; i < altNComps; ++i) {
             color2.c[i] = dblToCol(c[i]);
         }
-        alt->getRGB(&color2, rgb);
+        alt->getRGB(color2, rgb);
     }
 }
 
-void GfxSeparationColorSpace::getCMYK(const GfxColor *color, GfxCMYK *cmyk) const
+void GfxSeparationColorSpace::getCMYK(const GfxColor &color, GfxCMYK *cmyk) const
 {
     double x;
     double c[gfxColorMaxComps];
     GfxColor color2;
     int i;
 
-    if (name->compare("Black") == 0) {
+    if (name->toStr() == "Black") {
         cmyk->c = 0;
         cmyk->m = 0;
         cmyk->y = 0;
-        cmyk->k = color->c[0];
-    } else if (name->compare("Cyan") == 0) {
-        cmyk->c = color->c[0];
+        cmyk->k = color.c[0];
+    } else if (name->toStr() == "Cyan") {
+        cmyk->c = color.c[0];
         cmyk->m = 0;
         cmyk->y = 0;
         cmyk->k = 0;
-    } else if (name->compare("Magenta") == 0) {
+    } else if (name->toStr() == "Magenta") {
         cmyk->c = 0;
-        cmyk->m = color->c[0];
+        cmyk->m = color.c[0];
         cmyk->y = 0;
         cmyk->k = 0;
-    } else if (name->compare("Yellow") == 0) {
+    } else if (name->toStr() == "Yellow") {
         cmyk->c = 0;
         cmyk->m = 0;
-        cmyk->y = color->c[0];
+        cmyk->y = color.c[0];
         cmyk->k = 0;
     } else {
-        x = colToDbl(color->c[0]);
+        x = colToDbl(color.c[0]);
         func->transform(&x, c);
         for (i = 0; i < alt->getNComps(); ++i) {
             color2.c[i] = dblToCol(c[i]);
         }
-        alt->getCMYK(&color2, cmyk);
+        alt->getCMYK(color2, cmyk);
     }
 }
 
-void GfxSeparationColorSpace::getDeviceN(const GfxColor *color, GfxColor *deviceN) const
+void GfxSeparationColorSpace::getDeviceN(const GfxColor &color, GfxColor *deviceN) const
 {
     clearGfxColor(deviceN);
     if (mapping.empty() || mapping[0] == -1) {
@@ -2747,7 +2746,7 @@ void GfxSeparationColorSpace::getDeviceN(const GfxColor *color, GfxColor *device
         deviceN->c[2] = cmyk.y;
         deviceN->c[3] = cmyk.k;
     } else {
-        deviceN->c[mapping[0]] = color->c[0];
+        deviceN->c[mapping[0]] = color.c[0];
     }
 }
 
@@ -2779,7 +2778,7 @@ void GfxSeparationColorSpace::createMapping(std::vector<std::unique_ptr<GfxSepar
         unsigned int newOverprintMask = 0x10;
         for (std::size_t i = 0; i < separationList->size(); i++) {
             const std::unique_ptr<GfxSeparationColorSpace> &sepCS = (*separationList)[i];
-            if (!sepCS->getName()->compare(name->toStr())) {
+            if (sepCS->getName()->toStr() == name->toStr()) {
                 if (sepCS->getFunc()->hasDifferentResultSet(func.get())) {
                     error(errSyntaxWarning, -1, "Different functions found for '{0:t}', convert immediately", name.get());
                     mapping.clear();
@@ -2890,7 +2889,7 @@ std::unique_ptr<GfxColorSpace> GfxDeviceNColorSpace::parse(GfxResources *res, co
             nCompsA = i;
             return nullptr;
         }
-        namesA.emplace_back(obj2.getName());
+        namesA.emplace_back(obj2.getNameString());
     }
     obj1 = arr.get(2);
     if (!(altA = GfxColorSpace::parse(res, &obj1, out, state, recursion + 1))) {
@@ -2932,55 +2931,55 @@ std::unique_ptr<GfxColorSpace> GfxDeviceNColorSpace::parse(GfxResources *res, co
     return nullptr;
 }
 
-void GfxDeviceNColorSpace::getGray(const GfxColor *color, GfxGray *gray) const
+void GfxDeviceNColorSpace::getGray(const GfxColor &color, GfxGray *gray) const
 {
     double x[gfxColorMaxComps], c[gfxColorMaxComps];
     GfxColor color2;
     int i;
 
     for (i = 0; i < nComps; ++i) {
-        x[i] = colToDbl(color->c[i]);
+        x[i] = colToDbl(color.c[i]);
     }
     func->transform(x, c);
     for (i = 0; i < alt->getNComps(); ++i) {
         color2.c[i] = dblToCol(c[i]);
     }
-    alt->getGray(&color2, gray);
+    alt->getGray(color2, gray);
 }
 
-void GfxDeviceNColorSpace::getRGB(const GfxColor *color, GfxRGB *rgb) const
+void GfxDeviceNColorSpace::getRGB(const GfxColor &color, GfxRGB *rgb) const
 {
     double x[gfxColorMaxComps], c[gfxColorMaxComps];
     GfxColor color2;
     int i;
 
     for (i = 0; i < nComps; ++i) {
-        x[i] = colToDbl(color->c[i]);
+        x[i] = colToDbl(color.c[i]);
     }
     func->transform(x, c);
     for (i = 0; i < alt->getNComps(); ++i) {
         color2.c[i] = dblToCol(c[i]);
     }
-    alt->getRGB(&color2, rgb);
+    alt->getRGB(color2, rgb);
 }
 
-void GfxDeviceNColorSpace::getCMYK(const GfxColor *color, GfxCMYK *cmyk) const
+void GfxDeviceNColorSpace::getCMYK(const GfxColor &color, GfxCMYK *cmyk) const
 {
     double x[gfxColorMaxComps], c[gfxColorMaxComps];
     GfxColor color2;
     int i;
 
     for (i = 0; i < nComps; ++i) {
-        x[i] = colToDbl(color->c[i]);
+        x[i] = colToDbl(color.c[i]);
     }
     func->transform(x, c);
     for (i = 0; i < alt->getNComps(); ++i) {
         color2.c[i] = dblToCol(c[i]);
     }
-    alt->getCMYK(&color2, cmyk);
+    alt->getCMYK(color2, cmyk);
 }
 
-void GfxDeviceNColorSpace::getDeviceN(const GfxColor *color, GfxColor *deviceN) const
+void GfxDeviceNColorSpace::getDeviceN(const GfxColor &color, GfxColor *deviceN) const
 {
     clearGfxColor(deviceN);
     if (mapping.empty()) {
@@ -2994,7 +2993,7 @@ void GfxDeviceNColorSpace::getDeviceN(const GfxColor *color, GfxColor *deviceN) 
     } else {
         for (int j = 0; j < nComps; j++) {
             if (mapping[j] != -1) {
-                deviceN->c[mapping[j]] = color->c[j];
+                deviceN->c[mapping[j]] = color.c[j];
             }
         }
     }
@@ -3017,18 +3016,19 @@ void GfxDeviceNColorSpace::createMapping(std::vector<std::unique_ptr<GfxSeparati
     mapping.resize(nComps);
     unsigned int newOverprintMask = 0;
     for (int i = 0; i < nComps; i++) {
-        if (names[i] == "None") {
+        const std::string &name = names[i];
+        if (name == "None") {
             mapping[i] = -1;
-        } else if (names[i] == "Cyan") {
+        } else if (name == "Cyan") {
             newOverprintMask |= 0x01;
             mapping[i] = 0;
-        } else if (names[i] == "Magenta") {
+        } else if (name == "Magenta") {
             newOverprintMask |= 0x02;
             mapping[i] = 1;
-        } else if (names[i] == "Yellow") {
+        } else if (name == "Yellow") {
             newOverprintMask |= 0x04;
             mapping[i] = 2;
-        } else if (names[i] == "Black") {
+        } else if (name == "Black") {
             newOverprintMask |= 0x08;
             mapping[i] = 3;
         } else {
@@ -3039,7 +3039,7 @@ void GfxDeviceNColorSpace::createMapping(std::vector<std::unique_ptr<GfxSeparati
                 sepFunc = func.get();
             } else {
                 for (const std::unique_ptr<GfxSeparationColorSpace> &sepCS : sepsCS) {
-                    if (!sepCS->getName()->compare(names[i])) {
+                    if (sepCS->getName()->toStr() == name) {
                         sepFunc = sepCS->getFunc();
                         break;
                     }
@@ -3047,9 +3047,9 @@ void GfxDeviceNColorSpace::createMapping(std::vector<std::unique_ptr<GfxSeparati
             }
             for (std::size_t j = 0; j < separationList->size(); j++) {
                 const std::unique_ptr<GfxSeparationColorSpace> &sepCS = (*separationList)[j];
-                if (!sepCS->getName()->compare(names[i])) {
+                if (sepCS->getName()->toStr() == name) {
                     if (sepFunc != nullptr && sepCS->getFunc()->hasDifferentResultSet(sepFunc)) {
-                        error(errSyntaxWarning, -1, "Different functions found for '{0:s}', convert immediately", names[i].c_str());
+                        error(errSyntaxWarning, -1, "Different functions found for '{0:r}', convert immediately", &name);
                         mapping.clear();
                         overprintMask = 0xffffffff;
                         return;
@@ -3063,7 +3063,7 @@ void GfxDeviceNColorSpace::createMapping(std::vector<std::unique_ptr<GfxSeparati
             }
             if (!found) {
                 if (separationList->size() == maxSepComps) {
-                    error(errSyntaxWarning, -1, "Too many ({0:ulld}) spots, convert '{1:s}' immediately", static_cast<unsigned long long>(maxSepComps), names[i].c_str());
+                    error(errSyntaxWarning, -1, "Too many ({0:ulld}) spots, convert '{1:r}' immediately", static_cast<unsigned long long>(maxSepComps), &name);
                     mapping.clear();
                     overprintMask = 0xffffffff;
                     return;
@@ -3071,10 +3071,10 @@ void GfxDeviceNColorSpace::createMapping(std::vector<std::unique_ptr<GfxSeparati
                 mapping[i] = separationList->size() + 4;
                 newOverprintMask |= startOverprintMask;
                 if (nComps == 1) {
-                    separationList->push_back(std::make_unique<GfxSeparationColorSpace>(std::make_unique<GooString>(names[i]), alt->copy(), func->copy()));
+                    separationList->push_back(std::make_unique<GfxSeparationColorSpace>(std::make_unique<GooString>(name), alt->copy(), func->copy()));
                 } else {
                     for (const std::unique_ptr<GfxSeparationColorSpace> &sepCS : sepsCS) {
-                        if (!sepCS->getName()->compare(names[i])) {
+                        if (sepCS->getName()->toStr() == name) {
                             found = true;
                             separationList->push_back(sepCS->copyAsOwnType());
                             break;
@@ -3125,23 +3125,23 @@ std::unique_ptr<GfxColorSpace> GfxPatternColorSpace::parse(GfxResources *res, co
     return std::make_unique<GfxPatternColorSpace>(std::move(underA));
 }
 
-void GfxPatternColorSpace::getGray(const GfxColor * /*color*/, GfxGray *gray) const
+void GfxPatternColorSpace::getGray(const GfxColor & /*color*/, GfxGray *gray) const
 {
     *gray = 0;
 }
 
-void GfxPatternColorSpace::getRGB(const GfxColor * /*color*/, GfxRGB *rgb) const
+void GfxPatternColorSpace::getRGB(const GfxColor & /*color*/, GfxRGB *rgb) const
 {
     rgb->r = rgb->g = rgb->b = 0;
 }
 
-void GfxPatternColorSpace::getCMYK(const GfxColor * /*color*/, GfxCMYK *cmyk) const
+void GfxPatternColorSpace::getCMYK(const GfxColor & /*color*/, GfxCMYK *cmyk) const
 {
     cmyk->c = cmyk->m = cmyk->y = 0;
     cmyk->k = 1;
 }
 
-void GfxPatternColorSpace::getDeviceN(const GfxColor * /*color*/, GfxColor *deviceN) const
+void GfxPatternColorSpace::getDeviceN(const GfxColor & /*color*/, GfxColor *deviceN) const
 {
     clearGfxColor(deviceN);
     deviceN->c[3] = 1;
@@ -3167,7 +3167,7 @@ std::unique_ptr<GfxPattern> GfxPattern::parse(GfxResources *res, Object *obj, Ou
     if (obj->isDict()) {
         obj1 = obj->dictLookup("PatternType");
     } else if (obj->isStream()) {
-        obj1 = obj->streamGetDict()->lookup("PatternType");
+        obj1 = obj->getStream()->getDict()->lookup("PatternType");
     } else {
         return {};
     }
@@ -3196,7 +3196,7 @@ std::unique_ptr<GfxTilingPattern> GfxTilingPattern::parse(Object *patObj, int pa
     if (!patObj->isStream()) {
         return nullptr;
     }
-    dict = patObj->streamGetDict();
+    dict = patObj->getStream()->getDict();
 
     obj1 = dict->lookup("PaintType");
     if (obj1.isInt()) {
@@ -3374,7 +3374,7 @@ std::unique_ptr<GfxShading> GfxShading::parse(GfxResources *res, Object *obj, Ou
     if (obj->isDict()) {
         dict = obj->getDict();
     } else if (obj->isStream()) {
-        dict = obj->streamGetDict();
+        dict = obj->getStream()->getDict();
     } else {
         return {};
     }
@@ -3399,30 +3399,30 @@ std::unique_ptr<GfxShading> GfxShading::parse(GfxResources *res, Object *obj, Ou
     case 4:
         if (obj->isStream()) {
             return GfxGouraudTriangleShading::parse(res, 4, dict, obj->getStream(), out, state);
-        } else {
-            error(errSyntaxWarning, -1, "Invalid Type 4 shading object");
         }
+
+        error(errSyntaxWarning, -1, "Invalid Type 4 shading object");
         break;
     case 5:
         if (obj->isStream()) {
             return GfxGouraudTriangleShading::parse(res, 5, dict, obj->getStream(), out, state);
-        } else {
-            error(errSyntaxWarning, -1, "Invalid Type 5 shading object");
         }
+
+        error(errSyntaxWarning, -1, "Invalid Type 5 shading object");
         break;
     case 6:
         if (obj->isStream()) {
             return GfxPatchMeshShading::parse(res, 6, dict, obj->getStream(), out, state);
-        } else {
-            error(errSyntaxWarning, -1, "Invalid Type 6 shading object");
         }
+
+        error(errSyntaxWarning, -1, "Invalid Type 6 shading object");
         break;
     case 7:
         if (obj->isStream()) {
             return GfxPatchMeshShading::parse(res, 7, dict, obj->getStream(), out, state);
-        } else {
-            error(errSyntaxWarning, -1, "Invalid Type 7 shading object");
         }
+
+        error(errSyntaxWarning, -1, "Invalid Type 7 shading object");
         break;
     default:
         error(errSyntaxWarning, -1, "Unimplemented shading type {0:d}", typeA);
@@ -5685,7 +5685,7 @@ GfxImageColorMap::~GfxImageColorMap()
     gfree(byte_lookup);
 }
 
-void GfxImageColorMap::getGray(const unsigned char *x, GfxGray *gray)
+void GfxImageColorMap::getGray(const unsigned char *x, GfxGray *gray) const
 {
     GfxColor color;
     int i;
@@ -5694,12 +5694,12 @@ void GfxImageColorMap::getGray(const unsigned char *x, GfxGray *gray)
         for (i = 0; i < nComps2; ++i) {
             color.c[i] = lookup2[i][x[0]];
         }
-        colorSpace2->getGray(&color, gray);
+        colorSpace2->getGray(color, gray);
     } else {
         for (i = 0; i < nComps; ++i) {
             color.c[i] = lookup2[i][x[i]];
         }
-        colorSpace->getGray(&color, gray);
+        colorSpace->getGray(color, gray);
     }
 }
 
@@ -5712,12 +5712,12 @@ void GfxImageColorMap::getRGB(const unsigned char *x, GfxRGB *rgb)
         for (i = 0; i < nComps2; ++i) {
             color.c[i] = lookup2[i][x[0]];
         }
-        colorSpace2->getRGB(&color, rgb);
+        colorSpace2->getRGB(color, rgb);
     } else {
         for (i = 0; i < nComps; ++i) {
             color.c[i] = lookup2[i][x[i]];
         }
-        colorSpace->getRGB(&color, rgb);
+        colorSpace->getRGB(color, rgb);
     }
 }
 
@@ -6024,7 +6024,7 @@ void GfxImageColorMap::getDeviceNLine(unsigned char *in, unsigned char *out, int
     }
 }
 
-void GfxImageColorMap::getCMYK(const unsigned char *x, GfxCMYK *cmyk)
+void GfxImageColorMap::getCMYK(const unsigned char *x, GfxCMYK *cmyk) const
 {
     GfxColor color;
     int i;
@@ -6033,12 +6033,12 @@ void GfxImageColorMap::getCMYK(const unsigned char *x, GfxCMYK *cmyk)
         for (i = 0; i < nComps2; ++i) {
             color.c[i] = lookup2[i][x[0]];
         }
-        colorSpace2->getCMYK(&color, cmyk);
+        colorSpace2->getCMYK(color, cmyk);
     } else {
         for (i = 0; i < nComps; ++i) {
             color.c[i] = lookup[i][x[i]];
         }
-        colorSpace->getCMYK(&color, cmyk);
+        colorSpace->getCMYK(color, cmyk);
     }
 }
 
@@ -6051,12 +6051,12 @@ void GfxImageColorMap::getDeviceN(const unsigned char *x, GfxColor *deviceN)
         for (i = 0; i < nComps2; ++i) {
             color.c[i] = lookup2[i][x[0]];
         }
-        colorSpace2->getDeviceN(&color, deviceN);
+        colorSpace2->getDeviceN(color, deviceN);
     } else {
         for (i = 0; i < nComps; ++i) {
             color.c[i] = lookup[i][x[i]];
         }
-        colorSpace->getDeviceN(&color, deviceN);
+        colorSpace->getDeviceN(color, deviceN);
     }
 }
 
@@ -6378,17 +6378,17 @@ void GfxState::ReusablePathIterator::reset()
     numCoords = curSubPath->getNumPoints();
 }
 
-GfxState::GfxState(double hDPIA, double vDPIA, const PDFRectangle *pageBox, int rotateA, bool upsideDown)
+GfxState::GfxState(double hDPIA, double vDPIA, const PDFRectangle &pageBox, int rotateA, bool upsideDown)
 {
     double kx, ky;
 
     hDPI = hDPIA;
     vDPI = vDPIA;
     rotate = rotateA;
-    px1 = pageBox->x1;
-    py1 = pageBox->y1;
-    px2 = pageBox->x2;
-    py2 = pageBox->y2;
+    px1 = pageBox.x1;
+    py1 = pageBox.y1;
+    px2 = pageBox.x2;
+    py2 = pageBox.y2;
     kx = hDPI / 72.0;
     ky = vDPI / 72.0;
     if (rotate == 90) {
@@ -6814,7 +6814,7 @@ void GfxState::setTransfer(std::vector<std::unique_ptr<Function>> funcs)
 
 void GfxState::setLineDash(std::vector<double> &&dash, double start)
 {
-    lineDash = dash;
+    lineDash = std::move(dash);
     lineDashStart = start;
 }
 
@@ -7042,7 +7042,7 @@ bool GfxState::parseBlendMode(Object *obj, GfxBlendMode *mode)
 
     if (obj->isName()) {
         for (i = 0; i < nGfxBlendModeNames; ++i) {
-            if (!strcmp(obj->getName(), gfxBlendModeNames[i].name)) {
+            if (obj->getNameString() == gfxBlendModeNames[i].name) {
                 *mode = gfxBlendModeNames[i].mode;
                 return true;
             }
@@ -7056,7 +7056,7 @@ bool GfxState::parseBlendMode(Object *obj, GfxBlendMode *mode)
                 return false;
             }
             for (j = 0; j < nGfxBlendModeNames; ++j) {
-                if (!strcmp(obj2.getName(), gfxBlendModeNames[j].name)) {
+                if (obj2.getNameString() == gfxBlendModeNames[j].name) {
                     *mode = gfxBlendModeNames[j].mode;
                     return true;
                 }

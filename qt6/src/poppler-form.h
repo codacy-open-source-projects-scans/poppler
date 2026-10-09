@@ -13,8 +13,9 @@
  * Copyright (C) 2020, Thorsten Behrens <Thorsten.Behrens@CIB.de>
  * Copyright (C) 2020, Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
  * Copyright (C) 2021, Theofilos Intzoglou <int.teo@gmail.com>
- * Copyright (C) 2023-2025, g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+ * Copyright (C) 2023-2026, g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  * Copyright (C) 2024, Pratham Gandhi <ppg.1382@gmail.com>
+ * Copyright (C) 2026, Sune Stolborg Vuorela <sune@vuorela.dk>, work sponsored by the Direction Interministérielle du Numérique
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -591,9 +592,14 @@ public:
     KeyUsageExtensions keyUsageExtensions() const;
 
     /**
-      The public key value.
+      The raw public key value, though it might also be empty depending
+      on the signature types involved
+
+      There should be no need for any normal applications to present
+      the raw public key anywhere, though should it be needed it can be
+      parsed out of \ref certificateData
      */
-    QByteArray publicKey() const;
+    POPPLER_QT6_DEPRECATED QByteArray publicKey() const;
 
     /**
       The public key type.
@@ -642,6 +648,17 @@ public:
      \since 23.09
      */
     KeyLocation keyLocation() const;
+
+    /**
+     * The various s/mime signature types that this certificate might succeed
+     * in making.
+     *
+     * Please note that supportedSMimeTypes::none is special and if it is in the list,
+     * it will be the only one, and can be interpreted as a 'give me .. something' value
+     * or this is not a SMime in \ref certificateType.
+     * \since 26.09
+     */
+    QVector<SMimeSignatureType> supportedSMimeSignatureTypes() const;
 
     CertificateInfo(const CertificateInfo &other);
     CertificateInfo &operator=(const CertificateInfo &other);
@@ -917,6 +934,7 @@ public:
         WriteFailed, ///< Write failed (permissions, faulty disk, ...) \since 24.12
         UserCancelled, ///< User cancelled the process \since 24.12
         BadPassphrase, ///< Passphrase didn't work \since 25.03
+        UnsupportedSignatureType, ///< User asked for a signature type that the current backend/key combo can't deliver \since 26.09
     };
 
     /**
@@ -984,6 +1002,8 @@ enum class CryptoSignBackendFeature
 
 /**
  * Queries if a backend supports or not supports a given feature.
+ *
+ * For some features and backends, this can change on runtime depending on other settings
  *
  * \since 23.06
  */

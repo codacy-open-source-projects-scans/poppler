@@ -20,6 +20,7 @@
 // Copyright 2022, 2024 Erich E. Hoover <erich.e.hoover@gmail.com>
 // Copyright 2023-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright 2025 Blair Bonnett <blair.bonnett@gmail.com>
+// Copyright 2026 Sune Stolborg Vuorela <sune@vuorela.dk>, work sponsored by the Direction Interministérielle du Numérique
 //
 //========================================================================
 
@@ -37,6 +38,7 @@
 #include <sstream>
 #include "parseargs.h"
 #include "goo/gbasename.h"
+#include "Form.h"
 #include "Page.h"
 #include "PDFDoc.h"
 #include "PDFDocFactory.h"
@@ -116,6 +118,27 @@ static const char *getReadableCertState(CertificateValidationStatus cert_vs)
     }
 }
 
+static const char *getErrorCodeAsString(CryptoSign::SigningError err)
+{
+    switch (err) {
+    case CryptoSign::SigningError::GenericError:
+        return "Generic error";
+    case CryptoSign::SigningError::InternalError:
+        return "Internal error";
+    case CryptoSign::SigningError::BadPassphrase:
+        return "Bad passphrase";
+    case CryptoSign::SigningError::KeyMissing:
+        return "Key not found";
+    case CryptoSign::SigningError::UserCancelled:
+        return "Cancelled by user";
+    case CryptoSign::SigningError::WriteFailed:
+        return "Write failed";
+    case CryptoSign::SigningError::UnsupportedSignatureType:
+        return "Unsupported signature type";
+    }
+    return "Unknown error";
+}
+
 static std::string getReadableTime(time_t unix_time)
 {
     std::stringstream stringStream;
@@ -182,8 +205,8 @@ static bool dumpSignature(int sig_num, FormFieldSignature *s, const char *filena
 
 static GooString nssDir;
 static GooString nssPassword;
-static char ownerPassword[33] = "\001";
-static char userPassword[33] = "\001";
+static char ownerPassword[128] = "\001";
+static char userPassword[128] = "\001";
 static bool printVersion = false;
 static bool printHelp = false;
 static bool printCryptoSignBackends = false;
@@ -196,7 +219,7 @@ static bool allowPgp = false;
 static bool noOCSPRevocationCheck = false;
 static bool noAppearance = false;
 static bool dumpSignatures = false;
-static bool etsiCAdESdetached = false;
+static bool etsiCAdESdetachedB = false;
 static char backendString[256] = "";
 static char signatureName[256] = "";
 static char certNickname[256] = "";
@@ -226,7 +249,7 @@ static const ArgDesc argDesc[] = {
     { .arg = "-add-signature", .kind = argFlag, .val = &addNewSignature, .size = 0, .usage = "adds a new signature to the document" },
     { .arg = "-new-signature-field-name", .kind = argGooString, .val = &newSignatureFieldName, .size = 0, .usage = "field name used for the newly added signature. A random ID will be used if empty" },
     { .arg = "-sign", .kind = argString, .val = &signatureName, .size = 256, .usage = "sign the document in the given signature field (by name or number)" },
-    { .arg = "-etsi", .kind = argFlag, .val = &etsiCAdESdetached, .size = 0, .usage = "create a signature of type ETSI.CAdES.detached instead of adbe.pkcs7.detached" },
+    { .arg = "-etsi-cades-b", .kind = argFlag, .val = &etsiCAdESdetachedB, .size = 0, .usage = "create a signature of type ETSI.CAdES.detached type B instead of adbe.pkcs7.detached" },
     { .arg = "-backend", .kind = argString, .val = &backendString, .size = 256, .usage = "use given backend for signing/verification" },
     { .arg = "-enable-pgp", .kind = argFlag, .val = &allowPgp, .size = 0, .usage = "Enable pgp signatures in the GnuPG backend. Only available for GnuPG backend" },
     { .arg = "-nick", .kind = argString, .val = &certNickname, .size = 256, .usage = "use the certificate with the given nickname/fingerprint for signing" },
@@ -337,13 +360,13 @@ static std::string locationToString(KeyLocation location)
     return {};
 }
 
-static const char *typeToString(CertificateType type)
+static const char *typeToString(CertificateType type, bool hasEidas)
 {
     switch (type) {
     case CertificateType::PGP:
         return "PGP";
     case CertificateType::X509:
-        return "S/Mime";
+        return hasEidas ? "S/Mime with eIDAS support" : "S/Mime";
     }
     return "";
 }
@@ -427,7 +450,9 @@ int main(int argc, char *argv[])
             for (const auto &cert : vCerts) {
                 const GooString &nick = cert->getNickName();
                 const auto location = locationToString(cert->getKeyLocation());
-                printf("%s %s %s %s\n", nick.c_str(), (cert->isQualified() ? "(*)" : "   "), location.c_str(), allowPgp ? typeToString(cert->getCertificateType()) : "");
+                const auto supportedTypes = cert->supportedSMimeSignatureTypes();
+                const auto hasEidas = std::ranges::find(supportedTypes, CryptoSign::SMimeSignatureType::ETSI_CAdES_B) != supportedTypes.end();
+                printf("%s %s %s %s \n", nick.c_str(), (cert->isQualified() ? "(*)" : "   "), location.c_str(), typeToString(cert->getCertificateType(), hasEidas));
             }
         }
 
@@ -481,12 +506,6 @@ int main(int argc, char *argv[])
             return 2;
         }
 
-        if (etsiCAdESdetached) {
-            printf("-etsi is not supported yet with -add-signature\n");
-            printf("Please file a bug report if this is important for you\n");
-            return 2;
-        }
-
         if (digestName != std::string("SHA256")) {
             printf("Only digest SHA256 is supported at the moment with -add-signature\n");
             printf("Please file a bug report if this is important for you\n");
@@ -520,10 +539,20 @@ int main(int argc, char *argv[])
         }
 
         // We don't provide a way to customize the UI from pdfsig for now
-        const auto failure = doc->sign(std::string { argv[2] }, std::string { certNickname }, std::string { password }, newSignatureFieldName.copy(), /*page*/ 1,
+        CryptoSign::SigningOperationData signingData;
+        signingData.nickName = certNickname;
+        signingData.possiblePassword = password;
+        if (etsiCAdESdetachedB) {
+            signingData.type = CryptoSign::SMimeSignatureType::ETSI_CAdES_B;
+        }
+        const auto failure = doc->sign(std::string { argv[2] }, signingData, newSignatureFieldName.copy(), /*page*/ 1,
                                        /*rect */ { 0, 0, 0, 0 }, /*signatureText*/ {}, /*signatureTextLeft*/ {}, /*fontSize */ 0, /*leftFontSize*/ 0,
                                        /*fontColor*/ {}, /*borderWidth*/ 0, /*borderColor*/ {}, /*backgroundColor*/ {}, rs.get(), /* location */ nullptr, /* image path */ "", ownerPW, userPW);
-        return !failure.has_value() ? 0 : 3;
+        if (failure.has_value()) {
+            fprintf(stderr, "failed signing document: %s %s %d", failure->message.text.c_str(), getErrorCodeAsString(failure->type), static_cast<int>(failure->type));
+            return 3;
+        }
+        return 0;
     }
 
     const std::vector<FormFieldSignature *> signatures = doc->getSignatureFields();
@@ -585,9 +614,6 @@ int main(int argc, char *argv[])
             printf("Signature number %d is already signed\n", *signatureNumber);
             return 2;
         }
-        if (etsiCAdESdetached) {
-            ffs->setSignatureType(CryptoSign::SignatureType::ETSI_CAdES_detached);
-        }
         const auto rs = std::unique_ptr<GooString>(reason.toStr().empty() ? nullptr : std::make_unique<GooString>(utf8ToUtf16WithBom(reason.toStr())));
         if (ffs->getNumWidgets() != 1) {
             printf("Unexpected number of widgets for the signature: %d\n", ffs->getNumWidgets());
@@ -602,7 +628,7 @@ int main(int argc, char *argv[])
 #endif
         auto *fws = static_cast<FormWidgetSignature *>(ffs->getWidget(0));
         auto backend = CryptoSign::Factory::createActive();
-        auto sigHandler = backend->createSigningHandler(certNickname, HashAlgorithm::Sha256);
+        auto sigHandler = backend->createSigningHandler(certNickname, HashAlgorithm::Sha256, CryptoSign::SMimeSignatureType::none);
         std::unique_ptr<X509CertificateInfo> certInfo = sigHandler->getCertificateInfo();
         if (!certInfo) {
             fprintf(stderr, "signDocument: error getting signature info\n");
@@ -614,8 +640,18 @@ int main(int argc, char *argv[])
         const std::string signatureText(GooString::format(_("Digitally signed by {0:s}"), signerName.c_str()) + "\n" + GooString::format(_("Date: {0:s}"), timestamp.c_str()));
         const auto gSignatureText = std::make_unique<GooString>((signatureText.empty() || noAppearance) ? "" : utf8ToUtf16WithBom(signatureText));
         const auto gSignatureLeftText = std::make_unique<GooString>((signerName.empty() || noAppearance) ? "" : utf8ToUtf16WithBom(signerName));
-        const auto failure = fws->signDocumentWithAppearance(argv[2], std::string { certNickname }, std::string { password }, rs.get(), nullptr, {}, {}, *gSignatureText, *gSignatureLeftText, 0, 0, std::make_unique<AnnotColor>(blackColor));
-        return !failure.has_value() ? 0 : 3;
+        CryptoSign::SigningOperationData signingData;
+        signingData.nickName = certNickname;
+        signingData.possiblePassword = password;
+        if (etsiCAdESdetachedB) {
+            signingData.type = CryptoSign::SMimeSignatureType::ETSI_CAdES_B;
+        }
+        const auto failure = fws->signDocumentWithAppearance(argv[2], signingData, rs.get(), nullptr, {}, {}, *gSignatureText, *gSignatureLeftText, 0, 0, std::make_unique<AnnotColor>(blackColor));
+        if (failure.has_value()) {
+            fprintf(stderr, "failed signing document: %s %s %d", failure->message.text.c_str(), getErrorCodeAsString(failure->type), static_cast<int>(failure->type));
+            return 3;
+        }
+        return 0;
     }
 
     if (argc > 2) {

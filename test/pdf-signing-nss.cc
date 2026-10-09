@@ -5,12 +5,16 @@
 // This file is licensed under the GPLv2 or later
 //
 // Copyright 2025 Juraj Šarinay <juraj@sarinay.com>
+// Copyright 2026 Albert Astals Cid <aacid@kde.org>
+// Copyright 2026 Sune Stolborg Vuorela <sune@vuorela.dk>, work sponsored by the Direction Interministérielle du Numérique
 //
 //========================================================================
 
 #include <config.h>
 #include <poppler-config.h>
 
+#include "CryptoSignBackend.h"
+#include "Form.h"
 #include "PDFDoc.h"
 #include "PDFDocFactory.h"
 #include "GlobalParams.h"
@@ -51,7 +55,10 @@ int sign_file(const char *nssdir, const char *nick, const char *input_file, cons
 
     NSSSignatureConfiguration::setNSSDir(GooString { nssdir });
 
-    auto result = doc->sign({ output_file }, nick, {}, std::make_unique<GooString>("sig_creation_test"), /*page*/ 1,
+    CryptoSign::SigningOperationData data;
+    data.nickName = nick;
+
+    auto result = doc->sign({ output_file }, data, std::make_unique<GooString>("sig_creation_test"), /*page*/ 1,
                             /*rect */ { 0, 0, 0, 0 }, /*signatureText*/ {}, /*signatureTextLeft*/ {}, /*fontSize */ 0, /*leftFontSize*/ 0,
                             /*fontColor*/ {}, /*borderWidth*/ 0, /*borderColor*/ {}, /*backgroundColor*/ {}, {}, /* location */ nullptr, /* image path */ "", {}, {});
     return result.has_value();

@@ -16,6 +16,8 @@
  * Copyright (C) 2020, 2024 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
  * Copyright (C) 2021 Mahmoud Ahmed Khalil <mahmoudkhalil11@gmail.com>
  * Copyright (C) 2024-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+ * Copyright (C) 2026 Sune Stolborg Vuorela <sune@vuorela.dk>, work sponsored by the Direction Interministérielle du Numérique
+ *
  * Adapting code from
  *   Copyright (C) 2004 by Enrico Ros <eros.kde@email.it>
  *
@@ -52,6 +54,7 @@
 #include "poppler-form.h"
 
 // poppler includes
+#include <Form.h>
 #include <Page.h>
 #include <Annot.h>
 #include <Gfx.h>
@@ -97,25 +100,28 @@ AnnotationAppearance::~AnnotationAppearance()
 // BEGIN Annotation implementation
 AnnotationPrivate::AnnotationPrivate() : pdfAnnot(nullptr) { }
 
-void getRawDataFromQImage(const QImage &qimg, int bitsPerPixel, QByteArray *data, QByteArray *sMaskData)
+static void getRawDataFromQImage(const QImage &qimg, int bitsPerPixel, std::vector<char> *data, std::vector<char> *sMaskData)
 {
     const int height = qimg.height();
     const int width = qimg.width();
 
     switch (bitsPerPixel) {
     case 1:
+        data->reserve(height * (width + 7) / 8);
         for (int line = 0; line < height; line++) {
             const char *lineData = reinterpret_cast<const char *>(qimg.scanLine(line));
             for (int offset = 0; offset < (width + 7) / 8; offset++) {
-                data->append(lineData[offset]);
+                data->push_back(lineData[offset]);
             }
         }
         break;
     case 8:
     case 24:
-        data->append(reinterpret_cast<const char *>(qimg.bits()), static_cast<int>(qimg.sizeInBytes()));
+        data->assign(reinterpret_cast<const char *>(qimg.bits()), reinterpret_cast<const char *>(qimg.bits()) + static_cast<size_t>(qimg.sizeInBytes()));
         break;
     case 32:
+        data->reserve(3 * height * width);
+        sMaskData->reserve(height * width);
         for (int line = 0; line < height; line++) {
             const QRgb *lineData = reinterpret_cast<const QRgb *>(qimg.scanLine(line));
             for (int offset = 0; offset < width; offset++) {
@@ -124,11 +130,11 @@ void getRawDataFromQImage(const QImage &qimg, int bitsPerPixel, QByteArray *data
                 char g = static_cast<char>(qGreen(lineData[offset]));
                 char b = static_cast<char>(qBlue(lineData[offset]));
 
-                data->append(r);
-                data->append(g);
-                data->append(b);
+                data->push_back(r);
+                data->push_back(g);
+                data->push_back(b);
 
-                sMaskData->append(a);
+                sMaskData->push_back(a);
             }
         }
         break;
@@ -1067,7 +1073,7 @@ QString Annotation::contents() const
         return d->contents;
     }
 
-    return UnicodeParsedString(d->pdfAnnot->getContents());
+    return UnicodeParsedString(&d->pdfAnnot->getContents());
 }
 
 void Annotation::setContents(const QString &contents)
@@ -1187,6 +1193,10 @@ static Annotation::Flags fromPdfFlags(int flags)
 {
     Annotation::Flags qtflags;
 
+    if (flags & Annot::flagInvisible) {
+        qtflags |= Annotation::Hidden;
+        qtflags |= Annotation::DenyPrint;
+    }
     if (flags & Annot::flagHidden) {
         qtflags |= Annotation::Hidden;
     }
@@ -1209,6 +1219,12 @@ static Annotation::Flags fromPdfFlags(int flags)
     if (flags & Annot::flagToggleNoView) {
         qtflags |= Annotation::ToggleHidingOnMouse;
     }
+    if (flags & Annot::flagLockedContents) {
+        qtflags |= Annotation::DenyWrite;
+    }
+    if (flags & Annot::flagNoView) {
+        qtflags |= Annotation::Hidden;
+    }
 
     return qtflags;
 }
@@ -1219,6 +1235,7 @@ static int toPdfFlags(Annotation::Flags qtflags)
 
     if (qtflags & Annotation::Hidden) {
         flags |= Annot::flagHidden;
+        flags |= Annot::flagNoView;
     }
     if (qtflags & Annotation::FixedSize) {
         flags |= Annot::flagNoZoom;
@@ -1324,7 +1341,7 @@ Annotation::Style Annotation::style() const
         s.setDashArray(QVector<double>(dashArray.begin(), dashArray.end()));
     }
 
-    AnnotBorderEffect *border_effect;
+    const AnnotBorderEffect *border_effect;
     switch (d->pdfAnnot->getType()) {
     case Annot::typeFreeText:
         border_effect = static_cast<AnnotFreeText *>(d->pdfAnnot.get())->getBorderEffect();
@@ -1426,22 +1443,24 @@ void Annotation::setPopup(const Annotation::Popup &popup)
         return;
     }
 
-#if 0 /* TODO: Remove old popup and add AnnotPopup to page */
-    AnnotMarkup *markupann = dynamic_cast<AnnotMarkup*>(d->pdfAnnot);
+#define ENABLE_QT_SET_POPUP_FOR_PDF_ANNOT 0
+#if ENABLE_QT_SET_POPUP_FOR_PDF_ANNOT
+    AnnotMarkup *markupann = dynamic_cast<AnnotMarkup *>(d->pdfAnnot);
     if (!markupann)
         return;
 
     // Create a new AnnotPopup and assign it to pdfAnnot
-    PDFRectangle rect = d->toPdfRectangle( popup.geometry() );
-    AnnotPopup * p = new AnnotPopup( d->pdfPage->getDoc(), &rect );
-    p->setOpen( !(popup.flags() & Annotation::Hidden) );
-    if (!popup.summary().isEmpty())
-    {
+    PDFRectangle rect = d->toPdfRectangle(popup.geometry());
+    AnnotPopup *p = new AnnotPopup(d->pdfPage->getDoc(), rect);
+    p->setOpen(!(popup.flags() & Annotation::Hidden));
+    if (!popup.summary().isEmpty()) {
         GooString *s = QStringToUnicodeGooString(popup.summary());
         markupann->setLabel(s);
         delete s;
     }
     markupann->setPopup(p);
+#else
+    qWarning() << "Annotation::setPopup implementation when the pdf annotation exists not yet complete";
 #endif
 }
 
@@ -1566,13 +1585,13 @@ std::shared_ptr<Annot> TextAnnotationPrivate::createNativeAnnot(::Page *destPage
     // Set pdfAnnot
     PDFRectangle rect = boundaryToPdfRectangle(boundary, flags);
     if (textType == TextAnnotation::Linked) {
-        pdfAnnot = std::make_shared<AnnotText>(destPage->getDoc(), &rect);
+        pdfAnnot = std::make_shared<AnnotText>(destPage->getDoc(), rect);
     } else {
         const double pointSize = textFont ? textFont->pointSizeF() : AnnotFreeText::undefinedFontPtSize;
         if (pointSize < 0) {
             qWarning() << "TextAnnotationPrivate::createNativeAnnot: font pointSize < 0";
         }
-        pdfAnnot = std::make_shared<AnnotFreeText>(destPage->getDoc(), &rect);
+        pdfAnnot = std::make_shared<AnnotFreeText>(destPage->getDoc(), rect);
     }
 
     // Set properties
@@ -1607,7 +1626,7 @@ void TextAnnotationPrivate::setDefaultAppearanceToNative()
                 }
 
                 if (!fontName.empty()) {
-                    form->ensureFontsForAllCharacters(pdfAnnot->getContents(), fontName);
+                    form->ensureFontsForAllCharacters(pdfAnnot->getContents().toStr(), fontName);
                 } else {
                     fontName = "Invalid_font";
                 }
@@ -1960,9 +1979,9 @@ std::shared_ptr<Annot> LineAnnotationPrivate::createNativeAnnot(::Page *destPage
     // Set pdfAnnot
     PDFRectangle rect = boundaryToPdfRectangle(boundary, flags);
     if (lineType == LineAnnotation::StraightLine) {
-        pdfAnnot = std::make_shared<AnnotLine>(doc->doc.get(), &rect);
+        pdfAnnot = std::make_shared<AnnotLine>(doc->doc.get(), rect);
     } else {
-        pdfAnnot = std::make_shared<AnnotPolygon>(doc->doc.get(), &rect, lineClosed ? Annot::typePolygon : Annot::typePolyLine);
+        pdfAnnot = std::make_shared<AnnotPolygon>(doc->doc.get(), rect, lineClosed ? Annot::typePolygon : Annot::typePolyLine);
     }
 
     // Set properties
@@ -2194,7 +2213,7 @@ QColor LineAnnotation::lineInnerColor() const
         return d->lineInnerColor;
     }
 
-    AnnotColor *c;
+    const AnnotColor *c;
 
     if (d->pdfAnnot->getType() == Annot::typeLine) {
         const auto *lineann = static_cast<const AnnotLine *>(d->pdfAnnot.get());
@@ -2409,7 +2428,7 @@ std::shared_ptr<Annot> GeomAnnotationPrivate::createNativeAnnot(::Page *destPage
 
     // Set pdfAnnot
     PDFRectangle rect = boundaryToPdfRectangle(boundary, flags);
-    pdfAnnot = std::make_shared<AnnotGeometry>(destPage->getDoc(), &rect, type);
+    pdfAnnot = std::make_shared<AnnotGeometry>(destPage->getDoc(), rect, type);
 
     // Set properties
     flushBaseAnnotationProperties();
@@ -2500,7 +2519,7 @@ public:
 
     // helpers
     static Annot::AnnotSubtype toAnnotSubType(HighlightAnnotation::HighlightType type);
-    QList<HighlightAnnotation::Quad> fromQuadrilaterals(AnnotQuadrilaterals *quads) const;
+    QList<HighlightAnnotation::Quad> fromQuadrilaterals(const AnnotQuadrilaterals *quads) const;
     AnnotQuadrilaterals *toQuadrilaterals(const QList<HighlightAnnotation::Quad> &quads) const;
 };
 
@@ -2525,7 +2544,7 @@ Annot::AnnotSubtype HighlightAnnotationPrivate::toAnnotSubType(HighlightAnnotati
     }
 }
 
-QList<HighlightAnnotation::Quad> HighlightAnnotationPrivate::fromQuadrilaterals(AnnotQuadrilaterals *hlquads) const
+QList<HighlightAnnotation::Quad> HighlightAnnotationPrivate::fromQuadrilaterals(const AnnotQuadrilaterals *hlquads) const
 {
     QList<HighlightAnnotation::Quad> quads;
 
@@ -2592,7 +2611,7 @@ std::shared_ptr<Annot> HighlightAnnotationPrivate::createNativeAnnot(::Page *des
 
     // Set pdfAnnot
     PDFRectangle rect = boundaryToPdfRectangle(boundary, flags);
-    pdfAnnot = std::make_shared<AnnotTextMarkup>(destPage->getDoc(), &rect, toAnnotSubType(highlightType));
+    pdfAnnot = std::make_shared<AnnotTextMarkup>(destPage->getDoc(), rect, toAnnotSubType(highlightType));
 
     // Set properties
     flushBaseAnnotationProperties();
@@ -2709,7 +2728,7 @@ std::shared_ptr<Annot> StampAnnotationPrivate::createNativeAnnot(::Page *destPag
 
     // Set pdfAnnot
     PDFRectangle rect = boundaryToPdfRectangle(boundary, flags);
-    pdfAnnot = std::make_shared<AnnotStamp>(destPage->getDoc(), &rect);
+    pdfAnnot = std::make_shared<AnnotStamp>(destPage->getDoc(), rect);
 
     // Set properties
     flushBaseAnnotationProperties();
@@ -2725,8 +2744,8 @@ std::unique_ptr<AnnotStampImageHelper> StampAnnotationPrivate::convertQImageToAn
 {
     QImage convertedQImage = qimg;
 
-    QByteArray data;
-    QByteArray sMaskData;
+    std::vector<char> data;
+    std::vector<char> sMaskData;
     const int width = convertedQImage.width();
     const int height = convertedQImage.height();
     int bitsPerComponent = 1;
@@ -2802,11 +2821,11 @@ std::unique_ptr<AnnotStampImageHelper> StampAnnotationPrivate::convertQImageToAn
 
     std::unique_ptr<AnnotStampImageHelper> annotImg;
 
-    if (sMaskData.size() > 0) {
-        AnnotStampImageHelper sMask(parentDoc->doc.get(), width, height, ColorSpace::DeviceGray, 8, sMaskData.data(), sMaskData.size());
-        annotImg = std::make_unique<AnnotStampImageHelper>(parentDoc->doc.get(), width, height, colorSpace, bitsPerComponent, data.data(), data.size(), sMask.getRef());
+    if (!sMaskData.empty()) {
+        AnnotStampImageHelper sMask(parentDoc->doc.get(), width, height, ColorSpace::DeviceGray, 8, std::move(sMaskData));
+        annotImg = std::make_unique<AnnotStampImageHelper>(parentDoc->doc.get(), width, height, colorSpace, bitsPerComponent, std::move(data), sMask.getRef());
     } else {
-        annotImg = std::make_unique<AnnotStampImageHelper>(parentDoc->doc.get(), width, height, colorSpace, bitsPerComponent, data.data(), data.size());
+        annotImg = std::make_unique<AnnotStampImageHelper>(parentDoc->doc.get(), width, height, colorSpace, bitsPerComponent, std::move(data));
     }
 
     return annotImg;
@@ -3076,6 +3095,8 @@ SignatureAnnotation::SigningResult SignatureAnnotation::sign(const QString &outp
         return UserCancelled;
     case FormFieldSignature::BadPassphrase:
         return BadPassphrase;
+    case FormFieldSignature::UnsupportedSignatureType:
+        return UnsupportedSignatureType;
     }
     return GenericSigningError;
 }
@@ -3130,7 +3151,7 @@ std::shared_ptr<Annot> InkAnnotationPrivate::createNativeAnnot(::Page *destPage,
 
     // Set pdfAnnot
     PDFRectangle rect = boundaryToPdfRectangle(boundary, flags);
-    pdfAnnot = std::make_shared<AnnotInk>(destPage->getDoc(), &rect);
+    pdfAnnot = std::make_shared<AnnotInk>(destPage->getDoc(), rect);
 
     // Set properties
     flushBaseAnnotationProperties();
@@ -3316,7 +3337,7 @@ std::shared_ptr<Annot> CaretAnnotationPrivate::createNativeAnnot(::Page *destPag
 
     // Set pdfAnnot
     PDFRectangle rect = boundaryToPdfRectangle(boundary, flags);
-    pdfAnnot = std::make_shared<AnnotCaret>(destPage->getDoc(), &rect);
+    pdfAnnot = std::make_shared<AnnotCaret>(destPage->getDoc(), rect);
 
     // Set properties
     flushBaseAnnotationProperties();

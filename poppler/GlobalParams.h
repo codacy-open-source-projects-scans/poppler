@@ -13,7 +13,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2005, 2007-2010, 2012, 2015, 2017-2025 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005, 2007-2010, 2012, 2015, 2017-2026 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2005 Jonathan Blandford <jrb@redhat.com>
 // Copyright (C) 2006 Takashi Iwai <tiwai@suse.de>
 // Copyright (C) 2006 Kristian Høgsberg <krh@redhat.com>
@@ -29,7 +29,7 @@
 // Copyright (C) 2018, 2020 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2023 Shivodit Gill <shivodit.gill@gmail.com>
-// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024-2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -140,8 +140,8 @@ public:
     FILE *findCMapFile(const std::string &collection, const std::string &cMapName);
     FILE *findToUnicodeFile(const std::string &name);
     std::optional<std::string> findFontFile(const std::string &fontName);
-    std::optional<std::string> findBase14FontFile(const GooString *base14Name, const GfxFont &font, GooString *substituteFontName = nullptr);
-    std::optional<std::string> findSystemFontFile(const GfxFont &font, SysFontType *type, int *fontNum, GooString *substituteFontName = nullptr, const GooString *base14Name = nullptr);
+    std::optional<std::string> findBase14FontFile(const std::string &base14Name, const GfxFont &font, GooString *substituteFontName = nullptr);
+    std::optional<std::string> findSystemFontFile(const GfxFont &font, SysFontType *type, int *fontNum, GooString *substituteFontName = nullptr, const std::string *base14Name = nullptr);
     FamilyStyleFontSearchResult findSystemFontFileForFamilyAndStyle(const std::string &fontFamily, const std::string &fontStyle, const std::vector<std::string> &filesToIgnore = {});
     UCharFontSearchResult findSystemFontFileForUChar(Unicode uChar, const GfxFont &fontToEmulate);
     std::string getTextEncodingName() const;
@@ -170,6 +170,7 @@ public:
     static bool parseYesNo2(const char *token, bool *flag);
 
 private:
+    static std::string appendToPath(const std::string &path, const std::string &fileName);
     void parseNameToUnicode(const std::filesystem::path &name);
 
     void scanEncodingDirs();

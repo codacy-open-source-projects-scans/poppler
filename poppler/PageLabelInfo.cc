@@ -3,12 +3,13 @@
 // This file is under the GPLv2 or later license
 //
 // Copyright (C) 2005-2006 Kristian Høgsberg <krh@redhat.com>
-// Copyright (C) 2005, 2009, 2013, 2017, 2018, 2020, 2021, 2023, 2025 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005, 2009, 2013, 2017, 2018, 2020, 2021, 2023, 2025, 2026 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2011 Simon Kellner <kellner@kit.edu>
 // Copyright (C) 2012 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2024 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2025, 2026 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2026 Stefan Brüns <stefan.bruens@rwth-aachen.de>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -22,6 +23,7 @@
 
 #include <algorithm>
 
+#include "Object.h"
 #include "PageLabelInfo.h"
 #include "PageLabelInfo_p.h"
 
@@ -45,7 +47,7 @@ PageLabelInfo::Interval::Interval(const Dict &dict, int baseA)
 
     obj = dict.lookup("P");
     if (obj.isString()) {
-        const auto &str = obj.getString();
+        const std::string &str = obj.getString();
         prefix.assign(str);
     }
 
@@ -153,9 +155,9 @@ std::optional<int> PageLabelInfo::labelToIndex(const std::string &label) const
         case Interval::None:
             if (interval.length == 1 && label == interval.prefix) {
                 return interval.base;
-            } else {
-                error(errSyntaxError, -1, "asking to convert label to page index in an unknown scenario, report a bug");
             }
+
+            error(errSyntaxError, -1, "asking to convert label to page index in an unknown scenario, report a bug");
             break;
         }
     }
@@ -163,12 +165,12 @@ std::optional<int> PageLabelInfo::labelToIndex(const std::string &label) const
     return {};
 }
 
-bool PageLabelInfo::indexToLabel(int index, GooString *label) const
+bool PageLabelInfo::indexToLabel(int index, std::string *label) const
 {
     char buffer[32];
     int base, number;
     const Interval *matching_interval;
-    GooString number_string;
+    std::string number_string;
 
     base = 0;
     matching_interval = nullptr;
@@ -208,7 +210,7 @@ bool PageLabelInfo::indexToLabel(int index, GooString *label) const
 
     label->clear();
     label->append(matching_interval->prefix.c_str(), matching_interval->prefix.size());
-    if (hasUnicodeByteOrderMark(label->toStr())) {
+    if (hasUnicodeByteOrderMark(*label)) {
         int i, len;
         char ucs2_char[2];
 
@@ -216,11 +218,11 @@ bool PageLabelInfo::indexToLabel(int index, GooString *label) const
         len = number_string.size();
         ucs2_char[0] = 0;
         for (i = 0; i < len; ++i) {
-            ucs2_char[1] = number_string.getChar(i);
+            ucs2_char[1] = number_string[i];
             label->append(ucs2_char, 2);
         }
     } else {
-        label->append(number_string.toStr());
+        label->append(number_string);
     }
 
     return true;
